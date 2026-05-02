@@ -449,7 +449,7 @@ function App() {
 
         <div className="admin-identity">
           <ShieldCheck size={16} />
-          <span>{auth.required ? `${auth.role === "broker" ? "Broker" : "Ryan admin"} · ${auth.email || ""}` : "Local admin mode"}</span>
+          <span>{auth.required ? `${auth.role === "broker" ? "Broker" : "Ryan admin"} - ${auth.email || ""}` : "Local admin mode"}</span>
           {auth.required && <button onClick={() => fetch("/api/auth/logout", { method: "POST" }).then(() => { window.location.href = "/login"; })}>Logout</button>}
         </div>
 
@@ -535,7 +535,7 @@ function App() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Adelaide broker operations</p>
+            <p className="eyebrow">Australia broker operations</p>
             <h2>{displayMonth(anchor)}</h2>
           </div>
           <div className="toolbar">
@@ -573,8 +573,29 @@ function App() {
             {loading ? <div className="loading">Loading Easy Loan Finance calendar...</div> : renderedCalendar}
           </section>
 
-          {isAdmin ? <aside className="booking-panel">
-            <div className="section-title">
+          {isAdmin ? <aside className="booking-panel admin-control-panel">
+            <div className="admin-control-head">
+              <div>
+                <p className="eyebrow">Ryan admin</p>
+                <h2>Control Centre</h2>
+              </div>
+              <span>Full access</span>
+            </div>
+
+            <BrokerManager
+              brokers={brokers}
+              bookings={bookings}
+              brokerForm={brokerForm}
+              setBrokerForm={setBrokerForm}
+              onCreate={createBrokerFromForm}
+              onRemove={removeBroker}
+              onUpdateAccessCode={updateBrokerAccessCode}
+              onFocusBroker={setBrokerFilter}
+              reassigningBroker={reassigningBroker}
+              onCancelReassign={() => setReassigningBroker(null)}
+            />
+
+            <div className="section-title appointment-title">
               <CalendarPlus size={18} />
               <h2>New Appointment</h2>
             </div>
@@ -652,18 +673,6 @@ function App() {
               </button>
             </form>
 
-            <BrokerManager
-              brokers={brokers}
-              bookings={bookings}
-              brokerForm={brokerForm}
-              setBrokerForm={setBrokerForm}
-              onCreate={createBrokerFromForm}
-              onRemove={removeBroker}
-              onUpdateAccessCode={updateBrokerAccessCode}
-              onFocusBroker={setBrokerFilter}
-              reassigningBroker={reassigningBroker}
-              onCancelReassign={() => setReassigningBroker(null)}
-            />
           </aside> : (
             <aside className="booking-panel read-only-panel">
               <div className="section-title">
@@ -709,7 +718,7 @@ function IntegrationFlag({ label, active }) {
 }
 
 function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState("ryan.vufinanceaus@gmail.com");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -759,7 +768,7 @@ function LoginPage() {
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="Broker email or leave blank for Ryan admin"
+              placeholder="ryan.vufinanceaus@gmail.com"
             />
           </label>
           <label>

@@ -16,7 +16,13 @@ const TIME_ZONE = process.env.BOOKING_TIME_ZONE || "Australia/Adelaide";
 const NOTIFY_EMAIL = process.env.BOOKING_NOTIFY_EMAIL || process.env.NOTIFY_EMAIL;
 const CLIENT_CONFIRMATION_EMAILS = process.env.CLIENT_CONFIRMATION_EMAILS !== "false";
 const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "ryan@easyloanfinance.com.au";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "ryan.vufinanceaus@gmail.com";
+const ADMIN_EMAILS = Array.from(new Set([
+  ADMIN_EMAIL,
+  "ryan.vufinanceaus@gmail.com",
+  "ryan@easyloanfinance.com.au",
+  ...(process.env.ADMIN_EMAILS || "").split(",")
+].map(normalizeEmail).filter(Boolean)));
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || ADMIN_PASSWORD || "local-dev-secret-change-me";
 const PUBLIC_API_ROUTES = new Set(["/api/health", "/api/brokers", "/api/bookings"]);
@@ -250,6 +256,14 @@ function sortBrokers(brokers) {
   });
 }
 
+function normalizeEmail(value = "") {
+  return String(value).trim().toLowerCase();
+}
+
+function isAdminEmail(email) {
+  return ADMIN_EMAILS.includes(normalizeEmail(email));
+}
+
 function publicBroker(broker) {
   const { accessCode, ...safeBroker } = broker;
   return safeBroker;
@@ -263,11 +277,19 @@ function brokerMatchesLogin(broker, email, password) {
 
 function sessionForRequest(req) {
   if (!ADMIN_PASSWORD) return { role: "admin", email: ADMIN_EMAIL };
-  return adminSession(req);
+  return normalizeSession(adminSession(req));
 }
 
 function isAdminSession(session) {
   return !ADMIN_PASSWORD || session?.role === "admin";
+}
+
+function normalizeSession(session) {
+  if (!session) return null;
+  if (isAdminEmail(session.email)) {
+    return { ...session, role: "admin", brokerId: null, name: session.name || "Ryan Vu" };
+  }
+  return session;
 }
 
 async function createBooking(payload) {
@@ -892,8 +914,12 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/auth/login") {
     const body = await readBody(req);
+    const loginEmail = normalizeEmail(body.email);
     const passwordOk = ADMIN_PASSWORD && createHash("sha256").update(String(body.password || "")).digest("hex") === createHash("sha256").update(ADMIN_PASSWORD).digest("hex");
     if (!passwordOk) {
+      if (isAdminEmail(loginEmail)) {
+        return sendJson(res, 401, { error: "Use the Ryan admin password for this email." });
+      }
       const broker = brokers.find((item) => brokerMatchesLogin(item, body.email, body.password));
       if (!broker) return sendJson(res, 401, { error: "Wrong email or access code" });
       const token = signSession({
@@ -906,13 +932,14 @@ async function handleApi(req, res, url) {
       setSessionCookie(res, token);
       return sendJson(res, 200, { ok: true, role: "broker", brokerId: broker.id, email: broker.email });
     }
+    const adminEmail = isAdminEmail(loginEmail) ? loginEmail : ADMIN_EMAIL;
     const token = signSession({
       role: "admin",
-      email: ADMIN_EMAIL,
+      email: adminEmail,
       exp: Date.now() + 7 * 24 * 60 * 60 * 1000
     });
     setSessionCookie(res, token);
-    return sendJson(res, 200, { ok: true, role: "admin", email: ADMIN_EMAIL });
+    return sendJson(res, 200, { ok: true, role: "admin", email: adminEmail });
   }
 
   if (req.method === "POST" && url.pathname === "/api/auth/logout") {
