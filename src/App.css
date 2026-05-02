@@ -88,16 +88,13 @@ button {
 }
 
 .brand-mark {
-  display: grid;
-  place-items: center;
   width: 52px;
   height: 52px;
   border: 1px solid rgba(184, 144, 68, 0.45);
   border-radius: 8px;
   background: linear-gradient(135deg, #141413, #343025);
-  color: #f5dfad;
-  font-weight: 800;
-  letter-spacing: 0;
+  object-fit: cover;
+  flex: 0 0 auto;
 }
 
 .eyebrow {
@@ -396,6 +393,22 @@ h1 {
   height: 40px;
   padding: 0 14px;
   font-weight: 800;
+}
+
+.client-page-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 13px;
+  border: 1px solid #141413;
+  border-radius: 8px;
+  background: #141413;
+  color: #fff8ed;
+  font-size: 0.86rem;
+  font-weight: 900;
+  text-decoration: none;
 }
 
 .segment {
@@ -890,8 +903,9 @@ textarea:focus {
   align-items: center;
   padding: clamp(18px, 4vw, 58px);
   background:
-    linear-gradient(90deg, rgba(14, 18, 18, 0.93), rgba(14, 18, 18, 0.78)),
-    url("https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1800&q=80") center/cover,
+    radial-gradient(circle at 82% 18%, rgba(215, 182, 111, 0.20), transparent 28%),
+    radial-gradient(circle at 24% 80%, rgba(47, 125, 116, 0.18), transparent 32%),
+    linear-gradient(130deg, #101312 0%, #181713 46%, #2b2519 100%),
     #141413;
   color: #fff8ed;
 }
@@ -961,9 +975,33 @@ textarea:focus {
   border: 1px solid rgba(245, 223, 173, 0.24);
   border-radius: 8px;
   background:
-    linear-gradient(140deg, rgba(255, 248, 237, 0.18), rgba(47, 125, 116, 0.20)),
-    url("https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1200&q=80") center/cover;
+    linear-gradient(150deg, rgba(255, 248, 237, 0.14), transparent 34%),
+    linear-gradient(35deg, rgba(47, 125, 116, 0.32), rgba(215, 182, 111, 0.20)),
+    #171712;
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.28);
+}
+
+.premium-visual::before {
+  content: "";
+  position: absolute;
+  inset: 28px 30px auto;
+  height: 72px;
+  border: 1px solid rgba(245, 223, 173, 0.26);
+  border-right: 0;
+  border-bottom: 0;
+  transform: skewX(-16deg);
+}
+
+.premium-visual::after {
+  content: "";
+  position: absolute;
+  right: 34px;
+  top: 34px;
+  width: 120px;
+  height: 120px;
+  border: 1px solid rgba(255, 248, 237, 0.18);
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(245, 223, 173, 0.18), transparent 62%);
 }
 
 .visual-glass {

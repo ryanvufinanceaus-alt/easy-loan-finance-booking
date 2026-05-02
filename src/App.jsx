@@ -153,6 +153,12 @@ function sortBrokersForUi(brokers) {
   });
 }
 
+function BrandMark() {
+  return (
+    <img className="brand-mark" src="/elf-logo.svg" alt="Easy Loan Finance" width="52" height="52" />
+  );
+}
+
 function App() {
   const publicPath = typeof window !== "undefined" ? window.location.pathname : "/";
   if (publicPath.startsWith("/book")) {
@@ -372,7 +378,7 @@ function App() {
     <main className="app-shell">
       <aside className="side-panel">
         <div className="brand-block">
-          <div className="brand-mark">ELF</div>
+          <BrandMark />
           <div>
             <p className="eyebrow">Easy Loan Finance</p>
             <h1>Broker Booking</h1>
@@ -481,6 +487,10 @@ function App() {
                 </button>
               ))}
             </div>
+            <a className="client-page-button" href={brokerBookingUrl} target="_blank" rel="noreferrer">
+              <ExternalLink size={16} />
+              Client page
+            </a>
           </div>
         </header>
 
@@ -645,8 +655,8 @@ function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-card">
-        <div className="brand-block">
-          <div className="brand-mark">ELF</div>
+          <div className="brand-block">
+          <BrandMark />
           <div>
             <p className="eyebrow">Easy Loan Finance</p>
             <h1>Ryan Admin</h1>
@@ -871,7 +881,7 @@ function PublicBookingPage() {
     return (
       <main className="public-page">
         <section className="public-success">
-          <div className="brand-mark">ELF</div>
+          <BrandMark />
           <div className="drawer-kicker">
             <Check size={16} />
             Request received
@@ -892,7 +902,7 @@ function PublicBookingPage() {
     <main className="public-page">
       <section className="public-hero">
         <div className="brand-block">
-          <div className="brand-mark">ELF</div>
+          <BrandMark />
           <div>
             <p className="eyebrow">Easy Loan Finance</p>
             <h1>Home loan consultation</h1>
