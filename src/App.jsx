@@ -1359,7 +1359,7 @@ function PublicBookingPage() {
             <label>
               Preferred broker
               <select value={form.brokerId} onChange={(event) => setForm({ ...form, brokerId: event.target.value })}>
-                {brokers.map((broker) => <option key={broker.id} value={broker.id}>{broker.name} - {broker.location}</option>)}
+                {brokers.map((broker) => <option key={broker.id} value={broker.id}>{broker.name}</option>)}
               </select>
             </label>
             <label>
