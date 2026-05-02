@@ -406,36 +406,49 @@ function normalizeSession(session) {
 }
 
 async function createBooking(payload) {
+  const cleanPayload = bookingStoragePayload(payload);
   if (!USE_SUPABASE) {
     const bookings = await readJson("bookings.json");
-    bookings.push(payload);
+    bookings.push(cleanPayload);
     await writeJson("bookings.json", bookings);
-    return payload;
+    return cleanPayload;
   }
   const [created] = await supabaseRequest("bookings", {
     method: "POST",
-    body: payload,
+    body: cleanPayload,
     prefer: "return=representation"
   });
   return created;
 }
 
 async function updateBooking(id, patch) {
+  const cleanPatch = bookingStoragePayload(patch, { partial: true });
   if (!USE_SUPABASE) {
     const bookings = await readJson("bookings.json");
     const index = bookings.findIndex((booking) => booking.id === id);
     if (index === -1) return null;
-    bookings[index] = { ...bookings[index], ...patch, id };
+    bookings[index] = { ...bookings[index], ...cleanPatch, id };
     await writeJson("bookings.json", bookings);
     return bookings[index];
   }
   const [updated] = await supabaseRequest("bookings", {
     method: "PATCH",
     query: `?id=eq.${encodeURIComponent(id)}`,
-    body: patch,
+    body: cleanPatch,
     prefer: "return=representation"
   });
   return updated || null;
+}
+
+function bookingStoragePayload(input, { partial = false } = {}) {
+  const allowed = ["id", "clientName", "phone", "email", "brokerId", "service", "channel", "status", "start", "end", "googleEventId", "notes"];
+  const clean = {};
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(input, key) && (partial || input[key] !== undefined)) {
+      clean[key] = input[key];
+    }
+  }
+  return clean;
 }
 
 async function deleteBooking(id) {
@@ -1410,7 +1423,6 @@ async function handleApi(req, res, url) {
     const next = { ...body, id: body.id || `bk-${Date.now()}` };
     if (!session && isPublicRequest(req, url)) {
       next.status = "Confirmed";
-      next.duration = PUBLIC_BOOKING_DURATION;
       if (!String(next.email || "").trim()) {
         return sendJson(res, 400, { error: "Email is required so we can send the booking confirmation." });
       }
