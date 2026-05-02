@@ -957,10 +957,18 @@ function PublicBookingPage() {
             <h1>Home loan consultation</h1>
           </div>
         </div>
-        <div className="premium-visual" aria-hidden="true">
-          <div className="visual-glass">
-            <span>Adelaide lending desk</span>
-            <strong>30 min</strong>
+        <div className="consultation-panel" aria-label="Consultation summary">
+          <div className="consultation-panel-head">
+            <BrandMark />
+            <div>
+              <span>Free consultation</span>
+              <strong>Home loan consultation - 30 mins</strong>
+            </div>
+          </div>
+          <div className="consultation-points">
+            <span>Borrowing capacity</span>
+            <span>Refinance options</span>
+            <span>Next steps</span>
           </div>
         </div>
         <p className="public-copy">
