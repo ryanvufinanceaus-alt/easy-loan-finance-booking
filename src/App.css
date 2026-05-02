@@ -36,6 +36,9 @@ button {
   display: grid;
   grid-template-columns: 332px minmax(0, 1fr);
   min-height: 100vh;
+  background:
+    linear-gradient(180deg, rgba(255, 253, 248, 0.74), rgba(238, 232, 220, 0.94)),
+    #f6f3ec;
 }
 
 .side-panel {
@@ -284,6 +287,23 @@ h1 {
   background: rgba(255, 252, 246, 0.92);
 }
 
+.full-width {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.integration-note {
+  margin: 8px 0 0;
+  color: #5d5549;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.danger-text {
+  color: #8f3030;
+}
+
 .integration-flag {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) auto;
@@ -332,6 +352,11 @@ h1 {
   justify-content: space-between;
   gap: 18px;
   margin-bottom: 20px;
+  padding: 18px;
+  border: 1px solid rgba(32, 29, 23, 0.10);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.90);
+  box-shadow: 0 18px 60px rgba(34, 29, 18, 0.07);
 }
 
 .toolbar {
@@ -340,6 +365,15 @@ h1 {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.sync-stamp {
+  flex-basis: 100%;
+  margin: -2px 0 0;
+  color: #756c5f;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-align: right;
 }
 
 .search-wrap {
@@ -434,7 +468,7 @@ h1 {
 
 .main-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr) 400px;
   gap: 18px;
   align-items: start;
 }
@@ -442,6 +476,8 @@ h1 {
 .calendar-panel {
   min-height: calc(100vh - 132px);
   overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 253, 248, 0.96), rgba(250, 246, 238, 0.96));
 }
 
 .month-view {
@@ -612,6 +648,8 @@ h1 {
 
 .booking-panel {
   padding: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(250, 246, 238, 0.98));
 }
 
 .booking-form {

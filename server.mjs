@@ -799,9 +799,13 @@ async function afterBookingSaved(booking, brokers, req, { sendEmail = true } = {
   if (sendEmail) {
     try {
       results.emailSent = await sendBookingEmail(booking, broker, origin);
+    } catch (error) {
+      console.warn(`Internal notification failed: ${error.message}`);
+    }
+    try {
       results.clientConfirmationSent = await sendClientConfirmationEmail(booking, broker);
     } catch (error) {
-      console.warn(error.message);
+      console.warn(`Client confirmation failed: ${error.message}`);
     }
   }
 
@@ -883,11 +887,53 @@ async function handleApi(req, res, url) {
   if (!requireAdmin(req, res, url)) return;
 
   if (req.method === "GET" && url.pathname === "/api/integrations") {
+    const emailReady = smtpConfigured();
     return sendJson(res, 200, {
-      emailNotifications: smtpConfigured(),
+      emailNotifications: Boolean(emailReady && NOTIFY_EMAIL),
+      clientConfirmationEmails: Boolean(emailReady && CLIENT_CONFIRMATION_EMAILS),
+      emailFrom: process.env.SMTP_FROM || process.env.SMTP_USER || "",
+      notifyEmail: NOTIFY_EMAIL || "",
+      clientReplyTo: process.env.CLIENT_REPLY_TO || NOTIFY_EMAIL || process.env.SMTP_USER || "",
+      smtpHost: process.env.SMTP_HOST || "",
+      missingEmailSettings: [
+        !process.env.SMTP_HOST && "SMTP_HOST",
+        !process.env.SMTP_USER && "SMTP_USER",
+        !process.env.SMTP_PASS && "SMTP_PASS",
+        !NOTIFY_EMAIL && "BOOKING_NOTIFY_EMAIL"
+      ].filter(Boolean),
       googleDirectSync: Boolean(GOOGLE_CALENDAR_ID && (process.env.GOOGLE_SERVICE_ACCOUNT_JSON || (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY))),
       icsSync: true
     });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/email-test") {
+    const body = await readBody(req);
+    const broker = brokers.find((item) => item.id === "ryan-vu") || brokers[0];
+    const testBooking = {
+      id: `email-test-${Date.now()}`,
+      clientName: body.clientName || "Email Test Client",
+      phone: body.phone || "0400 000 000",
+      email: body.clientEmail || NOTIFY_EMAIL,
+      brokerId: broker?.id || "ryan-vu",
+      service: "Home loan consultation",
+      channel: "Phone call",
+      status: "Pending",
+      start: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      end: new Date(Date.now() + 24 * 60 * 60 * 1000 + 30 * 60 * 1000).toISOString(),
+      notes: "This is a test email from Easy Loan Finance Booking."
+    };
+    const results = { internal: false, client: false };
+    try {
+      results.internal = await sendBookingEmail(testBooking, broker, requestOrigin(req));
+    } catch (error) {
+      return sendJson(res, 500, { error: `Internal email failed: ${error.message}`, results });
+    }
+    try {
+      results.client = await sendClientConfirmationEmail(testBooking, broker);
+    } catch (error) {
+      return sendJson(res, 500, { error: `Client confirmation failed: ${error.message}`, results });
+    }
+    return sendJson(res, 200, { ok: true, results });
   }
 
   if (req.method === "GET" && url.pathname === "/api/brokers") {

@@ -179,8 +179,10 @@ function App() {
   const [reassigningBroker, setReassigningBroker] = useState(null);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [copied, setCopied] = useState("");
-  const [integrations, setIntegrations] = useState({ emailNotifications: false, googleDirectSync: false, icsSync: true });
+  const [integrations, setIntegrations] = useState({ emailNotifications: false, clientConfirmationEmails: false, googleDirectSync: false, icsSync: true });
   const [auth, setAuth] = useState({ required: false, authenticated: false, email: null });
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const [emailTestStatus, setEmailTestStatus] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -199,9 +201,35 @@ function App() {
         setBrokers(sortBrokersForUi(brokerData));
         setBookings(bookingData);
         setIntegrations(integrationData);
+        setLastSyncedAt(new Date());
         setForm(bookingTemplate(sortBrokersForUi(brokerData)[0]?.id));
       })
       .finally(() => setLoading(false));
+  }, []);
+
+  async function refreshBookings({ quiet = false } = {}) {
+    const res = await fetch("/api/bookings");
+    if (!res.ok) return;
+    const data = await res.json();
+    setBookings(data);
+    setLastSyncedAt(new Date());
+    if (!quiet) {
+      setSelectedBooking((current) => current ? data.find((booking) => booking.id === current.id) || current : current);
+    }
+  }
+
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState === "visible") refreshBookings({ quiet: true });
+    };
+    const timer = window.setInterval(tick, 8000);
+    window.addEventListener("focus", tick);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", tick);
+      document.removeEventListener("visibilitychange", tick);
+    };
   }, []);
 
   const brokerById = useMemo(
@@ -313,6 +341,17 @@ function App() {
     }).then((res) => res.json());
     setBookings((current) => current.map((item) => (item.id === saved.id ? saved : item)));
     setSelectedBooking(saved);
+  }
+
+  async function sendEmailTest() {
+    setEmailTestStatus("Sending test...");
+    const res = await fetch("/api/email-test", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ clientEmail: integrations.notifyEmail })
+    });
+    const data = await res.json();
+    setEmailTestStatus(res.ok ? "Test email sent" : data.error || "Email test failed");
   }
 
   async function deleteSelectedBooking(booking) {
@@ -457,8 +496,14 @@ function App() {
             <h2>Alerts & Sync</h2>
           </div>
           <IntegrationFlag label="Email alerts" active={integrations.emailNotifications} />
+          <IntegrationFlag label="Client confirmation" active={integrations.clientConfirmationEmails} />
           <IntegrationFlag label="Google direct sync" active={integrations.googleDirectSync} />
           <IntegrationFlag label="ICS calendar feed" active={integrations.icsSync} />
+          <button className="secondary-button full-width" onClick={sendEmailTest}>Send Test Email</button>
+          {emailTestStatus && <p className="integration-note">{emailTestStatus}</p>}
+          {integrations.missingEmailSettings?.length > 0 && (
+            <p className="integration-note danger-text">Missing: {integrations.missingEmailSettings.join(", ")}</p>
+          )}
         </section>
       </aside>
 
@@ -491,7 +536,11 @@ function App() {
               <ExternalLink size={16} />
               Client page
             </a>
+            <button className="today-button" onClick={() => refreshBookings()}>
+              Refresh
+            </button>
           </div>
+          {lastSyncedAt && <p className="sync-stamp">Live refresh · {displayTime(lastSyncedAt)}</p>}
         </header>
 
         <div className="main-grid">

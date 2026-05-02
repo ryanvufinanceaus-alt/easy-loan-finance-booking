@@ -14,6 +14,8 @@ For GitHub and Render deployment steps, read [HUONG_DAN_GITHUB_RENDER.md](./HUON
 - Appointment form with client, broker, service, channel, duration, status, and notes.
 - Booking management: filter by broker, update status, open in Google, copy Google link, and delete bookings.
 - Ryan admin login: set `ADMIN_PASSWORD` to protect the dashboard while public booking links stay open.
+- Dashboard auto-refreshes bookings while open; use the Refresh button for an instant manual pull.
+- Replace `public/elf-logo.svg` with your real local ELF logo file to update the brand everywhere.
 - Public client booking pages:
   - Team page: `/book`
   - Broker page: `/book/ryan-vu`
