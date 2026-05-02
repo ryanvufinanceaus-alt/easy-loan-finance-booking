@@ -859,15 +859,17 @@ async function afterBookingSaved(booking, brokers, req, { sendEmail = true } = {
     }
   }
 
-  try {
-    const event = await syncGoogleEvent(booking, broker, origin);
-    if (event?.id && event.id !== booking.googleEventId) {
-      results.googleEventId = event.id;
-      await updateBooking(booking.id, { googleEventId: event.id });
+  if (booking.status === "Confirmed") {
+    try {
+      const event = await syncGoogleEvent(booking, broker, origin);
+      if (event?.id && event.id !== booking.googleEventId) {
+        results.googleEventId = event.id;
+        await updateBooking(booking.id, { googleEventId: event.id });
+      }
+      results.googleSynced = Boolean(event?.id);
+    } catch (error) {
+      console.warn(error.message);
     }
-    results.googleSynced = Boolean(event?.id);
-  } catch (error) {
-    console.warn(error.message);
   }
 
   return results;
@@ -1112,7 +1114,7 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const updated = await updateBooking(id, body);
     if (!updated) return sendJson(res, 404, { error: "Booking not found" });
-    if (updated.googleEventId) {
+    if (updated.status === "Confirmed" || updated.googleEventId) {
       afterBookingSaved(updated, brokers, req, { sendEmail: false }).catch((error) => console.warn(error.message));
     }
     return sendJson(res, 200, updated);

@@ -24,7 +24,7 @@ import {
 import "./App.css";
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const STATUS = ["Confirmed", "Pending", "Completed", "Cancelled"];
+const STATUS = ["Pending", "Confirmed", "Done", "Undone", "Cancelled"];
 const CHANNELS = ["Phone call", "Video call", "Office"];
 const DURATIONS = [30, 45, 60, 90];
 const PUBLIC_BOOKING_DURATION = 30;
@@ -37,6 +37,7 @@ const PUBLIC_SERVICE_OPTIONS = [
 ];
 const NOTIFICATION_SNAPSHOT_KEY = "elfBookingNotificationSnapshot";
 const NOTIFICATION_ITEMS_KEY = "elfBookingNotifications";
+const DISMISSED_FOLLOWUPS_KEY = "elfDismissedFollowups";
 
 function addMinutes(date, minutes) {
   return new Date(date.getTime() + minutes * 60000);
@@ -84,6 +85,18 @@ function displayTime(value) {
     hour: "numeric",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function statusLabel(status) {
+  return status === "Completed" ? "Done" : status;
+}
+
+function statusClass(status) {
+  return `status-${statusLabel(status).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+}
+
+function isFinalStatus(status) {
+  return ["Done", "Completed", "Undone", "Cancelled"].includes(status);
 }
 
 function bookingSignature(booking) {
@@ -256,14 +269,34 @@ function App() {
         };
       });
 
-    if (updates.length === 0) return;
+    let dismissedFollowups = [];
+    try {
+      dismissedFollowups = JSON.parse(window.localStorage.getItem(DISMISSED_FOLLOWUPS_KEY) || "[]");
+    } catch {
+      dismissedFollowups = [];
+    }
+    const now = Date.now();
+    const followups = nextBookings
+      .filter((booking) => !isFinalStatus(booking.status))
+      .filter((booking) => new Date(booking.end || booking.start).getTime() + 60 * 60 * 1000 <= now)
+      .filter((booking) => !dismissedFollowups.includes(booking.id))
+      .map((booking) => ({
+        key: `followup-${booking.id}`,
+        bookingId: booking.id,
+        type: "followup",
+        title: `Follow up: ${booking.clientName}`,
+        detail: `Confirm whether this appointment is Done or Undone - ${notificationDetail(booking, brokerMap[booking.brokerId])}`,
+        createdAt: new Date().toISOString()
+      }));
+
+    if (updates.length === 0 && followups.length === 0) return;
     let storedItems = notificationItems;
     try {
       storedItems = JSON.parse(window.localStorage.getItem(NOTIFICATION_ITEMS_KEY) || "[]");
     } catch {
       storedItems = [];
     }
-    const merged = [...updates, ...storedItems].filter((item, index, array) => (
+    const merged = [...updates, ...followups, ...storedItems].filter((item, index, array) => (
       array.findIndex((candidate) => candidate.key === item.key) === index
     ));
     persistNotificationItems(merged);
@@ -441,6 +474,7 @@ function App() {
       persistBookingSnapshot(next);
       return next;
     });
+    persistNotificationItems(notificationItems.filter((item) => item.bookingId !== saved.id));
     setSelectedBooking(saved);
   }
 
@@ -461,6 +495,16 @@ function App() {
   }
 
   function clearNotifications() {
+    const followupIds = notificationItems.filter((item) => item.type === "followup").map((item) => item.bookingId);
+    if (followupIds.length > 0) {
+      let dismissed = [];
+      try {
+        dismissed = JSON.parse(window.localStorage.getItem(DISMISSED_FOLLOWUPS_KEY) || "[]");
+      } catch {
+        dismissed = [];
+      }
+      window.localStorage.setItem(DISMISSED_FOLLOWUPS_KEY, JSON.stringify(Array.from(new Set([...dismissed, ...followupIds]))));
+    }
     persistNotificationItems([]);
     setNotificationsOpen(false);
   }
@@ -468,6 +512,15 @@ function App() {
   function openNotification(item) {
     const booking = bookings.find((entry) => entry.id === item.bookingId);
     if (booking) setSelectedBooking(booking);
+    if (item.type === "followup") {
+      let dismissed = [];
+      try {
+        dismissed = JSON.parse(window.localStorage.getItem(DISMISSED_FOLLOWUPS_KEY) || "[]");
+      } catch {
+        dismissed = [];
+      }
+      window.localStorage.setItem(DISMISSED_FOLLOWUPS_KEY, JSON.stringify(Array.from(new Set([...dismissed, item.bookingId]))));
+    }
     const remaining = notificationItems.filter((entry) => entry.key !== item.key);
     persistNotificationItems(remaining);
     setNotificationsOpen(false);
@@ -545,6 +598,19 @@ function App() {
       return data;
     });
     setBrokers((current) => current.map((item) => item.id === saved.id ? saved : item));
+  }
+
+  async function updateBrokerColor(broker, color) {
+    const saved = await fetch(`/api/brokers/${broker.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ color })
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not update broker colour");
+      return data;
+    });
+    setBrokers((current) => sortBrokersForUi(current.map((item) => item.id === saved.id ? saved : item)));
   }
 
   const renderedCalendar = view === "month"
@@ -798,6 +864,7 @@ function App() {
                 onCreate={createBrokerFromForm}
                 onRemove={removeBroker}
                 onUpdateAccessCode={updateBrokerAccessCode}
+                onUpdateColor={updateBrokerColor}
                 onFocusBroker={setBrokerFilter}
                 reassigningBroker={reassigningBroker}
                 onCancelReassign={() => setReassigningBroker(null)}
@@ -857,7 +924,7 @@ function NotificationButton({ items, open, onToggle, onOpen, onClear }) {
             <div className="notification-list">
               {items.map((item) => (
                 <button type="button" key={item.key} onClick={() => onOpen(item)}>
-                  <span>{item.type === "new" ? "New" : "Changed"}</span>
+                  <span>{item.type === "followup" ? "Reminder" : item.type === "new" ? "New" : "Changed"}</span>
                   <strong>{item.title}</strong>
                   <small>{item.detail}</small>
                 </button>
@@ -955,7 +1022,7 @@ function LoginPage() {
   );
 }
 
-function BrokerManager({ brokers, bookings, brokerForm, setBrokerForm, onCreate, onRemove, onUpdateAccessCode, onFocusBroker, reassigningBroker, onCancelReassign }) {
+function BrokerManager({ brokers, bookings, brokerForm, setBrokerForm, onCreate, onRemove, onUpdateAccessCode, onUpdateColor, onFocusBroker, reassigningBroker, onCancelReassign }) {
   const reassignOptions = brokers.filter((broker) => broker.id !== reassigningBroker?.id);
   const [targetBroker, setTargetBroker] = useState("");
 
@@ -1023,6 +1090,14 @@ function BrokerManager({ brokers, bookings, brokerForm, setBrokerForm, onCreate,
                 <strong>{broker.name}</strong>
                 <small>{count} booking{count === 1 ? "" : "s"} · {broker.accessCode ? "login ready" : "no access code"}</small>
               </button>
+              <input
+                className="broker-color-input"
+                type="color"
+                value={broker.color || "#b89044"}
+                onChange={(event) => onUpdateColor(broker, event.target.value)}
+                title={`Change ${broker.name} calendar colour`}
+                aria-label={`Change ${broker.name} calendar colour`}
+              />
               <button className="mini-action" type="button" onClick={() => onUpdateAccessCode(broker)}>
                 Code
               </button>
@@ -1362,7 +1437,7 @@ function MonthView({ anchor, bookings, brokerById, onSelect }) {
               {dayBookings.slice(0, 4).map((booking) => (
                 <button
                   key={booking.id}
-                  className="booking-chip"
+                  className={classNames("booking-chip", statusClass(booking.status))}
                   style={{
                     borderLeftColor: brokerById[booking.brokerId]?.color || "#b89044",
                     "--broker-color": brokerById[booking.brokerId]?.color || "#b89044"
@@ -1370,6 +1445,7 @@ function MonthView({ anchor, bookings, brokerById, onSelect }) {
                   onClick={() => onSelect(booking)}
                 >
                   <span>{displayTime(booking.start)}</span>
+                  <em>{statusLabel(booking.status)}</em>
                   {booking.clientName}
                 </button>
               ))}
@@ -1401,7 +1477,7 @@ function AgendaView({ mode, anchor, bookings, brokerById, onSelect }) {
               {dayBookings.length === 0 && <div className="empty-slot">Available</div>}
               {dayBookings.map((booking) => (
                 <button
-                  className="agenda-booking"
+                  className={classNames("agenda-booking", statusClass(booking.status))}
                   key={booking.id}
                   style={{
                     borderLeftColor: brokerById[booking.brokerId]?.color || "#b89044",
@@ -1410,6 +1486,7 @@ function AgendaView({ mode, anchor, bookings, brokerById, onSelect }) {
                   onClick={() => onSelect(booking)}
                 >
                   <span className="time-block">{displayTime(booking.start)} - {displayTime(booking.end)}</span>
+                  <span className={classNames("status-pill", statusClass(booking.status))}>{statusLabel(booking.status)}</span>
                   <strong>{booking.clientName}</strong>
                   <small style={{ color: brokerById[booking.brokerId]?.color || "#8d6a28" }}>{brokerById[booking.brokerId]?.name}</small>
                   <em>{booking.service}</em>
@@ -1431,7 +1508,7 @@ function BookingDrawer({ booking, broker, googleUrl, copied, onCopy, onClose, on
         <button className="close-button" onClick={onClose}>Close</button>
         <div className="drawer-kicker">
           <Sparkles size={16} />
-          {booking.status}
+          {statusLabel(booking.status)}
         </div>
         <h2>{booking.clientName}</h2>
         <p className="drawer-service">{booking.service}</p>
@@ -1445,7 +1522,7 @@ function BookingDrawer({ booking, broker, googleUrl, copied, onCopy, onClose, on
         {canManage && (
           <div className="status-actions">
             {STATUS.map((status) => (
-              <button key={status} className={booking.status === status ? "active" : ""} onClick={() => onStatus(status)}>
+              <button key={status} className={classNames(statusClass(status), statusLabel(booking.status) === status && "active")} onClick={() => onStatus(status)}>
                 {status}
               </button>
             ))}
