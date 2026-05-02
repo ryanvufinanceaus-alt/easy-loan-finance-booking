@@ -1,0 +1,1055 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { createRoot } from "react-dom/client";
+import {
+  Building2,
+  CalendarDays,
+  CalendarPlus,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Copy,
+  Trash2,
+  ExternalLink,
+  Link2,
+  Phone,
+  Plus,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Users,
+  Video
+} from "lucide-react";
+import "./App.css";
+
+const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const STATUS = ["Confirmed", "Pending", "Completed", "Cancelled"];
+const CHANNELS = ["Phone call", "Video call", "Office"];
+const DURATIONS = [30, 45, 60, 90];
+
+function addMinutes(date, minutes) {
+  return new Date(date.getTime() + minutes * 60000);
+}
+
+function startOfDay(date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function startOfWeek(date) {
+  const next = startOfDay(date);
+  const day = next.getDay() || 7;
+  next.setDate(next.getDate() - day + 1);
+  return next;
+}
+
+function startOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function sameDay(a, b) {
+  return startOfDay(a).getTime() === startOfDay(b).getTime();
+}
+
+function dateKey(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function displayMonth(date) {
+  return new Intl.DateTimeFormat("en-AU", { month: "long", year: "numeric" }).format(date);
+}
+
+function displayDay(date) {
+  return new Intl.DateTimeFormat("en-AU", {
+    weekday: "short",
+    day: "numeric",
+    month: "short"
+  }).format(date);
+}
+
+function displayTime(value) {
+  return new Intl.DateTimeFormat("en-AU", {
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
+function toLocalDateInput(value = new Date()) {
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60000).toISOString().slice(0, 10);
+}
+
+function toLocalTimeInput(value = new Date()) {
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60000).toISOString().slice(11, 16);
+}
+
+function isoFor(dateValue, timeValue) {
+  return new Date(`${dateValue}T${timeValue}:00`).toISOString();
+}
+
+function googleDate(value) {
+  return new Date(value).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+
+function classNames(...values) {
+  return values.filter(Boolean).join(" ");
+}
+
+function bookingTemplate(brokerId = "ryan-vu") {
+  const start = new Date();
+  start.setDate(start.getDate() + 1);
+  start.setHours(10, 0, 0, 0);
+  return {
+    clientName: "",
+    phone: "",
+    email: "",
+    brokerId,
+    service: "First home buyer",
+    channel: "Phone call",
+    status: "Confirmed",
+    startDate: toLocalDateInput(start),
+    startTime: toLocalTimeInput(start),
+    duration: 45,
+    notes: ""
+  };
+}
+
+function brokerTemplate() {
+  return {
+    name: "",
+    title: "Finance Broker",
+    location: "Adelaide, SA",
+    email: "",
+    phone: "",
+    color: "#b89044",
+    services: "First home buyer, Refinance, Investment loan"
+  };
+}
+
+function App() {
+  const publicPath = typeof window !== "undefined" ? window.location.pathname : "/";
+  if (publicPath.startsWith("/book")) {
+    return <PublicBookingPage />;
+  }
+  if (publicPath.startsWith("/login")) {
+    return <LoginPage />;
+  }
+
+  const [brokers, setBrokers] = useState([]);
+  const [bookings, setBookings] = useState([]);
+  const [view, setView] = useState("month");
+  const [anchor, setAnchor] = useState(new Date());
+  const [brokerFilter, setBrokerFilter] = useState("all");
+  const [query, setQuery] = useState("");
+  const [form, setForm] = useState(bookingTemplate());
+  const [brokerForm, setBrokerForm] = useState(brokerTemplate());
+  const [reassigningBroker, setReassigningBroker] = useState(null);
+  const [selectedBooking, setSelectedBooking] = useState(null);
+  const [copied, setCopied] = useState("");
+  const [integrations, setIntegrations] = useState({ emailNotifications: false, googleDirectSync: false, icsSync: true });
+  const [auth, setAuth] = useState({ required: false, authenticated: false, email: null });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/auth/status").then((res) => res.json()),
+      fetch("/api/brokers").then((res) => res.json()),
+      fetch("/api/bookings").then((res) => res.json()),
+      fetch("/api/integrations").then((res) => res.json())
+    ])
+      .then(([authData, brokerData, bookingData, integrationData]) => {
+        if (authData.required && !authData.authenticated) {
+          window.location.href = "/login";
+          return;
+        }
+        setAuth(authData);
+        setBrokers(brokerData);
+        setBookings(bookingData);
+        setIntegrations(integrationData);
+        setForm(bookingTemplate(brokerData[0]?.id));
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const brokerById = useMemo(
+    () => Object.fromEntries(brokers.map((broker) => [broker.id, broker])),
+    [brokers]
+  );
+
+  const visibleBookings = useMemo(() => {
+    const cleanQuery = query.trim().toLowerCase();
+    return bookings
+      .filter((booking) => brokerFilter === "all" || booking.brokerId === brokerFilter)
+      .filter((booking) => {
+        if (!cleanQuery) return true;
+        return [booking.clientName, booking.phone, booking.email, booking.service, booking.notes]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(cleanQuery));
+      })
+      .sort((a, b) => new Date(a.start) - new Date(b.start));
+  }, [bookings, brokerFilter, query]);
+
+  const metrics = useMemo(() => {
+    const today = startOfDay(new Date());
+    const weekEnd = new Date(today);
+    weekEnd.setDate(today.getDate() + 7);
+    return {
+      week: bookings.filter((booking) => {
+        const start = new Date(booking.start);
+        return start >= today && start <= weekEnd;
+      }).length,
+      pending: bookings.filter((booking) => booking.status === "Pending").length,
+      confirmed: bookings.filter((booking) => booking.status === "Confirmed").length
+    };
+  }, [bookings]);
+
+  const activeBroker = brokerFilter === "all" ? brokers[0] : brokerById[brokerFilter];
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const teamIcsUrl = `${origin}/calendar/team.ics`;
+  const brokerIcsUrl = `${origin}/calendar/broker/${activeBroker?.id || "ryan-vu"}.ics`;
+  const teamBookingUrl = `${origin}/book`;
+  const brokerBookingUrl = `${origin}/book/${activeBroker?.id || "ryan-vu"}`;
+
+  function step(direction) {
+    const next = new Date(anchor);
+    if (view === "month") next.setMonth(next.getMonth() + direction);
+    if (view === "week") next.setDate(next.getDate() + direction * 7);
+    if (view === "day") next.setDate(next.getDate() + direction);
+    setAnchor(next);
+  }
+
+  function createGoogleLink(booking) {
+    const broker = brokerById[booking.brokerId];
+    const text = `${booking.clientName} - ${booking.service}`;
+    const details = [
+      `Broker: ${broker?.name || "Easy Loan Finance"}`,
+      `Status: ${booking.status}`,
+      `Channel: ${booking.channel}`,
+      booking.phone ? `Phone: ${booking.phone}` : "",
+      booking.email ? `Email: ${booking.email}` : "",
+      booking.notes ? `Notes: ${booking.notes}` : ""
+    ].filter(Boolean).join("\n");
+    const url = new URL("https://calendar.google.com/calendar/render");
+    url.searchParams.set("action", "TEMPLATE");
+    url.searchParams.set("text", text);
+    url.searchParams.set("dates", `${googleDate(booking.start)}/${googleDate(booking.end)}`);
+    url.searchParams.set("details", details);
+    url.searchParams.set("location", booking.channel);
+    return url.toString();
+  }
+
+  async function copyText(text, key) {
+    await navigator.clipboard.writeText(text);
+    setCopied(key);
+    window.setTimeout(() => setCopied(""), 1500);
+  }
+
+  async function submitBooking(event) {
+    event.preventDefault();
+    const start = isoFor(form.startDate, form.startTime);
+    const end = addMinutes(new Date(start), Number(form.duration)).toISOString();
+    const payload = {
+      clientName: form.clientName.trim() || "New client",
+      phone: form.phone.trim(),
+      email: form.email.trim(),
+      brokerId: form.brokerId,
+      service: form.service,
+      channel: form.channel,
+      status: form.status,
+      start,
+      end,
+      notes: form.notes.trim()
+    };
+
+    const saved = await fetch("/api/bookings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then((res) => res.json());
+
+    setBookings((current) => [...current, saved]);
+    setSelectedBooking(saved);
+    setForm(bookingTemplate(form.brokerId));
+  }
+
+  async function updateStatus(booking, status) {
+    const saved = await fetch(`/api/bookings/${booking.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status })
+    }).then((res) => res.json());
+    setBookings((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+    setSelectedBooking(saved);
+  }
+
+  async function deleteSelectedBooking(booking) {
+    await fetch(`/api/bookings/${booking.id}`, { method: "DELETE" });
+    setBookings((current) => current.filter((item) => item.id !== booking.id));
+    setSelectedBooking(null);
+  }
+
+  async function createBrokerFromForm(event) {
+    event.preventDefault();
+    const payload = {
+      ...brokerForm,
+      services: brokerForm.services.split(",").map((service) => service.trim()).filter(Boolean)
+    };
+    try {
+      const saved = await fetch("/api/brokers", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload)
+      }).then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not create broker");
+        return data;
+      });
+      setBrokers((current) => [...current, saved]);
+      setBrokerFilter(saved.id);
+      setForm((current) => ({ ...current, brokerId: saved.id }));
+      setBrokerForm(brokerTemplate());
+    } catch (error) {
+      window.alert(error.message || "Could not create broker");
+    }
+  }
+
+  async function removeBroker(broker, reassignTo = "") {
+    const query = reassignTo ? `?reassignTo=${encodeURIComponent(reassignTo)}` : "";
+    const res = await fetch(`/api/brokers/${broker.id}${query}`, { method: "DELETE" });
+    const data = await res.json();
+    if (!res.ok) {
+      if (res.status === 409) {
+        setReassigningBroker(broker);
+        return;
+      }
+      window.alert(data.error || "Could not delete broker");
+      return;
+    }
+    const remaining = brokers.filter((item) => item.id !== broker.id);
+    setBrokers(remaining);
+    if (reassignTo) {
+      setBookings((current) => current.map((booking) => (
+        booking.brokerId === broker.id ? { ...booking, brokerId: reassignTo } : booking
+      )));
+    }
+    if (brokerFilter === broker.id) setBrokerFilter("all");
+    if (form.brokerId === broker.id) setForm((current) => ({ ...current, brokerId: remaining[0]?.id || "ryan-vu" }));
+    setReassigningBroker(null);
+  }
+
+  const renderedCalendar = view === "month"
+    ? <MonthView anchor={anchor} bookings={visibleBookings} brokerById={brokerById} onSelect={setSelectedBooking} />
+    : <AgendaView mode={view} anchor={anchor} bookings={visibleBookings} brokerById={brokerById} onSelect={setSelectedBooking} />;
+
+  return (
+    <main className="app-shell">
+      <aside className="side-panel">
+        <div className="brand-block">
+          <div className="brand-mark">ELF</div>
+          <div>
+            <p className="eyebrow">Easy Loan Finance</p>
+            <h1>Broker Booking</h1>
+          </div>
+        </div>
+
+        <div className="admin-identity">
+          <ShieldCheck size={16} />
+          <span>{auth.required ? auth.email || "Ryan admin" : "Local admin mode"}</span>
+          {auth.required && <button onClick={() => fetch("/api/auth/logout", { method: "POST" }).then(() => { window.location.href = "/login"; })}>Logout</button>}
+        </div>
+
+        <div className="metric-grid">
+          <Metric icon={CalendarDays} label="Next 7 days" value={metrics.week} />
+          <Metric icon={ShieldCheck} label="Confirmed" value={metrics.confirmed} />
+          <Metric icon={Clock} label="Pending" value={metrics.pending} />
+          <Metric icon={Users} label="Brokers" value={brokers.length} />
+        </div>
+
+        <section className="panel broker-panel">
+          <div className="section-title">
+            <Users size={18} />
+            <h2>Broker Desk</h2>
+          </div>
+          <button
+            className={classNames("broker-row", brokerFilter === "all" && "active")}
+            onClick={() => setBrokerFilter("all")}
+          >
+            <span className="broker-dot team-dot" />
+            <span>
+              <strong>All brokers</strong>
+              <small>Team calendar</small>
+            </span>
+          </button>
+          {brokers.map((broker) => (
+            <button
+              key={broker.id}
+              className={classNames("broker-row", brokerFilter === broker.id && "active")}
+              onClick={() => setBrokerFilter(broker.id)}
+            >
+              <span className="broker-dot" style={{ background: broker.color }} />
+              <span>
+                <strong>{broker.name}</strong>
+                <small>{broker.location}</small>
+              </span>
+            </button>
+          ))}
+        </section>
+
+        <section className="panel sync-panel">
+          <div className="section-title">
+            <Link2 size={18} />
+            <h2>Google Sync</h2>
+          </div>
+          <SyncRow label="Team ICS" value={teamIcsUrl} copied={copied === "team"} onCopy={() => copyText(teamIcsUrl, "team")} />
+          <SyncRow label="Broker ICS" value={brokerIcsUrl} copied={copied === "broker"} onCopy={() => copyText(brokerIcsUrl, "broker")} />
+          <p className="sync-note">Use the ICS URL after deployment to subscribe in Google Calendar and view it on mobile.</p>
+        </section>
+
+        <section className="panel client-link-panel">
+          <div className="section-title">
+            <CalendarPlus size={18} />
+            <h2>Client Booking Link</h2>
+          </div>
+          <SyncRow label="Team booking" value={teamBookingUrl} copied={copied === "book-team"} onCopy={() => copyText(teamBookingUrl, "book-team")} />
+          <SyncRow label="Broker booking" value={brokerBookingUrl} copied={copied === "book-broker"} onCopy={() => copyText(brokerBookingUrl, "book-broker")} />
+          <a className="public-link-preview" href={brokerBookingUrl} target="_blank" rel="noreferrer">
+            <ExternalLink size={15} />
+            Preview client page
+          </a>
+        </section>
+
+        <section className="panel alerts-panel">
+          <div className="section-title">
+            <ShieldCheck size={18} />
+            <h2>Alerts & Sync</h2>
+          </div>
+          <IntegrationFlag label="Email alerts" active={integrations.emailNotifications} />
+          <IntegrationFlag label="Google direct sync" active={integrations.googleDirectSync} />
+          <IntegrationFlag label="ICS calendar feed" active={integrations.icsSync} />
+        </section>
+      </aside>
+
+      <section className="workspace">
+        <header className="topbar">
+          <div>
+            <p className="eyebrow">Adelaide broker operations</p>
+            <h2>{displayMonth(anchor)}</h2>
+          </div>
+          <div className="toolbar">
+            <div className="search-wrap">
+              <Search size={16} />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search client, service, phone" />
+            </div>
+            <button className="icon-button" onClick={() => step(-1)} aria-label="Previous">
+              <ChevronLeft size={18} />
+            </button>
+            <button className="today-button" onClick={() => setAnchor(new Date())}>Today</button>
+            <button className="icon-button" onClick={() => step(1)} aria-label="Next">
+              <ChevronRight size={18} />
+            </button>
+            <div className="segment">
+              {["month", "week", "day"].map((item) => (
+                <button key={item} className={view === item ? "active" : ""} onClick={() => setView(item)}>
+                  {item}
+                </button>
+              ))}
+            </div>
+          </div>
+        </header>
+
+        <div className="main-grid">
+          <section className="calendar-panel">
+            {loading ? <div className="loading">Loading Easy Loan Finance calendar...</div> : renderedCalendar}
+          </section>
+
+          <aside className="booking-panel">
+            <div className="section-title">
+              <CalendarPlus size={18} />
+              <h2>New Appointment</h2>
+            </div>
+            <form onSubmit={submitBooking} className="booking-form">
+              <label>
+                Client name
+                <input value={form.clientName} onChange={(event) => setForm({ ...form, clientName: event.target.value })} placeholder="Client full name" />
+              </label>
+              <div className="two-col">
+                <label>
+                  Phone
+                  <input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="04..." />
+                </label>
+                <label>
+                  Email
+                  <input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="client@email.com" />
+                </label>
+              </div>
+              <label>
+                Broker
+                <select value={form.brokerId} onChange={(event) => setForm({ ...form, brokerId: event.target.value })}>
+                  {brokers.map((broker) => <option key={broker.id} value={broker.id}>{broker.name}</option>)}
+                </select>
+              </label>
+              <label>
+                Service
+                <input value={form.service} onChange={(event) => setForm({ ...form, service: event.target.value })} placeholder="Refinance, first home buyer..." />
+              </label>
+              <div className="two-col">
+                <label>
+                  Date
+                  <input type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value })} />
+                </label>
+                <label>
+                  Time
+                  <input type="time" value={form.startTime} onChange={(event) => setForm({ ...form, startTime: event.target.value })} />
+                </label>
+              </div>
+              <div className="two-col">
+                <label>
+                  Duration
+                  <select value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })}>
+                    {DURATIONS.map((duration) => <option key={duration} value={duration}>{duration} min</option>)}
+                  </select>
+                </label>
+                <label>
+                  Status
+                  <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
+                    {STATUS.map((status) => <option key={status} value={status}>{status}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="channel-row">
+                {CHANNELS.map((channel) => (
+                  <button
+                    type="button"
+                    key={channel}
+                    className={form.channel === channel ? "active" : ""}
+                    onClick={() => setForm({ ...form, channel })}
+                  >
+                    {channel === "Phone call" && <Phone size={15} />}
+                    {channel === "Video call" && <Video size={15} />}
+                    {channel === "Office" && <Building2 size={15} />}
+                    {channel}
+                  </button>
+                ))}
+              </div>
+              <label>
+                Notes
+                <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Documents, goals, next action" />
+              </label>
+              <button className="primary-button" type="submit">
+                <Plus size={18} />
+                Book Appointment
+              </button>
+            </form>
+
+            <BrokerManager
+              brokers={brokers}
+              bookings={bookings}
+              brokerForm={brokerForm}
+              setBrokerForm={setBrokerForm}
+              onCreate={createBrokerFromForm}
+              onRemove={removeBroker}
+              onFocusBroker={setBrokerFilter}
+              reassigningBroker={reassigningBroker}
+              onCancelReassign={() => setReassigningBroker(null)}
+            />
+          </aside>
+        </div>
+      </section>
+
+      {selectedBooking && (
+        <BookingDrawer
+          booking={selectedBooking}
+          broker={brokerById[selectedBooking.brokerId]}
+          googleUrl={createGoogleLink(selectedBooking)}
+          copied={copied === selectedBooking.id}
+          onCopy={() => copyText(createGoogleLink(selectedBooking), selectedBooking.id)}
+          onClose={() => setSelectedBooking(null)}
+          onStatus={(status) => updateStatus(selectedBooking, status)}
+          onDelete={() => deleteSelectedBooking(selectedBooking)}
+        />
+      )}
+    </main>
+  );
+}
+
+function IntegrationFlag({ label, active }) {
+  return (
+    <div className="integration-flag">
+      <span className={active ? "active" : ""}>{active ? <Check size={14} /> : <Clock size={14} />}</span>
+      <strong>{label}</strong>
+      <small>{active ? "On" : "Needs setup"}</small>
+    </div>
+  );
+}
+
+function LoginPage() {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/status")
+      .then((res) => res.json())
+      .then((status) => {
+        if (!status.required || status.authenticated) {
+          window.location.href = "/";
+        }
+      });
+  }, []);
+
+  async function submitLogin(event) {
+    event.preventDefault();
+    setLoading(true);
+    setError("");
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
+    setLoading(false);
+    if (!res.ok) {
+      setError(data.error || "Could not login");
+      return;
+    }
+    window.location.href = "/";
+  }
+
+  return (
+    <main className="login-page">
+      <section className="login-card">
+        <div className="brand-block">
+          <div className="brand-mark">ELF</div>
+          <div>
+            <p className="eyebrow">Easy Loan Finance</p>
+            <h1>Ryan Admin</h1>
+          </div>
+        </div>
+        <form onSubmit={submitLogin} className="booking-form">
+          <label>
+            Admin password
+            <input
+              autoFocus
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Enter dashboard password"
+            />
+          </label>
+          {error && <p className="login-error">{error}</p>}
+          <button className="primary-button" type="submit" disabled={loading}>
+            <ShieldCheck size={17} />
+            {loading ? "Checking..." : "Login"}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function BrokerManager({ brokers, bookings, brokerForm, setBrokerForm, onCreate, onRemove, onFocusBroker, reassigningBroker, onCancelReassign }) {
+  const reassignOptions = brokers.filter((broker) => broker.id !== reassigningBroker?.id);
+  const [targetBroker, setTargetBroker] = useState("");
+
+  useEffect(() => {
+    setTargetBroker(reassignOptions[0]?.id || "");
+  }, [reassigningBroker?.id, reassignOptions[0]?.id]);
+
+  return (
+    <section className="admin-panel">
+      <div className="section-title">
+        <Users size={18} />
+        <h2>Broker Management</h2>
+      </div>
+      <form className="broker-admin-form" onSubmit={onCreate}>
+        <label>
+          Broker name
+          <input required value={brokerForm.name} onChange={(event) => setBrokerForm({ ...brokerForm, name: event.target.value })} placeholder="New broker name" />
+        </label>
+        <div className="two-col">
+          <label>
+            Title
+            <input value={brokerForm.title} onChange={(event) => setBrokerForm({ ...brokerForm, title: event.target.value })} />
+          </label>
+          <label>
+            Location
+            <input value={brokerForm.location} onChange={(event) => setBrokerForm({ ...brokerForm, location: event.target.value })} />
+          </label>
+        </div>
+        <div className="two-col">
+          <label>
+            Email
+            <input type="email" value={brokerForm.email} onChange={(event) => setBrokerForm({ ...brokerForm, email: event.target.value })} placeholder="broker@easyloanfinance.com.au" />
+          </label>
+          <label>
+            Phone
+            <input value={brokerForm.phone} onChange={(event) => setBrokerForm({ ...brokerForm, phone: event.target.value })} placeholder="04..." />
+          </label>
+        </div>
+        <label>
+          Services
+          <input value={brokerForm.services} onChange={(event) => setBrokerForm({ ...brokerForm, services: event.target.value })} placeholder="First home buyer, Refinance" />
+        </label>
+        <label>
+          Colour
+          <input type="color" value={brokerForm.color} onChange={(event) => setBrokerForm({ ...brokerForm, color: event.target.value })} />
+        </label>
+        <button className="secondary-button" type="submit">
+          <Plus size={17} />
+          Add Broker
+        </button>
+      </form>
+
+      <div className="broker-admin-list">
+        {brokers.map((broker) => {
+          const count = bookings.filter((booking) => booking.brokerId === broker.id).length;
+          return (
+            <div className="broker-admin-row" key={broker.id}>
+              <span className="broker-dot" style={{ background: broker.color }} />
+              <button type="button" onClick={() => onFocusBroker(broker.id)}>
+                <strong>{broker.name}</strong>
+                <small>{count} booking{count === 1 ? "" : "s"} · {broker.location}</small>
+              </button>
+              <button className="icon-button small danger" onClick={() => onRemove(broker)} aria-label={`Delete ${broker.name}`}>
+                <Trash2 size={15} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {reassigningBroker && (
+        <div className="reassign-box">
+          <strong>Move bookings before removing {reassigningBroker.name}</strong>
+          <small>
+            This broker has {bookings.filter((booking) => booking.brokerId === reassigningBroker.id).length} booking(s). Choose who receives them.
+          </small>
+          <select value={targetBroker} onChange={(event) => setTargetBroker(event.target.value)} required>
+            {reassignOptions.map((broker) => (
+              <option key={broker.id} value={broker.id}>{broker.name}</option>
+            ))}
+          </select>
+          <div className="reassign-actions">
+            <button className="danger-button" type="button" disabled={!targetBroker} onClick={() => onRemove(reassigningBroker, targetBroker)}>
+              <Trash2 size={16} />
+              Move & Remove
+            </button>
+            <button className="secondary-button" type="button" onClick={onCancelReassign}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PublicBookingPage() {
+  const brokerIdFromPath = typeof window !== "undefined" ? window.location.pathname.split("/book/")[1] : "";
+  const [brokers, setBrokers] = useState([]);
+  const [form, setForm] = useState(bookingTemplate(brokerIdFromPath || "ryan-vu"));
+  const [submitted, setSubmitted] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/brokers")
+      .then((res) => res.json())
+      .then((data) => {
+        setBrokers(data);
+        const requested = data.find((broker) => broker.id === brokerIdFromPath);
+        setForm((current) => ({
+          ...current,
+          brokerId: requested?.id || current.brokerId || data[0]?.id || "ryan-vu",
+          status: "Pending",
+          channel: "Phone call"
+        }));
+      })
+      .finally(() => setLoading(false));
+  }, [brokerIdFromPath]);
+
+  const selectedBroker = brokers.find((broker) => broker.id === form.brokerId) || brokers[0];
+
+  async function submitPublicBooking(event) {
+    event.preventDefault();
+    const start = isoFor(form.startDate, form.startTime);
+    const end = addMinutes(new Date(start), Number(form.duration)).toISOString();
+    const payload = {
+      clientName: form.clientName.trim() || "New client",
+      phone: form.phone.trim(),
+      email: form.email.trim(),
+      brokerId: form.brokerId,
+      service: form.service,
+      channel: form.channel,
+      status: "Pending",
+      start,
+      end,
+      notes: form.notes.trim()
+    };
+
+    const saved = await fetch("/api/bookings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then((res) => res.json());
+
+    setSubmitted(saved);
+  }
+
+  if (submitted) {
+    return (
+      <main className="public-page">
+        <section className="public-success">
+          <div className="brand-mark">ELF</div>
+          <div className="drawer-kicker">
+            <Check size={16} />
+            Request received
+          </div>
+          <h1>Thanks, {submitted.clientName}</h1>
+          <p>Easy Loan Finance has received your booking request. A broker will confirm the appointment details shortly.</p>
+          <div className="success-details">
+            <span><Clock size={16} /> {displayDay(new Date(submitted.start))}, {displayTime(submitted.start)}</span>
+            <span><Users size={16} /> {selectedBroker?.name || "Easy Loan Finance"}</span>
+            <span><Phone size={16} /> {submitted.channel}</span>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="public-page">
+      <section className="public-hero">
+        <div className="brand-block">
+          <div className="brand-mark">ELF</div>
+          <div>
+            <p className="eyebrow">Easy Loan Finance</p>
+            <h1>Book a broker appointment</h1>
+          </div>
+        </div>
+        <p className="public-copy">
+          Choose a time for a confidential lending conversation. Your request goes directly into the Easy Loan Finance broker calendar.
+        </p>
+        <div className="public-trust-row">
+          <span><ShieldCheck size={16} /> Private request</span>
+          <span><Clock size={16} /> Fast confirmation</span>
+          <span><Users size={16} /> Broker matched</span>
+        </div>
+      </section>
+
+      <section className="public-form-panel">
+        <div className="section-title">
+          <CalendarPlus size={18} />
+          <h2>Appointment Details</h2>
+        </div>
+        {loading ? (
+          <div className="loading">Loading booking page...</div>
+        ) : (
+          <form onSubmit={submitPublicBooking} className="booking-form">
+            <label>
+              Your name
+              <input required value={form.clientName} onChange={(event) => setForm({ ...form, clientName: event.target.value })} placeholder="Full name" />
+            </label>
+            <div className="two-col">
+              <label>
+                Phone
+                <input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="04..." />
+              </label>
+              <label>
+                Email
+                <input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="name@email.com" />
+              </label>
+            </div>
+            <label>
+              Preferred broker
+              <select value={form.brokerId} onChange={(event) => setForm({ ...form, brokerId: event.target.value })}>
+                {brokers.map((broker) => <option key={broker.id} value={broker.id}>{broker.name} - {broker.location}</option>)}
+              </select>
+            </label>
+            <label>
+              What do you need help with?
+              <select value={form.service} onChange={(event) => setForm({ ...form, service: event.target.value })}>
+                {(selectedBroker?.services || ["First home buyer", "Refinance", "Investment loan", "Commercial lending"]).map((service) => (
+                  <option key={service} value={service}>{service}</option>
+                ))}
+              </select>
+            </label>
+            <div className="two-col">
+              <label>
+                Preferred date
+                <input required type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value })} />
+              </label>
+              <label>
+                Preferred time
+                <input required type="time" value={form.startTime} onChange={(event) => setForm({ ...form, startTime: event.target.value })} />
+              </label>
+            </div>
+            <div className="two-col">
+              <label>
+                Meeting style
+                <select value={form.channel} onChange={(event) => setForm({ ...form, channel: event.target.value })}>
+                  {CHANNELS.map((channel) => <option key={channel} value={channel}>{channel}</option>)}
+                </select>
+              </label>
+              <label>
+                Duration
+                <select value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })}>
+                  {DURATIONS.map((duration) => <option key={duration} value={duration}>{duration} min</option>)}
+                </select>
+              </label>
+            </div>
+            <label>
+              Notes
+              <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Loan purpose, property suburb, income type, preferred language" />
+            </label>
+            <button className="primary-button" type="submit">
+              <CalendarPlus size={18} />
+              Request Booking
+            </button>
+          </form>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function Metric({ icon: Icon, label, value }) {
+  return (
+    <div className="metric-card">
+      <Icon size={17} />
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function SyncRow({ label, value, copied, onCopy }) {
+  return (
+    <div className="sync-row">
+      <span>{label}</span>
+      <code>{value}</code>
+      <button className="icon-button small" onClick={onCopy} aria-label={`Copy ${label}`}>
+        {copied ? <Check size={16} /> : <Copy size={16} />}
+      </button>
+    </div>
+  );
+}
+
+function MonthView({ anchor, bookings, brokerById, onSelect }) {
+  const monthStart = startOfMonth(anchor);
+  const gridStart = startOfWeek(monthStart);
+  const days = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + index);
+    return date;
+  });
+
+  return (
+    <div className="month-view">
+      {DAY_NAMES.map((day) => <div key={day} className="day-name">{day}</div>)}
+      {days.map((date) => {
+        const dayBookings = bookings.filter((booking) => sameDay(new Date(booking.start), date));
+        const isOutside = date.getMonth() !== anchor.getMonth();
+        return (
+          <div key={dateKey(date)} className={classNames("month-cell", isOutside && "muted", sameDay(date, new Date()) && "today")}>
+            <div className="cell-date">{date.getDate()}</div>
+            <div className="booking-stack">
+              {dayBookings.slice(0, 4).map((booking) => (
+                <button
+                  key={booking.id}
+                  className="booking-chip"
+                  style={{ borderLeftColor: brokerById[booking.brokerId]?.color || "#b89044" }}
+                  onClick={() => onSelect(booking)}
+                >
+                  <span>{displayTime(booking.start)}</span>
+                  {booking.clientName}
+                </button>
+              ))}
+              {dayBookings.length > 4 && <small className="more-count">+{dayBookings.length - 4} more</small>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function AgendaView({ mode, anchor, bookings, brokerById, onSelect }) {
+  const start = mode === "week" ? startOfWeek(anchor) : startOfDay(anchor);
+  const days = Array.from({ length: mode === "week" ? 7 : 1 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return date;
+  });
+
+  return (
+    <div className={classNames("agenda-view", mode === "day" && "single-day")}>
+      {days.map((date) => {
+        const dayBookings = bookings.filter((booking) => sameDay(new Date(booking.start), date));
+        return (
+          <div className="agenda-day" key={dateKey(date)}>
+            <div className={classNames("agenda-date", sameDay(date, new Date()) && "today")}>{displayDay(date)}</div>
+            <div className="agenda-list">
+              {dayBookings.length === 0 && <div className="empty-slot">Available</div>}
+              {dayBookings.map((booking) => (
+                <button className="agenda-booking" key={booking.id} onClick={() => onSelect(booking)}>
+                  <span className="time-block">{displayTime(booking.start)} - {displayTime(booking.end)}</span>
+                  <strong>{booking.clientName}</strong>
+                  <small style={{ color: brokerById[booking.brokerId]?.color || "#8d6a28" }}>{brokerById[booking.brokerId]?.name}</small>
+                  <em>{booking.service}</em>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function BookingDrawer({ booking, broker, googleUrl, copied, onCopy, onClose, onStatus, onDelete }) {
+  return (
+    <div className="drawer-backdrop" onClick={onClose}>
+      <aside className="booking-drawer" onClick={(event) => event.stopPropagation()}>
+        <button className="close-button" onClick={onClose}>Close</button>
+        <div className="drawer-kicker">
+          <Sparkles size={16} />
+          {booking.status}
+        </div>
+        <h2>{booking.clientName}</h2>
+        <p className="drawer-service">{booking.service}</p>
+        <div className="drawer-details">
+          <span><Clock size={16} /> {displayDay(new Date(booking.start))}, {displayTime(booking.start)} - {displayTime(booking.end)}</span>
+          <span><Users size={16} /> {broker?.name || "Easy Loan Finance"}</span>
+          <span><Phone size={16} /> {booking.phone || "No phone saved"}</span>
+          <span><Link2 size={16} /> {booking.channel}</span>
+        </div>
+        <p className="drawer-notes">{booking.notes || "No notes yet."}</p>
+        <div className="status-actions">
+          {STATUS.map((status) => (
+            <button key={status} className={booking.status === status ? "active" : ""} onClick={() => onStatus(status)}>
+              {status}
+            </button>
+          ))}
+        </div>
+        <div className="drawer-actions">
+          <a className="primary-button" href={googleUrl} target="_blank" rel="noreferrer">
+            <ExternalLink size={17} />
+            Open in Google
+          </a>
+          <button className="secondary-button" onClick={onCopy}>
+            {copied ? <Check size={17} /> : <Copy size={17} />}
+            Copy Google Link
+          </button>
+          <button className="danger-button" onClick={onDelete}>
+            <Trash2 size={17} />
+            Delete Booking
+          </button>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+createRoot(document.getElementById("root")).render(<App />);

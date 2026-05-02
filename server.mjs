@@ -1,0 +1,840 @@
+import { createServer } from "node:http";
+import { createHash, createHmac, createSign, timingSafeEqual } from "node:crypto";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import nodemailer from "nodemailer";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PORT = Number(process.env.PORT || 3000);
+const DATA_DIR = path.join(__dirname, "data");
+const DIST_DIR = path.join(__dirname, "dist");
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
+const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+const TIME_ZONE = process.env.BOOKING_TIME_ZONE || "Australia/Adelaide";
+const NOTIFY_EMAIL = process.env.BOOKING_NOTIFY_EMAIL || process.env.NOTIFY_EMAIL;
+const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "ryan@easyloanfinance.com.au";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
+const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || ADMIN_PASSWORD || "local-dev-secret-change-me";
+const PUBLIC_API_ROUTES = new Set(["/api/health", "/api/brokers", "/api/bookings"]);
+
+const seedBrokers = [
+  {
+    id: "ryan-vu",
+    name: "Ryan Vu",
+    title: "Finance Broker",
+    location: "Adelaide, SA",
+    email: "ryan@easyloanfinance.com.au",
+    phone: "0400 000 000",
+    color: "#b89044",
+    services: ["First home buyer", "Refinance", "Investment loan", "Commercial lending"],
+    hours: { start: "09:00", end: "18:00" }
+  },
+  {
+    id: "team-broker-1",
+    name: "Mia Nguyen",
+    title: "Senior Broker",
+    location: "Adelaide, SA",
+    email: "mia@easyloanfinance.com.au",
+    phone: "0400 000 001",
+    color: "#2f7d74",
+    services: ["Pre-approval", "Construction loan", "Debt consolidation"],
+    hours: { start: "09:00", end: "17:30" }
+  },
+  {
+    id: "team-broker-2",
+    name: "Daniel Park",
+    title: "Credit Specialist",
+    location: "Melbourne, VIC",
+    email: "daniel@easyloanfinance.com.au",
+    phone: "0400 000 002",
+    color: "#8b5d6b",
+    services: ["Complex income", "Asset finance", "Business lending"],
+    hours: { start: "08:30", end: "17:00" }
+  }
+];
+
+const seedBookings = [
+  {
+    id: "bk-demo-1",
+    clientName: "Linh Tran",
+    phone: "0412 555 110",
+    email: "linh@example.com",
+    brokerId: "ryan-vu",
+    service: "First home buyer",
+    channel: "Video call",
+    status: "Confirmed",
+    start: nextIso(1, 10, 0),
+    end: nextIso(1, 10, 45),
+    notes: "Needs borrowing capacity estimate before auction."
+  },
+  {
+    id: "bk-demo-2",
+    clientName: "Aiden Brooks",
+    phone: "0412 555 210",
+    email: "aiden@example.com",
+    brokerId: "team-broker-1",
+    service: "Refinance",
+    channel: "Phone call",
+    status: "Pending",
+    start: nextIso(2, 14, 0),
+    end: nextIso(2, 14, 30),
+    notes: "Compare fixed expiry options."
+  },
+  {
+    id: "bk-demo-3",
+    clientName: "Sophia Wilson",
+    phone: "0412 555 310",
+    email: "sophia@example.com",
+    brokerId: "team-broker-2",
+    service: "Commercial lending",
+    channel: "Office",
+    status: "Confirmed",
+    start: nextIso(4, 11, 30),
+    end: nextIso(4, 12, 30),
+    notes: "Bring trust structure and accountant contact."
+  }
+];
+
+function nextIso(daysAhead, hour, minute) {
+  const date = new Date();
+  date.setDate(date.getDate() + daysAhead);
+  date.setHours(hour, minute, 0, 0);
+  return date.toISOString();
+}
+
+async function ensureData() {
+  if (USE_SUPABASE) return;
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await ensureFile("brokers.json", seedBrokers);
+  await ensureFile("bookings.json", seedBookings);
+}
+
+async function ensureFile(name, fallback) {
+  const file = path.join(DATA_DIR, name);
+  try {
+    await fs.access(file);
+  } catch {
+    await fs.writeFile(file, JSON.stringify(fallback, null, 2));
+  }
+}
+
+async function readJson(name) {
+  const raw = await fs.readFile(path.join(DATA_DIR, name), "utf8");
+  return JSON.parse(raw);
+}
+
+async function writeJson(name, value) {
+  await fs.writeFile(path.join(DATA_DIR, name), JSON.stringify(value, null, 2));
+}
+
+async function supabaseRequest(table, { method = "GET", query = "", body, prefer } = {}) {
+  const url = `${SUPABASE_URL}/rest/v1/${table}${query}`;
+  const response = await fetch(url, {
+    method,
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      "content-type": "application/json",
+      ...(prefer ? { prefer } : {})
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Supabase ${method} ${table} failed: ${detail}`);
+  }
+
+  if (response.status === 204) return null;
+  return response.json();
+}
+
+async function listBrokers() {
+  if (!USE_SUPABASE) return readJson("brokers.json");
+  return supabaseRequest("brokers", { query: "?select=*&order=name.asc" });
+}
+
+async function createBroker(payload) {
+  if (!USE_SUPABASE) {
+    const brokers = await readJson("brokers.json");
+    brokers.push(payload);
+    await writeJson("brokers.json", brokers);
+    return payload;
+  }
+  const [created] = await supabaseRequest("brokers", {
+    method: "POST",
+    body: payload,
+    prefer: "return=representation"
+  });
+  return created;
+}
+
+async function updateBroker(id, patch) {
+  if (!USE_SUPABASE) {
+    const brokers = await readJson("brokers.json");
+    const index = brokers.findIndex((broker) => broker.id === id);
+    if (index === -1) return null;
+    brokers[index] = { ...brokers[index], ...patch, id };
+    await writeJson("brokers.json", brokers);
+    return brokers[index];
+  }
+  const [updated] = await supabaseRequest("brokers", {
+    method: "PATCH",
+    query: `?id=eq.${encodeURIComponent(id)}`,
+    body: patch,
+    prefer: "return=representation"
+  });
+  return updated || null;
+}
+
+async function reassignBookings(fromBrokerId, toBrokerId) {
+  if (!USE_SUPABASE) {
+    const bookings = await readJson("bookings.json");
+    const next = bookings.map((booking) => (
+      booking.brokerId === fromBrokerId ? { ...booking, brokerId: toBrokerId } : booking
+    ));
+    await writeJson("bookings.json", next);
+    return next.filter((booking) => booking.brokerId === toBrokerId).length;
+  }
+
+  const updated = await supabaseRequest("bookings", {
+    method: "PATCH",
+    query: `?brokerId=eq.${encodeURIComponent(fromBrokerId)}`,
+    body: { brokerId: toBrokerId },
+    prefer: "return=representation"
+  });
+  return updated.length;
+}
+
+async function deleteBroker(id, reassignTo) {
+  const bookings = await listBookings();
+  const bookingCount = bookings.filter((booking) => booking.brokerId === id).length;
+  if (bookingCount > 0) {
+    if (!reassignTo) {
+      return { ok: false, bookingCount, needsReassign: true };
+    }
+    await reassignBookings(id, reassignTo);
+  }
+
+  if (!USE_SUPABASE) {
+    const brokers = await readJson("brokers.json");
+    await writeJson("brokers.json", brokers.filter((broker) => broker.id !== id));
+    return { ok: true, bookingCount: 0 };
+  }
+
+  await supabaseRequest("brokers", {
+    method: "DELETE",
+    query: `?id=eq.${encodeURIComponent(id)}`,
+    prefer: "return=minimal"
+  });
+  return { ok: true, bookingCount: 0 };
+}
+
+async function listBookings() {
+  if (!USE_SUPABASE) return readJson("bookings.json");
+  return supabaseRequest("bookings", { query: "?select=*&order=start.asc" });
+}
+
+async function createBooking(payload) {
+  if (!USE_SUPABASE) {
+    const bookings = await readJson("bookings.json");
+    bookings.push(payload);
+    await writeJson("bookings.json", bookings);
+    return payload;
+  }
+  const [created] = await supabaseRequest("bookings", {
+    method: "POST",
+    body: payload,
+    prefer: "return=representation"
+  });
+  return created;
+}
+
+async function updateBooking(id, patch) {
+  if (!USE_SUPABASE) {
+    const bookings = await readJson("bookings.json");
+    const index = bookings.findIndex((booking) => booking.id === id);
+    if (index === -1) return null;
+    bookings[index] = { ...bookings[index], ...patch, id };
+    await writeJson("bookings.json", bookings);
+    return bookings[index];
+  }
+  const [updated] = await supabaseRequest("bookings", {
+    method: "PATCH",
+    query: `?id=eq.${encodeURIComponent(id)}`,
+    body: patch,
+    prefer: "return=representation"
+  });
+  return updated || null;
+}
+
+async function deleteBooking(id) {
+  if (!USE_SUPABASE) {
+    const bookings = await readJson("bookings.json");
+    await writeJson("bookings.json", bookings.filter((booking) => booking.id !== id));
+    return;
+  }
+  await supabaseRequest("bookings", {
+    method: "DELETE",
+    query: `?id=eq.${encodeURIComponent(id)}`,
+    prefer: "return=minimal"
+  });
+}
+
+function sendJson(res, status, payload) {
+  res.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store"
+  });
+  res.end(JSON.stringify(payload));
+}
+
+function parseCookies(req) {
+  return Object.fromEntries((req.headers.cookie || "").split(";").filter(Boolean).map((cookie) => {
+    const [key, ...rest] = cookie.trim().split("=");
+    return [key, decodeURIComponent(rest.join("="))];
+  }));
+}
+
+function safeEqual(a = "", b = "") {
+  const left = Buffer.from(String(a));
+  const right = Buffer.from(String(b));
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
+function signSession(payload) {
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = createHmac("sha256", ADMIN_SESSION_SECRET).update(body).digest("base64url");
+  return `${body}.${signature}`;
+}
+
+function verifySession(token = "") {
+  const [body, signature] = token.split(".");
+  if (!body || !signature) return null;
+  const expected = createHmac("sha256", ADMIN_SESSION_SECRET).update(body).digest("base64url");
+  if (!safeEqual(signature, expected)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+    if (!payload.exp || payload.exp < Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function setSessionCookie(res, token) {
+  res.setHeader("set-cookie", [
+    `elf_admin=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800`,
+  ]);
+}
+
+function clearSessionCookie(res) {
+  res.setHeader("set-cookie", "elf_admin=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
+}
+
+function isPublicRequest(req, url) {
+  if (url.pathname.startsWith("/book")) return true;
+  if (url.pathname.startsWith("/calendar/")) return true;
+  if (url.pathname === "/api/auth/login" || url.pathname === "/api/auth/status" || url.pathname === "/api/auth/logout") return true;
+  if (url.pathname === "/api/bookings" && req.method === "POST") return true;
+  if (url.pathname === "/api/brokers" && req.method === "GET") return true;
+  return false;
+}
+
+function adminSession(req) {
+  return verifySession(parseCookies(req).elf_admin);
+}
+
+function requireAdmin(req, res, url) {
+  if (!ADMIN_PASSWORD) return true;
+  if (isPublicRequest(req, url)) return true;
+  if (adminSession(req)) return true;
+  sendJson(res, 401, { error: "Admin login required" });
+  return false;
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > 1_000_000) {
+        reject(new Error("Request body too large"));
+        req.destroy();
+      }
+    });
+    req.on("end", () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch {
+        reject(new Error("Invalid JSON body"));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function escapeIcs(value = "") {
+  return String(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\n")
+    .replace(/,/g, "\\,")
+    .replace(/;/g, "\\;");
+}
+
+function icsDate(value) {
+  return new Date(value).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+
+function calendarText(bookings, brokers, req) {
+  const origin = requestOrigin(req);
+  const brokerById = Object.fromEntries(brokers.map((broker) => [broker.id, broker]));
+  const rows = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Easy Loan Finance//Broker Booking//EN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "X-WR-CALNAME:Easy Loan Finance Bookings",
+    "X-WR-TIMEZONE:Australia/Adelaide"
+  ];
+
+  for (const booking of bookings) {
+    const broker = brokerById[booking.brokerId];
+    rows.push(
+      "BEGIN:VEVENT",
+      `UID:${booking.id}@easyloanfinance.booking`,
+      `DTSTAMP:${icsDate(new Date())}`,
+      `DTSTART:${icsDate(booking.start)}`,
+      `DTEND:${icsDate(booking.end)}`,
+      `SUMMARY:${escapeIcs(`${booking.clientName} - ${booking.service}`)}`,
+      `DESCRIPTION:${escapeIcs(bookingDescription(booking, broker, origin))}`,
+      `LOCATION:${escapeIcs(booking.channel === "Office" ? "Easy Loan Finance office" : booking.channel)}`,
+      "END:VEVENT"
+    );
+  }
+
+  rows.push("END:VCALENDAR");
+  return rows.join("\r\n");
+}
+
+function bookingDescription(booking, broker, origin = "") {
+  return [
+    `Broker: ${broker?.name || "Easy Loan Finance"}`,
+    `Status: ${booking.status}`,
+    `Channel: ${booking.channel}`,
+    `Phone: ${booking.phone || ""}`,
+    `Email: ${booking.email || ""}`,
+    booking.notes ? `Notes: ${booking.notes}` : "",
+    origin ? `Manage: ${origin}` : ""
+  ].filter(Boolean).join("\n");
+}
+
+function googleEventBody(booking, broker, origin = "") {
+  return {
+    summary: `${booking.clientName} - ${booking.service}`,
+    description: bookingDescription(booking, broker, origin),
+    location: booking.channel === "Office" ? "Easy Loan Finance office" : booking.channel,
+    start: {
+      dateTime: new Date(booking.start).toISOString(),
+      timeZone: TIME_ZONE
+    },
+    end: {
+      dateTime: new Date(booking.end).toISOString(),
+      timeZone: TIME_ZONE
+    },
+    extendedProperties: {
+      private: {
+        easyLoanBookingId: booking.id
+      }
+    }
+  };
+}
+
+function base64Url(input) {
+  return Buffer.from(input).toString("base64url");
+}
+
+function googleCredentials() {
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    const parsed = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+    return {
+      clientEmail: parsed.client_email,
+      privateKey: parsed.private_key
+    };
+  }
+
+  return {
+    clientEmail: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+    privateKey: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n")
+  };
+}
+
+async function googleAccessToken() {
+  const { clientEmail, privateKey } = googleCredentials();
+  if (!GOOGLE_CALENDAR_ID || !clientEmail || !privateKey) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const claim = {
+    iss: clientEmail,
+    scope: "https://www.googleapis.com/auth/calendar.events",
+    aud: "https://oauth2.googleapis.com/token",
+    exp: now + 3600,
+    iat: now
+  };
+  const unsigned = `${base64Url(JSON.stringify(header))}.${base64Url(JSON.stringify(claim))}`;
+  const signature = createSign("RSA-SHA256").update(unsigned).sign(privateKey, "base64url");
+  const assertion = `${unsigned}.${signature}`;
+
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion
+    })
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Google token failed: ${detail}`);
+  }
+
+  const token = await response.json();
+  return token.access_token;
+}
+
+async function syncGoogleEvent(booking, broker, origin = "") {
+  const accessToken = await googleAccessToken();
+  if (!accessToken) return null;
+
+  const url = booking.googleEventId
+    ? `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GOOGLE_CALENDAR_ID)}/events/${encodeURIComponent(booking.googleEventId)}`
+    : `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GOOGLE_CALENDAR_ID)}/events`;
+
+  const response = await fetch(url, {
+    method: booking.googleEventId ? "PATCH" : "POST",
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(googleEventBody(booking, broker, origin))
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Google Calendar sync failed: ${detail}`);
+  }
+
+  return response.json();
+}
+
+function smtpConfigured() {
+  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS && NOTIFY_EMAIL);
+}
+
+async function sendBookingEmail(booking, broker, origin = "") {
+  if (!smtpConfigured()) return false;
+
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: process.env.SMTP_SECURE === "true",
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    }
+  });
+
+  const when = new Intl.DateTimeFormat("en-AU", {
+    timeZone: TIME_ZONE,
+    dateStyle: "full",
+    timeStyle: "short"
+  }).format(new Date(booking.start));
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    to: NOTIFY_EMAIL,
+    replyTo: booking.email || undefined,
+    subject: `New booking request: ${booking.clientName} (${booking.service})`,
+    text: [
+      "New Easy Loan Finance booking request",
+      "",
+      `Client: ${booking.clientName}`,
+      `Phone: ${booking.phone || "Not provided"}`,
+      `Email: ${booking.email || "Not provided"}`,
+      `Broker: ${broker?.name || booking.brokerId}`,
+      `Service: ${booking.service}`,
+      `When: ${when}`,
+      `Channel: ${booking.channel}`,
+      `Status: ${booking.status}`,
+      "",
+      booking.notes ? `Notes: ${booking.notes}` : "",
+      origin ? `Dashboard: ${origin}` : ""
+    ].filter(Boolean).join("\n"),
+    html: `
+      <div style="font-family:Arial,sans-serif;color:#161411;line-height:1.5">
+        <h2 style="margin:0 0 12px">New Easy Loan Finance booking request</h2>
+        <p><strong>Client:</strong> ${escapeHtml(booking.clientName)}</p>
+        <p><strong>Phone:</strong> ${escapeHtml(booking.phone || "Not provided")}</p>
+        <p><strong>Email:</strong> ${escapeHtml(booking.email || "Not provided")}</p>
+        <p><strong>Broker:</strong> ${escapeHtml(broker?.name || booking.brokerId)}</p>
+        <p><strong>Service:</strong> ${escapeHtml(booking.service)}</p>
+        <p><strong>When:</strong> ${escapeHtml(when)}</p>
+        <p><strong>Channel:</strong> ${escapeHtml(booking.channel)}</p>
+        <p><strong>Status:</strong> ${escapeHtml(booking.status)}</p>
+        ${booking.notes ? `<p><strong>Notes:</strong> ${escapeHtml(booking.notes)}</p>` : ""}
+        ${origin ? `<p><a href="${escapeHtml(origin)}">Open booking dashboard</a></p>` : ""}
+      </div>
+    `
+  });
+
+  return true;
+}
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function afterBookingSaved(booking, brokers, req, { sendEmail = true } = {}) {
+  const broker = brokers.find((item) => item.id === booking.brokerId);
+  const origin = requestOrigin(req);
+
+  const results = { emailSent: false, googleSynced: false, googleEventId: booking.googleEventId || null };
+
+  if (sendEmail) {
+    try {
+      results.emailSent = await sendBookingEmail(booking, broker, origin);
+    } catch (error) {
+      console.warn(error.message);
+    }
+  }
+
+  try {
+    const event = await syncGoogleEvent(booking, broker, origin);
+    if (event?.id && event.id !== booking.googleEventId) {
+      results.googleEventId = event.id;
+      await updateBooking(booking.id, { googleEventId: event.id });
+    }
+    results.googleSynced = Boolean(event?.id);
+  } catch (error) {
+    console.warn(error.message);
+  }
+
+  return results;
+}
+
+function requestOrigin(req) {
+  const proto = req.headers["x-forwarded-proto"] || "http";
+  return `${proto}://${req.headers.host}`;
+}
+
+function safeJoin(base, pathname) {
+  const decoded = decodeURIComponent(pathname);
+  const target = path.join(base, decoded === "/" ? "index.html" : decoded);
+  return target.startsWith(base) ? target : path.join(base, "index.html");
+}
+
+function contentType(file) {
+  if (file.endsWith(".html")) return "text/html; charset=utf-8";
+  if (file.endsWith(".js")) return "text/javascript; charset=utf-8";
+  if (file.endsWith(".css")) return "text/css; charset=utf-8";
+  if (file.endsWith(".svg")) return "image/svg+xml";
+  if (file.endsWith(".png")) return "image/png";
+  return "application/octet-stream";
+}
+
+async function handleApi(req, res, url) {
+  const brokers = await listBrokers();
+
+  if (req.method === "GET" && url.pathname === "/api/health") {
+    return sendJson(res, 200, { ok: true, app: "easy-loan-finance-booking" });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/auth/status") {
+    const session = adminSession(req);
+    return sendJson(res, 200, {
+      required: Boolean(ADMIN_PASSWORD),
+      authenticated: !ADMIN_PASSWORD || Boolean(session),
+      email: session?.email || (ADMIN_PASSWORD ? null : ADMIN_EMAIL)
+    });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/login") {
+    const body = await readBody(req);
+    const passwordOk = ADMIN_PASSWORD && createHash("sha256").update(String(body.password || "")).digest("hex") === createHash("sha256").update(ADMIN_PASSWORD).digest("hex");
+    if (!passwordOk) return sendJson(res, 401, { error: "Wrong password" });
+    const token = signSession({
+      email: ADMIN_EMAIL,
+      exp: Date.now() + 7 * 24 * 60 * 60 * 1000
+    });
+    setSessionCookie(res, token);
+    return sendJson(res, 200, { ok: true, email: ADMIN_EMAIL });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/logout") {
+    clearSessionCookie(res);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (!requireAdmin(req, res, url)) return;
+
+  if (req.method === "GET" && url.pathname === "/api/integrations") {
+    return sendJson(res, 200, {
+      emailNotifications: smtpConfigured(),
+      googleDirectSync: Boolean(GOOGLE_CALENDAR_ID && (process.env.GOOGLE_SERVICE_ACCOUNT_JSON || (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY))),
+      icsSync: true
+    });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/brokers") {
+    return sendJson(res, 200, brokers);
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/brokers") {
+    const body = await readBody(req);
+    const id = body.id || body.name?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `broker-${Date.now()}`;
+    if (brokers.some((broker) => broker.id === id)) {
+      return sendJson(res, 409, { error: "Broker ID already exists" });
+    }
+    const next = {
+      id,
+      name: body.name || "New Broker",
+      title: body.title || "Finance Broker",
+      location: body.location || "Adelaide, SA",
+      email: body.email || "",
+      phone: body.phone || "",
+      color: body.color || "#b89044",
+      services: Array.isArray(body.services) ? body.services : ["First home buyer", "Refinance"],
+      hours: body.hours || { start: "09:00", end: "17:00" }
+    };
+    const saved = await createBroker(next);
+    return sendJson(res, 201, saved);
+  }
+
+  const brokerMatch = url.pathname.match(/^\/api\/brokers\/([^/]+)$/);
+  if (brokerMatch && req.method === "PATCH") {
+    const id = brokerMatch[1];
+    const body = await readBody(req);
+    const updated = await updateBroker(id, body);
+    if (!updated) return sendJson(res, 404, { error: "Broker not found" });
+    return sendJson(res, 200, updated);
+  }
+
+  if (brokerMatch && req.method === "DELETE") {
+    const id = brokerMatch[1];
+    const reassignTo = url.searchParams.get("reassignTo");
+    if (reassignTo === id) {
+      return sendJson(res, 400, { error: "Choose a different broker to receive bookings." });
+    }
+    if (reassignTo && !brokers.some((broker) => broker.id === reassignTo)) {
+      return sendJson(res, 404, { error: "Receiving broker not found." });
+    }
+    const result = await deleteBroker(id, reassignTo);
+    if (!result.ok) {
+      return sendJson(res, 409, {
+        error: "Broker still has bookings. Choose another broker to receive those bookings.",
+        bookingCount: result.bookingCount
+      });
+    }
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/bookings") {
+    const bookings = await listBookings();
+    return sendJson(res, 200, bookings);
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/bookings") {
+    const body = await readBody(req);
+    const next = { ...body, id: body.id || `bk-${Date.now()}` };
+    const saved = await createBooking(next);
+    const integrations = await afterBookingSaved(saved, brokers, req);
+    return sendJson(res, 201, { ...saved, googleEventId: integrations.googleEventId, integrations });
+  }
+
+  const bookingMatch = url.pathname.match(/^\/api\/bookings\/([^/]+)$/);
+  if (bookingMatch && req.method === "PATCH") {
+    const id = bookingMatch[1];
+    const body = await readBody(req);
+    const updated = await updateBooking(id, body);
+    if (!updated) return sendJson(res, 404, { error: "Booking not found" });
+    if (updated.googleEventId) {
+      await afterBookingSaved(updated, brokers, req, { sendEmail: false });
+    }
+    return sendJson(res, 200, updated);
+  }
+
+  if (bookingMatch && req.method === "DELETE") {
+    const id = bookingMatch[1];
+    await deleteBooking(id);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  return sendJson(res, 404, { error: "Not found" });
+}
+
+async function handleCalendar(req, res, url) {
+  const brokers = await listBrokers();
+  const bookings = await listBookings();
+  const brokerMatch = url.pathname.match(/^\/calendar\/broker\/([^/]+)\.ics$/);
+  const filtered = brokerMatch
+    ? bookings.filter((booking) => booking.brokerId === brokerMatch[1])
+    : bookings;
+  const text = calendarText(filtered, brokers, req);
+
+  res.writeHead(200, {
+    "content-type": "text/calendar; charset=utf-8",
+    "content-disposition": "inline; filename=easy-loan-finance-bookings.ics",
+    "cache-control": "no-cache"
+  });
+  res.end(text);
+}
+
+async function handleStatic(req, res, url) {
+  const file = safeJoin(DIST_DIR, url.pathname);
+  try {
+    const stat = await fs.stat(file);
+    const finalFile = stat.isDirectory() ? path.join(file, "index.html") : file;
+    const bytes = await fs.readFile(finalFile);
+    res.writeHead(200, { "content-type": contentType(finalFile) });
+    res.end(bytes);
+  } catch {
+    try {
+      const bytes = await fs.readFile(path.join(DIST_DIR, "index.html"));
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(bytes);
+    } catch {
+      sendJson(res, 404, { error: "Build not found. Run npm run build first." });
+    }
+  }
+}
+
+await ensureData();
+
+createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url || "/", requestOrigin(req));
+    if (url.pathname.startsWith("/api/")) return await handleApi(req, res, url);
+    if (url.pathname === "/calendar/team.ics" || url.pathname.startsWith("/calendar/broker/")) {
+      return await handleCalendar(req, res, url);
+    }
+    if (!ADMIN_PASSWORD || url.pathname.startsWith("/book") || adminSession(req)) {
+      return await handleStatic(req, res, url);
+    }
+    return await handleStatic(req, res, new URL("/login", requestOrigin(req)));
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Server error" });
+  }
+}).listen(PORT, () => {
+  console.log(`Easy Loan Finance Booking is running on http://localhost:${PORT}`);
+});
