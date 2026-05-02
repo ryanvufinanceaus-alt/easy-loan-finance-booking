@@ -250,6 +250,26 @@ function sortBrokers(brokers) {
   });
 }
 
+function publicBroker(broker) {
+  const { accessCode, ...safeBroker } = broker;
+  return safeBroker;
+}
+
+function brokerMatchesLogin(broker, email, password) {
+  if (!broker?.email || !broker?.accessCode) return false;
+  return broker.email.toLowerCase() === String(email || "").trim().toLowerCase()
+    && safeEqual(String(broker.accessCode), String(password || ""));
+}
+
+function sessionForRequest(req) {
+  if (!ADMIN_PASSWORD) return { role: "admin", email: ADMIN_EMAIL };
+  return adminSession(req);
+}
+
+function isAdminSession(session) {
+  return !ADMIN_PASSWORD || session?.role === "admin";
+}
+
 async function createBooking(payload) {
   if (!USE_SUPABASE) {
     const bookings = await readJson("bookings.json");
@@ -853,30 +873,46 @@ function isStaticAsset(pathname) {
 
 async function handleApi(req, res, url) {
   const brokers = await listBrokers();
+  const session = sessionForRequest(req);
 
   if (req.method === "GET" && url.pathname === "/api/health") {
     return sendJson(res, 200, { ok: true, app: "easy-loan-finance-booking" });
   }
 
   if (req.method === "GET" && url.pathname === "/api/auth/status") {
-    const session = adminSession(req);
+    const session = sessionForRequest(req);
     return sendJson(res, 200, {
       required: Boolean(ADMIN_PASSWORD),
       authenticated: !ADMIN_PASSWORD || Boolean(session),
-      email: session?.email || (ADMIN_PASSWORD ? null : ADMIN_EMAIL)
+      email: session?.email || (ADMIN_PASSWORD ? null : ADMIN_EMAIL),
+      role: session?.role || (!ADMIN_PASSWORD ? "admin" : null),
+      brokerId: session?.brokerId || null
     });
   }
 
   if (req.method === "POST" && url.pathname === "/api/auth/login") {
     const body = await readBody(req);
     const passwordOk = ADMIN_PASSWORD && createHash("sha256").update(String(body.password || "")).digest("hex") === createHash("sha256").update(ADMIN_PASSWORD).digest("hex");
-    if (!passwordOk) return sendJson(res, 401, { error: "Wrong password" });
+    if (!passwordOk) {
+      const broker = brokers.find((item) => brokerMatchesLogin(item, body.email, body.password));
+      if (!broker) return sendJson(res, 401, { error: "Wrong email or access code" });
+      const token = signSession({
+        role: "broker",
+        brokerId: broker.id,
+        email: broker.email,
+        name: broker.name,
+        exp: Date.now() + 7 * 24 * 60 * 60 * 1000
+      });
+      setSessionCookie(res, token);
+      return sendJson(res, 200, { ok: true, role: "broker", brokerId: broker.id, email: broker.email });
+    }
     const token = signSession({
+      role: "admin",
       email: ADMIN_EMAIL,
       exp: Date.now() + 7 * 24 * 60 * 60 * 1000
     });
     setSessionCookie(res, token);
-    return sendJson(res, 200, { ok: true, email: ADMIN_EMAIL });
+    return sendJson(res, 200, { ok: true, role: "admin", email: ADMIN_EMAIL });
   }
 
   if (req.method === "POST" && url.pathname === "/api/auth/logout") {
@@ -887,6 +923,7 @@ async function handleApi(req, res, url) {
   if (!requireAdmin(req, res, url)) return;
 
   if (req.method === "GET" && url.pathname === "/api/integrations") {
+    if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
     const emailReady = smtpConfigured();
     return sendJson(res, 200, {
       emailNotifications: Boolean(emailReady && NOTIFY_EMAIL),
@@ -907,6 +944,7 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/email-test") {
+    if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
     const body = await readBody(req);
     const broker = brokers.find((item) => item.id === "ryan-vu") || brokers[0];
     const testBooking = {
@@ -937,7 +975,11 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/brokers") {
-    return sendJson(res, 200, sortBrokers(brokers));
+    if (isAdminSession(session)) return sendJson(res, 200, sortBrokers(brokers));
+    if (session?.role === "broker") {
+      return sendJson(res, 200, sortBrokers(brokers.filter((broker) => broker.id === session.brokerId)).map(publicBroker));
+    }
+    return sendJson(res, 200, sortBrokers(brokers).map(publicBroker));
   }
 
   if (req.method === "GET" && url.pathname === "/api/availability") {
@@ -949,6 +991,7 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/brokers") {
+    if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
     const body = await readBody(req);
     const id = body.id || body.name?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `broker-${Date.now()}`;
     if (brokers.some((broker) => broker.id === id)) {
@@ -962,6 +1005,7 @@ async function handleApi(req, res, url) {
       email: body.email || "",
       phone: body.phone || "",
       color: body.color || "#b89044",
+      accessCode: body.accessCode || "",
       services: Array.isArray(body.services) ? body.services : ["First home buyer", "Refinance"],
       hours: body.hours || { start: "09:00", end: "17:00" }
     };
@@ -971,6 +1015,7 @@ async function handleApi(req, res, url) {
 
   const brokerMatch = url.pathname.match(/^\/api\/brokers\/([^/]+)$/);
   if (brokerMatch && req.method === "PATCH") {
+    if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
     const id = brokerMatch[1];
     const body = await readBody(req);
     const updated = await updateBroker(id, body);
@@ -979,6 +1024,7 @@ async function handleApi(req, res, url) {
   }
 
   if (brokerMatch && req.method === "DELETE") {
+    if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
     const id = brokerMatch[1];
     const reassignTo = url.searchParams.get("reassignTo");
     if (reassignTo === id) {
@@ -999,13 +1045,16 @@ async function handleApi(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/bookings") {
     const bookings = await listBookings();
+    if (session?.role === "broker") {
+      return sendJson(res, 200, bookings.filter((booking) => booking.brokerId === session.brokerId));
+    }
     return sendJson(res, 200, bookings);
   }
 
   if (req.method === "POST" && url.pathname === "/api/bookings") {
     const body = await readBody(req);
     const next = { ...body, id: body.id || `bk-${Date.now()}` };
-    if (isPublicRequest(req, url)) {
+    if (!session && isPublicRequest(req, url)) {
       const windowError = validatePublicBookingWindow(next);
       if (windowError) return sendJson(res, 400, { error: windowError });
     }
@@ -1020,6 +1069,7 @@ async function handleApi(req, res, url) {
 
   const bookingMatch = url.pathname.match(/^\/api\/bookings\/([^/]+)$/);
   if (bookingMatch && req.method === "PATCH") {
+    if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
     const id = bookingMatch[1];
     const body = await readBody(req);
     const updated = await updateBooking(id, body);
@@ -1031,6 +1081,7 @@ async function handleApi(req, res, url) {
   }
 
   if (bookingMatch && req.method === "DELETE") {
+    if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
     const id = bookingMatch[1];
     await deleteBooking(id);
     return sendJson(res, 200, { ok: true });

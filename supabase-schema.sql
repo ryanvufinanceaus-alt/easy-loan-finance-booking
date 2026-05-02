@@ -5,6 +5,7 @@ create table if not exists public.brokers (
   location text not null default 'Adelaide, SA',
   email text,
   phone text,
+  "accessCode" text,
   color text not null default '#b89044',
   services jsonb not null default '[]'::jsonb,
   hours jsonb not null default '{"start":"09:00","end":"17:00"}'::jsonb,
@@ -29,6 +30,8 @@ create table if not exists public.bookings (
 
 create index if not exists bookings_broker_start_idx on public.bookings ("brokerId", start);
 create index if not exists bookings_start_idx on public.bookings (start);
+
+alter table public.brokers add column if not exists "accessCode" text;
 
 alter table public.brokers enable row level security;
 alter table public.bookings enable row level security;

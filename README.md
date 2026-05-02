@@ -14,6 +14,7 @@ For GitHub and Render deployment steps, read [HUONG_DAN_GITHUB_RENDER.md](./HUON
 - Appointment form with client, broker, service, channel, duration, status, and notes.
 - Booking management: filter by broker, update status, open in Google, copy Google link, and delete bookings.
 - Ryan admin login: set `ADMIN_PASSWORD` to protect the dashboard while public booking links stay open.
+- Broker role login: Ryan can set each broker's access code; brokers only see their own calendar and cannot edit bookings.
 - Dashboard auto-refreshes bookings while open; use the Refresh button for an instant manual pull.
 - Replace `public/elf-logo.png` with your real local ELF logo file to update the brand everywhere.
 - Public client booking pages:
@@ -120,7 +121,13 @@ SUPABASE_SECRET_KEY=sb_secret_...
 
 If those variables are present, the server uses Supabase. If they are blank, it uses local JSON storage in `data/`.
 
-Keep the service role key only in server environment variables. Do not paste it into frontend code.
+If your Supabase project already existed before broker access codes were added, run this once in SQL Editor:
+
+```sql
+alter table public.brokers add column if not exists "accessCode" text;
+```
+
+Keep the secret key only in server environment variables. Do not paste it into frontend code.
 
 ## Deploy
 

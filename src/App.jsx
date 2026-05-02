@@ -141,6 +141,7 @@ function brokerTemplate() {
     email: "",
     phone: "",
     color: "#b89044",
+    accessCode: "",
     services: "First home buyer, Refinance, Investment loan"
   };
 }
@@ -197,12 +198,18 @@ function App() {
           window.location.href = "/login";
           return;
         }
+        const sortedBrokers = sortBrokersForUi(brokerData);
         setAuth(authData);
-        setBrokers(sortBrokersForUi(brokerData));
+        setBrokers(sortedBrokers);
         setBookings(bookingData);
         setIntegrations(integrationData);
         setLastSyncedAt(new Date());
-        setForm(bookingTemplate(sortBrokersForUi(brokerData)[0]?.id));
+        if (authData.role === "broker" && authData.brokerId) {
+          setBrokerFilter(authData.brokerId);
+          setForm(bookingTemplate(authData.brokerId));
+        } else {
+          setForm(bookingTemplate(sortedBrokers[0]?.id));
+        }
       })
       .finally(() => setLoading(false));
   }, []);
@@ -265,6 +272,7 @@ function App() {
   }, [bookings]);
 
   const activeBroker = brokerFilter === "all" ? brokers[0] : brokerById[brokerFilter];
+  const isAdmin = auth.role === "admin" || !auth.required;
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const teamIcsUrl = `${origin}/calendar/team.ics`;
   const brokerIcsUrl = `${origin}/calendar/broker/${activeBroker?.id || "ryan-vu"}.ics`;
@@ -409,6 +417,21 @@ function App() {
     setReassigningBroker(null);
   }
 
+  async function updateBrokerAccessCode(broker) {
+    const accessCode = window.prompt(`Set access code for ${broker.name}`);
+    if (accessCode === null) return;
+    const saved = await fetch(`/api/brokers/${broker.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accessCode })
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not update broker access code");
+      return data;
+    });
+    setBrokers((current) => current.map((item) => item.id === saved.id ? saved : item));
+  }
+
   const renderedCalendar = view === "month"
     ? <MonthView anchor={anchor} bookings={visibleBookings} brokerById={brokerById} onSelect={setSelectedBooking} />
     : <AgendaView mode={view} anchor={anchor} bookings={visibleBookings} brokerById={brokerById} onSelect={setSelectedBooking} />;
@@ -426,7 +449,7 @@ function App() {
 
         <div className="admin-identity">
           <ShieldCheck size={16} />
-          <span>{auth.required ? auth.email || "Ryan admin" : "Local admin mode"}</span>
+          <span>{auth.required ? `${auth.role === "broker" ? "Broker" : "Ryan admin"} · ${auth.email || ""}` : "Local admin mode"}</span>
           {auth.required && <button onClick={() => fetch("/api/auth/logout", { method: "POST" }).then(() => { window.location.href = "/login"; })}>Logout</button>}
         </div>
 
@@ -442,16 +465,18 @@ function App() {
             <Users size={18} />
             <h2>Broker Desk</h2>
           </div>
-          <button
-            className={classNames("broker-row", brokerFilter === "all" && "active")}
-            onClick={() => setBrokerFilter("all")}
-          >
-            <span className="broker-dot team-dot" />
-            <span>
-              <strong>All brokers</strong>
-              <small>Team calendar</small>
-            </span>
-          </button>
+          {isAdmin && (
+            <button
+              className={classNames("broker-row", brokerFilter === "all" && "active")}
+              onClick={() => setBrokerFilter("all")}
+            >
+              <span className="broker-dot team-dot" />
+              <span>
+                <strong>All brokers</strong>
+                <small>Team calendar</small>
+              </span>
+            </button>
+          )}
           {brokers.map((broker) => (
             <button
               key={broker.id}
@@ -461,13 +486,13 @@ function App() {
               <span className="broker-dot" style={{ background: broker.color }} />
               <span>
                 <strong>{broker.name}</strong>
-                <small>{broker.location}</small>
+                <small>{broker.location} · {bookings.filter((booking) => booking.brokerId === broker.id).length} bookings</small>
               </span>
             </button>
           ))}
         </section>
 
-        <section className="panel sync-panel">
+        {isAdmin && <section className="panel sync-panel">
           <div className="section-title">
             <Link2 size={18} />
             <h2>Google Sync</h2>
@@ -475,7 +500,7 @@ function App() {
           <SyncRow label="Team ICS" value={teamIcsUrl} copied={copied === "team"} onCopy={() => copyText(teamIcsUrl, "team")} />
           <SyncRow label="Broker ICS" value={brokerIcsUrl} copied={copied === "broker"} onCopy={() => copyText(brokerIcsUrl, "broker")} />
           <p className="sync-note">Use the ICS URL after deployment to subscribe in Google Calendar and view it on mobile.</p>
-        </section>
+        </section>}
 
         <section className="panel client-link-panel">
           <div className="section-title">
@@ -490,7 +515,7 @@ function App() {
           </a>
         </section>
 
-        <section className="panel alerts-panel">
+        {isAdmin && <section className="panel alerts-panel">
           <div className="section-title">
             <ShieldCheck size={18} />
             <h2>Alerts & Sync</h2>
@@ -504,7 +529,7 @@ function App() {
           {integrations.missingEmailSettings?.length > 0 && (
             <p className="integration-note danger-text">Missing: {integrations.missingEmailSettings.join(", ")}</p>
           )}
-        </section>
+        </section>}
       </aside>
 
       <section className="workspace">
@@ -548,7 +573,7 @@ function App() {
             {loading ? <div className="loading">Loading Easy Loan Finance calendar...</div> : renderedCalendar}
           </section>
 
-          <aside className="booking-panel">
+          {isAdmin ? <aside className="booking-panel">
             <div className="section-title">
               <CalendarPlus size={18} />
               <h2>New Appointment</h2>
@@ -634,11 +659,26 @@ function App() {
               setBrokerForm={setBrokerForm}
               onCreate={createBrokerFromForm}
               onRemove={removeBroker}
+              onUpdateAccessCode={updateBrokerAccessCode}
               onFocusBroker={setBrokerFilter}
               reassigningBroker={reassigningBroker}
               onCancelReassign={() => setReassigningBroker(null)}
             />
-          </aside>
+          </aside> : (
+            <aside className="booking-panel read-only-panel">
+              <div className="section-title">
+                <ShieldCheck size={18} />
+                <h2>Broker View</h2>
+              </div>
+              <p className="sync-note light">
+                You can view your own Easy Loan Finance calendar here. Ryan admin manages broker access, status changes, reassignment, and deletions.
+              </p>
+              <a className="client-page-button full-width" href={brokerBookingUrl} target="_blank" rel="noreferrer">
+                <ExternalLink size={16} />
+                Open Your Client Link
+              </a>
+            </aside>
+          )}
         </div>
       </section>
 
@@ -650,8 +690,8 @@ function App() {
           copied={copied === selectedBooking.id}
           onCopy={() => copyText(createGoogleLink(selectedBooking), selectedBooking.id)}
           onClose={() => setSelectedBooking(null)}
-          onStatus={(status) => updateStatus(selectedBooking, status)}
-          onDelete={() => deleteSelectedBooking(selectedBooking)}
+          onStatus={isAdmin ? (status) => updateStatus(selectedBooking, status) : null}
+          onDelete={isAdmin ? () => deleteSelectedBooking(selectedBooking) : null}
         />
       )}
     </main>
@@ -669,6 +709,7 @@ function IntegrationFlag({ label, active }) {
 }
 
 function LoginPage() {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -690,7 +731,7 @@ function LoginPage() {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ password })
+      body: JSON.stringify({ email, password })
     });
     const data = await res.json();
     setLoading(false);
@@ -713,7 +754,16 @@ function LoginPage() {
         </div>
         <form onSubmit={submitLogin} className="booking-form">
           <label>
-            Admin password
+            Email
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="Broker email or leave blank for Ryan admin"
+            />
+          </label>
+          <label>
+            Password or broker access code
             <input
               autoFocus
               type="password"
@@ -733,7 +783,7 @@ function LoginPage() {
   );
 }
 
-function BrokerManager({ brokers, bookings, brokerForm, setBrokerForm, onCreate, onRemove, onFocusBroker, reassigningBroker, onCancelReassign }) {
+function BrokerManager({ brokers, bookings, brokerForm, setBrokerForm, onCreate, onRemove, onUpdateAccessCode, onFocusBroker, reassigningBroker, onCancelReassign }) {
   const reassignOptions = brokers.filter((broker) => broker.id !== reassigningBroker?.id);
   const [targetBroker, setTargetBroker] = useState("");
 
@@ -773,6 +823,10 @@ function BrokerManager({ brokers, bookings, brokerForm, setBrokerForm, onCreate,
           </label>
         </div>
         <label>
+          Broker access code
+          <input value={brokerForm.accessCode} onChange={(event) => setBrokerForm({ ...brokerForm, accessCode: event.target.value })} placeholder="Set a private login code" />
+        </label>
+        <label>
           Services
           <input value={brokerForm.services} onChange={(event) => setBrokerForm({ ...brokerForm, services: event.target.value })} placeholder="First home buyer, Refinance" />
         </label>
@@ -794,7 +848,10 @@ function BrokerManager({ brokers, bookings, brokerForm, setBrokerForm, onCreate,
               <span className="broker-dot" style={{ background: broker.color }} />
               <button type="button" onClick={() => onFocusBroker(broker.id)}>
                 <strong>{broker.name}</strong>
-                <small>{count} booking{count === 1 ? "" : "s"} · {broker.location}</small>
+                <small>{count} booking{count === 1 ? "" : "s"} · {broker.accessCode ? "login ready" : "no access code"}</small>
+              </button>
+              <button className="mini-action" type="button" onClick={() => onUpdateAccessCode(broker)}>
+                Code
               </button>
               <button className="icon-button small danger" onClick={() => onRemove(broker)} aria-label={`Delete ${broker.name}`}>
                 <Trash2 size={15} />
@@ -1133,7 +1190,10 @@ function MonthView({ anchor, bookings, brokerById, onSelect }) {
                 <button
                   key={booking.id}
                   className="booking-chip"
-                  style={{ borderLeftColor: brokerById[booking.brokerId]?.color || "#b89044" }}
+                  style={{
+                    borderLeftColor: brokerById[booking.brokerId]?.color || "#b89044",
+                    "--broker-color": brokerById[booking.brokerId]?.color || "#b89044"
+                  }}
                   onClick={() => onSelect(booking)}
                 >
                   <span>{displayTime(booking.start)}</span>
@@ -1167,7 +1227,15 @@ function AgendaView({ mode, anchor, bookings, brokerById, onSelect }) {
             <div className="agenda-list">
               {dayBookings.length === 0 && <div className="empty-slot">Available</div>}
               {dayBookings.map((booking) => (
-                <button className="agenda-booking" key={booking.id} onClick={() => onSelect(booking)}>
+                <button
+                  className="agenda-booking"
+                  key={booking.id}
+                  style={{
+                    borderLeftColor: brokerById[booking.brokerId]?.color || "#b89044",
+                    "--broker-color": brokerById[booking.brokerId]?.color || "#b89044"
+                  }}
+                  onClick={() => onSelect(booking)}
+                >
                   <span className="time-block">{displayTime(booking.start)} - {displayTime(booking.end)}</span>
                   <strong>{booking.clientName}</strong>
                   <small style={{ color: brokerById[booking.brokerId]?.color || "#8d6a28" }}>{brokerById[booking.brokerId]?.name}</small>
@@ -1183,6 +1251,7 @@ function AgendaView({ mode, anchor, bookings, brokerById, onSelect }) {
 }
 
 function BookingDrawer({ booking, broker, googleUrl, copied, onCopy, onClose, onStatus, onDelete }) {
+  const canManage = Boolean(onStatus && onDelete);
   return (
     <div className="drawer-backdrop" onClick={onClose}>
       <aside className="booking-drawer" onClick={(event) => event.stopPropagation()}>
@@ -1200,13 +1269,15 @@ function BookingDrawer({ booking, broker, googleUrl, copied, onCopy, onClose, on
           <span><Link2 size={16} /> {booking.channel}</span>
         </div>
         <p className="drawer-notes">{booking.notes || "No notes yet."}</p>
-        <div className="status-actions">
-          {STATUS.map((status) => (
-            <button key={status} className={booking.status === status ? "active" : ""} onClick={() => onStatus(status)}>
-              {status}
-            </button>
-          ))}
-        </div>
+        {canManage && (
+          <div className="status-actions">
+            {STATUS.map((status) => (
+              <button key={status} className={booking.status === status ? "active" : ""} onClick={() => onStatus(status)}>
+                {status}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="drawer-actions">
           <a className="primary-button" href={googleUrl} target="_blank" rel="noreferrer">
             <ExternalLink size={17} />
@@ -1216,10 +1287,12 @@ function BookingDrawer({ booking, broker, googleUrl, copied, onCopy, onClose, on
             {copied ? <Check size={17} /> : <Copy size={17} />}
             Copy Google Link
           </button>
-          <button className="danger-button" onClick={onDelete}>
-            <Trash2 size={17} />
-            Delete Booking
-          </button>
+          {canManage && (
+            <button className="danger-button" onClick={onDelete}>
+              <Trash2 size={17} />
+              Delete Booking
+            </button>
+          )}
         </div>
       </aside>
     </div>
