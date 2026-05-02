@@ -24,7 +24,7 @@ import {
 import "./App.css";
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const STATUS = ["Pending", "Confirmed", "Done", "Undone", "Cancelled"];
+const STATUS = ["Confirmed", "Done", "Not done", "Cancelled"];
 const CHANNELS = ["Phone call", "Video call", "Office"];
 const DURATIONS = [30, 45, 60, 90];
 const PUBLIC_BOOKING_DURATION = 30;
@@ -88,7 +88,9 @@ function displayTime(value) {
 }
 
 function statusLabel(status) {
-  return status === "Completed" ? "Done" : status;
+  if (status === "Completed") return "Done";
+  if (status === "Undone") return "Not done";
+  return status;
 }
 
 function statusClass(status) {
@@ -96,7 +98,7 @@ function statusClass(status) {
 }
 
 function isFinalStatus(status) {
-  return ["Done", "Completed", "Undone", "Cancelled"].includes(status);
+  return ["Done", "Completed", "Not done", "Undone", "Cancelled"].includes(status);
 }
 
 function bookingSignature(booking) {
@@ -285,7 +287,7 @@ function App() {
         bookingId: booking.id,
         type: "followup",
         title: `Follow up: ${booking.clientName}`,
-        detail: `Confirm whether this appointment is Done or Undone - ${notificationDetail(booking, brokerMap[booking.brokerId])}`,
+        detail: `Confirm whether this appointment is Done or Not done - ${notificationDetail(booking, brokerMap[booking.brokerId])}`,
         createdAt: new Date().toISOString()
       }));
 
@@ -385,7 +387,10 @@ function App() {
         return start >= today && start <= weekEnd;
       }).length,
       pending: bookings.filter((booking) => booking.status === "Pending").length,
-      confirmed: bookings.filter((booking) => booking.status === "Confirmed").length
+      confirmed: bookings.filter((booking) => booking.status === "Confirmed").length,
+      needsReview: bookings.filter((booking) => (
+        booking.status === "Confirmed" && new Date(booking.end || booking.start).getTime() + 60 * 60 * 1000 <= Date.now()
+      )).length
     };
   }, [bookings]);
 
@@ -527,6 +532,8 @@ function App() {
   }
 
   async function deleteSelectedBooking(booking) {
+    const ok = window.confirm(`Delete booking for ${booking.clientName}? This cannot be undone.`);
+    if (!ok) return;
     await fetch(`/api/bookings/${booking.id}`, { method: "DELETE" });
     setBookings((current) => {
       const next = current.filter((item) => item.id !== booking.id);
@@ -637,7 +644,7 @@ function App() {
         <div className="metric-grid">
           <Metric icon={CalendarDays} label="Next 7 days" value={metrics.week} />
           <Metric icon={ShieldCheck} label="Confirmed" value={metrics.confirmed} />
-          <Metric icon={Clock} label="Pending" value={metrics.pending} />
+          <Metric icon={Clock} label="Needs review" value={metrics.needsReview} />
           <Metric icon={Users} label="Brokers" value={brokers.length} />
         </div>
 
@@ -750,9 +757,6 @@ function App() {
               <ExternalLink size={16} />
               Client page
             </a>
-            <button className="today-button" onClick={() => refreshBookings()}>
-              Refresh
-            </button>
           </div>
           {lastSyncedAt && <p className="sync-stamp">Live refresh · {displayTime(lastSyncedAt)}</p>}
         </header>
@@ -1154,7 +1158,7 @@ function PublicBookingPage() {
         setForm((current) => ({
           ...current,
           brokerId: requested?.id || sorted[0]?.id || current.brokerId || "ryan-vu",
-          status: "Pending",
+          status: "Confirmed",
           channel: "Phone call",
           service: "Home loan consultation",
           duration: PUBLIC_BOOKING_DURATION,
@@ -1208,7 +1212,7 @@ function PublicBookingPage() {
       brokerId: form.brokerId,
       service: form.service,
       channel: form.channel,
-      status: "Pending",
+      status: "Confirmed",
       start,
       end,
       notes: form.notes.trim()
@@ -1238,10 +1242,10 @@ function PublicBookingPage() {
           <BrandMark />
           <div className="drawer-kicker">
             <Check size={16} />
-            Request received
+            Booking confirmed
           </div>
           <h1>Thanks, {submitted.clientName}</h1>
-          <p>Easy Loan Finance has received your booking request. A broker will confirm the appointment details shortly.</p>
+          <p>Your Easy Loan Finance appointment is confirmed. We have sent the details to your email.</p>
           <div className="success-details">
             <span><Clock size={16} /> {displayDay(new Date(submitted.start))}, {displayTime(submitted.start)}</span>
             <span><Users size={16} /> {selectedBroker?.name || "Easy Loan Finance"}</span>
@@ -1313,7 +1317,7 @@ function PublicBookingPage() {
               </label>
               <label>
                 Email
-                <input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="name@email.com" />
+                <input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="name@email.com" />
               </label>
             </div>
             <label>
@@ -1359,7 +1363,7 @@ function PublicBookingPage() {
             {submitError && <p className="login-error">{submitError}</p>}
             <button className="primary-button" type="submit" disabled={submitting || !selectedSlot}>
               <CalendarPlus size={18} />
-              {submitting ? "Sending request..." : "Request Booking"}
+              {submitting ? "Confirming booking..." : "Confirm Booking"}
             </button>
           </form>
         )}

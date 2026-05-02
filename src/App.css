@@ -722,7 +722,9 @@ h1 {
 }
 
 .booking-chip.status-undone,
-.agenda-booking.status-undone {
+.booking-chip.status-not-done,
+.agenda-booking.status-undone,
+.agenda-booking.status-not-done {
   border-left-color: #8f3030 !important;
   background: #f8e9e7;
 }
@@ -836,6 +838,7 @@ h1 {
 }
 
 .status-pill.status-undone,
+.status-pill.status-not-done,
 .status-pill.status-cancelled {
   background: rgba(143, 48, 48, 0.13);
   color: #8f3030;
@@ -1290,6 +1293,7 @@ textarea:focus {
 }
 
 .status-actions button.status-undone.active,
+.status-actions button.status-not-done.active,
 .status-actions button.status-cancelled.active {
   background: rgba(143, 48, 48, 0.10);
   border-color: rgba(143, 48, 48, 0.30);

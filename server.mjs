@@ -29,6 +29,8 @@ const PUBLIC_API_ROUTES = new Set(["/api/health", "/api/brokers", "/api/bookings
 const PUBLIC_BOOKING_DURATION = 30;
 const BUSINESS_START = "09:30";
 const BUSINESS_END = "17:00";
+const REMINDER_MINUTES_BEFORE = Number(process.env.BOOKING_REMINDER_MINUTES_BEFORE || 10);
+const reminderSendKeys = new Set();
 
 const seedBrokers = [
   {
@@ -729,12 +731,70 @@ function mailTransporter() {
   });
 }
 
+function senderFrom() {
+  return process.env.SMTP_FROM || "Easy Loan Finance <hello@easyloanfinance.com.au>";
+}
+
+function clientSenderFrom() {
+  return process.env.CLIENT_CONFIRMATION_FROM || senderFrom();
+}
+
 function formattedBookingTime(booking) {
   return new Intl.DateTimeFormat("en-AU", {
     timeZone: TIME_ZONE,
     dateStyle: "full",
     timeStyle: "short"
   }).format(new Date(booking.start));
+}
+
+function clientConfirmationEmailContent(booking, broker) {
+  const when = formattedBookingTime(booking);
+  const brokerName = broker?.name || "Easy Loan Finance";
+  const phoneLine = broker?.phone ? `Broker phone: ${broker.phone}` : "";
+  const text = [
+    `Hi ${booking.clientName},`,
+    "",
+    "Your Easy Loan Finance appointment is confirmed.",
+    "",
+    `Broker: ${brokerName}`,
+    `Service: ${booking.service}`,
+    `Time: ${when}`,
+    `Meeting style: ${booking.channel}`,
+    phoneLine,
+    "",
+    "We will send a reminder 10 minutes before your appointment.",
+    "",
+    "If anything changes, please reply to this email.",
+    "",
+    "Easy Loan Finance",
+    "Quick Loan, Easy Life"
+  ].filter(Boolean).join("\n");
+
+  const html = `
+    <div style="margin:0;padding:0;background:#f6f3ec;font-family:Arial,sans-serif;color:#161411">
+      <div style="max-width:640px;margin:0 auto;padding:28px 18px">
+        <div style="background:#0f241d;color:#fff8ed;border-radius:10px 10px 0 0;padding:22px 24px">
+          <div style="font-size:13px;font-weight:700;color:#f5dfad;text-transform:uppercase">Easy Loan Finance</div>
+          <h1 style="margin:8px 0 0;font-size:26px;line-height:1.15">Your appointment is confirmed</h1>
+        </div>
+        <div style="background:#fffdf8;border:1px solid #eadfca;border-top:0;border-radius:0 0 10px 10px;padding:24px">
+          <p style="margin:0 0 16px">Hi ${escapeHtml(booking.clientName)},</p>
+          <p style="margin:0 0 18px">Thanks for booking with Easy Loan Finance. Your consultation has been confirmed.</p>
+          <div style="background:#f7f1e5;border:1px solid #eadfca;border-radius:8px;padding:16px;margin:0 0 18px">
+            <p style="margin:0 0 8px"><strong>Broker:</strong> ${escapeHtml(brokerName)}</p>
+            <p style="margin:0 0 8px"><strong>Service:</strong> ${escapeHtml(booking.service)}</p>
+            <p style="margin:0 0 8px"><strong>Time:</strong> ${escapeHtml(when)}</p>
+            <p style="margin:0"><strong>Meeting style:</strong> ${escapeHtml(booking.channel)}</p>
+          </div>
+          <p style="margin:0 0 14px">We will send a reminder 10 minutes before your appointment.</p>
+          <p style="margin:0 0 18px">If anything changes, please reply to this email.</p>
+          <p style="margin:0;color:#6f675a">Easy Loan Finance<br/>Quick Loan, Easy Life</p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return { text, html };
 }
 
 async function sendBookingEmail(booking, broker, origin = "") {
@@ -748,12 +808,12 @@ async function sendBookingEmail(booking, broker, origin = "") {
   }).format(new Date(booking.start));
 
   await transporter.sendMail({
-    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    from: senderFrom(),
     to: recipients.join(", "),
     replyTo: booking.email || undefined,
-    subject: `New booking request: ${booking.clientName} (${booking.service})`,
+    subject: `New confirmed booking: ${booking.clientName} (${booking.service})`,
     text: [
-      "New Easy Loan Finance booking request",
+      "New Easy Loan Finance confirmed booking",
       "",
       `Client: ${booking.clientName}`,
       `Phone: ${booking.phone || "Not provided"}`,
@@ -769,7 +829,7 @@ async function sendBookingEmail(booking, broker, origin = "") {
     ].filter(Boolean).join("\n"),
     html: `
       <div style="font-family:Arial,sans-serif;color:#161411;line-height:1.5">
-        <h2 style="margin:0 0 12px">New Easy Loan Finance booking request</h2>
+        <h2 style="margin:0 0 12px">New Easy Loan Finance confirmed booking</h2>
         <p><strong>Client:</strong> ${escapeHtml(booking.clientName)}</p>
         <p><strong>Phone:</strong> ${escapeHtml(booking.phone || "Not provided")}</p>
         <p><strong>Email:</strong> ${escapeHtml(booking.email || "Not provided")}</p>
@@ -791,45 +851,76 @@ async function sendClientConfirmationEmail(booking, broker) {
   const transporter = mailTransporter();
   if (!CLIENT_CONFIRMATION_EMAILS || !transporter || !booking.email) return false;
 
-  const when = formattedBookingTime(booking);
-  const from = process.env.CLIENT_CONFIRMATION_FROM || process.env.SMTP_FROM || process.env.SMTP_USER;
+  const from = clientSenderFrom();
   const replyTo = process.env.CLIENT_REPLY_TO || NOTIFY_EMAIL || process.env.SMTP_USER;
+  const content = clientConfirmationEmailContent(booking, broker);
 
   await transporter.sendMail({
     from,
     to: booking.email,
     replyTo,
-    subject: `Booking request received - Easy Loan Finance`,
-    text: [
-      `Hi ${booking.clientName},`,
-      "",
-      "Thanks for booking with Easy Loan Finance. We have received your appointment request.",
-      "",
-      `Broker: ${broker?.name || "Easy Loan Finance"}`,
-      `Service: ${booking.service}`,
-      `Requested time: ${when}`,
-      `Meeting style: ${booking.channel}`,
-      "",
-      "A broker will confirm the appointment shortly.",
-      "",
-      "Easy Loan Finance"
-    ].join("\n"),
-    html: `
-      <div style="font-family:Arial,sans-serif;color:#161411;line-height:1.5">
-        <h2 style="margin:0 0 12px">Booking request received</h2>
-        <p>Hi ${escapeHtml(booking.clientName)},</p>
-        <p>Thanks for booking with Easy Loan Finance. We have received your appointment request.</p>
-        <p><strong>Broker:</strong> ${escapeHtml(broker?.name || "Easy Loan Finance")}</p>
-        <p><strong>Service:</strong> ${escapeHtml(booking.service)}</p>
-        <p><strong>Requested time:</strong> ${escapeHtml(when)}</p>
-        <p><strong>Meeting style:</strong> ${escapeHtml(booking.channel)}</p>
-        <p>A broker will confirm the appointment shortly.</p>
-        <p>Easy Loan Finance</p>
-      </div>
-    `
+    subject: `Your Easy Loan Finance appointment is confirmed`,
+    text: content.text,
+    html: content.html
   });
 
   return true;
+}
+
+async function sendBookingReminderEmails(booking, broker, origin = "") {
+  const transporter = mailTransporter();
+  if (!transporter) return { client: false, internal: false };
+
+  const when = formattedBookingTime(booking);
+  const from = process.env.CLIENT_CONFIRMATION_FROM || process.env.SMTP_FROM || process.env.SMTP_USER;
+  const replyTo = process.env.CLIENT_REPLY_TO || NOTIFY_EMAIL || process.env.SMTP_USER;
+  const results = { client: false, internal: false };
+
+  if (booking.email) {
+    await transporter.sendMail({
+      from,
+      to: booking.email,
+      replyTo,
+      subject: `Reminder: your Easy Loan Finance appointment starts in 10 minutes`,
+      text: [
+        `Hi ${booking.clientName},`,
+        "",
+        "A quick reminder that your Easy Loan Finance appointment starts in 10 minutes.",
+        "",
+        `Broker: ${broker?.name || "Easy Loan Finance"}`,
+        `Time: ${when}`,
+        `Meeting style: ${booking.channel}`,
+        "",
+        "Easy Loan Finance"
+      ].join("\n")
+    });
+    results.client = true;
+  }
+
+  const internalRecipients = internalNotificationRecipients(broker);
+  if (internalRecipients.length > 0) {
+    await transporter.sendMail({
+      from: senderFrom(),
+      to: internalRecipients.join(", "),
+      replyTo: booking.email || undefined,
+      subject: `Reminder: ${booking.clientName} appointment in 10 minutes`,
+      text: [
+        "Easy Loan Finance booking reminder",
+        "",
+        `Client: ${booking.clientName}`,
+        `Phone: ${booking.phone || "Not provided"}`,
+        `Email: ${booking.email || "Not provided"}`,
+        `Broker: ${broker?.name || booking.brokerId}`,
+        `Service: ${booking.service}`,
+        `Time: ${when}`,
+        `Channel: ${booking.channel}`,
+        origin ? `Dashboard: ${origin}` : ""
+      ].filter(Boolean).join("\n")
+    });
+    results.internal = true;
+  }
+
+  return results;
 }
 
 function escapeHtml(value = "") {
@@ -875,6 +966,30 @@ async function afterBookingSaved(booking, brokers, req, { sendEmail = true } = {
   return results;
 }
 
+async function processBookingReminders(origin = "") {
+  if (!smtpConfigured()) return;
+  const [brokers, bookings] = await Promise.all([listBrokers(), listBookings()]);
+  const brokerById = Object.fromEntries(brokers.map((broker) => [broker.id, broker]));
+  const now = Date.now();
+  const reminderWindowMs = REMINDER_MINUTES_BEFORE * 60 * 1000;
+
+  for (const booking of bookings) {
+    if (booking.status !== "Confirmed") continue;
+    const startMs = new Date(booking.start).getTime();
+    if (!Number.isFinite(startMs)) continue;
+    if (startMs <= now || startMs - now > reminderWindowMs) continue;
+    const key = `${booking.id}:${booking.start}`;
+    if (reminderSendKeys.has(key)) continue;
+    reminderSendKeys.add(key);
+    try {
+      await sendBookingReminderEmails(booking, brokerById[booking.brokerId], origin);
+    } catch (error) {
+      reminderSendKeys.delete(key);
+      console.warn(`Booking reminder failed: ${error.message}`);
+    }
+  }
+}
+
 function requestOrigin(req) {
   const proto = req.headers["x-forwarded-proto"] || "http";
   return `${proto}://${req.headers.host}`;
@@ -908,6 +1023,7 @@ async function handleApi(req, res, url) {
   const session = sessionForRequest(req);
 
   if (req.method === "GET" && url.pathname === "/api/health") {
+    processBookingReminders(requestOrigin(req)).catch((error) => console.warn(error.message));
     return sendJson(res, 200, { ok: true, app: "easy-loan-finance-booking" });
   }
 
@@ -967,7 +1083,8 @@ async function handleApi(req, res, url) {
       emailNotifications: Boolean(emailReady && internalRecipients.length > 0),
       brokerEmailRouting: Boolean(emailReady && brokers.some((broker) => broker.email)),
       clientConfirmationEmails: Boolean(emailReady && CLIENT_CONFIRMATION_EMAILS),
-      emailFrom: process.env.SMTP_FROM || process.env.SMTP_USER || "",
+      emailFrom: senderFrom(),
+      clientEmailFrom: clientSenderFrom(),
       notifyEmail: NOTIFY_EMAIL || "",
       internalRecipients,
       clientReplyTo: process.env.CLIENT_REPLY_TO || NOTIFY_EMAIL || process.env.SMTP_USER || "",
@@ -979,6 +1096,7 @@ async function handleApi(req, res, url) {
         !NOTIFY_EMAIL && "BOOKING_NOTIFY_EMAIL"
       ].filter(Boolean),
       googleDirectSync: Boolean(GOOGLE_CALENDAR_ID && (process.env.GOOGLE_SERVICE_ACCOUNT_JSON || (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY))),
+      reminderMinutesBefore: REMINDER_MINUTES_BEFORE,
       icsSync: true
     });
   }
@@ -995,7 +1113,7 @@ async function handleApi(req, res, url) {
       brokerId: broker?.id || "ryan-vu",
       service: "Home loan consultation",
       channel: "Phone call",
-      status: "Pending",
+      status: "Confirmed",
       start: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       end: new Date(Date.now() + 24 * 60 * 60 * 1000 + 30 * 60 * 1000).toISOString(),
       notes: "This is a test email from Easy Loan Finance Booking."
@@ -1095,6 +1213,11 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const next = { ...body, id: body.id || `bk-${Date.now()}` };
     if (!session && isPublicRequest(req, url)) {
+      next.status = "Confirmed";
+      next.duration = PUBLIC_BOOKING_DURATION;
+      if (!String(next.email || "").trim()) {
+        return sendJson(res, 400, { error: "Email is required so we can send the booking confirmation." });
+      }
       const windowError = validatePublicBookingWindow(next);
       if (windowError) return sendJson(res, 400, { error: windowError });
     }
@@ -1168,9 +1291,16 @@ async function handleStatic(req, res, url) {
 
 await ensureData();
 
+setInterval(() => {
+  processBookingReminders(process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || "").catch((error) => {
+    console.warn(error.message);
+  });
+}, 60 * 1000);
+
 createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", requestOrigin(req));
+    processBookingReminders(requestOrigin(req)).catch((error) => console.warn(error.message));
     if (url.pathname.startsWith("/api/")) return await handleApi(req, res, url);
     if (url.pathname === "/calendar/team.ics" || url.pathname.startsWith("/calendar/broker/")) {
       return await handleCalendar(req, res, url);
