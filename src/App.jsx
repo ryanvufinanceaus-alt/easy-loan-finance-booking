@@ -26,6 +26,7 @@ const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const STATUS = ["Confirmed", "Pending", "Completed", "Cancelled"];
 const CHANNELS = ["Phone call", "Video call", "Office"];
 const DURATIONS = [30, 45, 60, 90];
+const PUBLIC_BOOKING_DURATION = 30;
 
 function addMinutes(date, minutes) {
   return new Date(date.getTime() + minutes * 60000);
@@ -87,6 +88,13 @@ function toLocalTimeInput(value = new Date()) {
   return new Date(date.getTime() - offset * 60000).toISOString().slice(11, 16);
 }
 
+function nextBusinessDateInput(from = new Date()) {
+  const date = startOfDay(from);
+  if (date.getDay() === 6) date.setDate(date.getDate() + 2);
+  else if (date.getDay() === 0) date.setDate(date.getDate() + 1);
+  return toLocalDateInput(date);
+}
+
 function isoFor(dateValue, timeValue) {
   return new Date(`${dateValue}T${timeValue}:00`).toISOString();
 }
@@ -102,7 +110,7 @@ function classNames(...values) {
 function bookingTemplate(brokerId = "ryan-vu") {
   const start = new Date();
   start.setDate(start.getDate() + 1);
-  start.setHours(10, 0, 0, 0);
+  start.setHours(9, 30, 0, 0);
   return {
     clientName: "",
     phone: "",
@@ -111,9 +119,9 @@ function bookingTemplate(brokerId = "ryan-vu") {
     service: "First home buyer",
     channel: "Phone call",
     status: "Confirmed",
-    startDate: toLocalDateInput(start),
-    startTime: toLocalTimeInput(start),
-    duration: 45,
+    startDate: nextBusinessDateInput(start),
+    startTime: "09:30",
+    duration: PUBLIC_BOOKING_DURATION,
     notes: ""
   };
 }
@@ -128,6 +136,14 @@ function brokerTemplate() {
     color: "#b89044",
     services: "First home buyer, Refinance, Investment loan"
   };
+}
+
+function sortBrokersForUi(brokers) {
+  return [...brokers].sort((a, b) => {
+    if (a.id === "ryan-vu") return -1;
+    if (b.id === "ryan-vu") return 1;
+    return a.name.localeCompare(b.name);
+  });
 }
 
 function App() {
@@ -167,10 +183,10 @@ function App() {
           return;
         }
         setAuth(authData);
-        setBrokers(brokerData);
+        setBrokers(sortBrokersForUi(brokerData));
         setBookings(bookingData);
         setIntegrations(integrationData);
-        setForm(bookingTemplate(brokerData[0]?.id));
+        setForm(bookingTemplate(sortBrokersForUi(brokerData)[0]?.id));
       })
       .finally(() => setLoading(false));
   }, []);
@@ -251,7 +267,7 @@ function App() {
   async function submitBooking(event) {
     event.preventDefault();
     const start = isoFor(form.startDate, form.startTime);
-    const end = addMinutes(new Date(start), Number(form.duration)).toISOString();
+    const end = addMinutes(new Date(start), PUBLIC_BOOKING_DURATION).toISOString();
     const payload = {
       clientName: form.clientName.trim() || "New client",
       phone: form.phone.trim(),
@@ -761,13 +777,17 @@ function PublicBookingPage() {
     fetch("/api/brokers")
       .then((res) => res.json())
       .then((data) => {
-        setBrokers(data);
-        const requested = data.find((broker) => broker.id === brokerIdFromPath);
+        const sorted = sortBrokersForUi(data);
+        setBrokers(sorted);
+        const requested = sorted.find((broker) => broker.id === brokerIdFromPath);
         setForm((current) => ({
           ...current,
-          brokerId: requested?.id || current.brokerId || data[0]?.id || "ryan-vu",
+          brokerId: requested?.id || sorted[0]?.id || current.brokerId || "ryan-vu",
           status: "Pending",
-          channel: "Phone call"
+          channel: "Phone call",
+          duration: PUBLIC_BOOKING_DURATION,
+          startDate: nextBusinessDateInput(),
+          startTime: "09:30"
         }));
       })
       .finally(() => setLoading(false));
@@ -922,12 +942,10 @@ function PublicBookingPage() {
                 Preferred date
                 <input required type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value })} />
               </label>
-              <label>
-                Duration
-                <select value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })}>
-                  {DURATIONS.map((duration) => <option key={duration} value={duration}>{duration} min</option>)}
-                </select>
-              </label>
+              <div className="fixed-duration">
+                <span>Duration</span>
+                <strong>30 min</strong>
+              </div>
             </div>
             <TimeSlotPicker
               slots={availability.slots}
@@ -962,10 +980,10 @@ function TimeSlotPicker({ slots, value, loading, onChange }) {
     <div className="slot-picker">
       <div className="slot-heading">
         <span>Preferred time</span>
-        <small>{loading ? "Checking..." : "Booked times are crossed out"}</small>
+        <small>{loading ? "Checking..." : "Mon-Fri, 9:30 AM-5:00 PM"}</small>
       </div>
       <div className="slot-grid">
-        {slots.length === 0 && <div className="empty-slot">No slots available</div>}
+        {slots.length === 0 && <div className="empty-slot">No slots available for this date</div>}
         {slots.map((slot) => (
           <button
             key={slot.time}

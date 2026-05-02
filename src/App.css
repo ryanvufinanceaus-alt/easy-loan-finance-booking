@@ -995,6 +995,29 @@ textarea:focus {
   gap: 10px;
 }
 
+.fixed-duration {
+  display: grid;
+  align-content: center;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid rgba(22, 20, 17, 0.13);
+  border-radius: 8px;
+  background: #fffaf2;
+}
+
+.fixed-duration span {
+  color: #6f675a;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.fixed-duration strong {
+  margin-top: 2px;
+  color: #161411;
+  font-size: 0.96rem;
+}
+
 .slot-heading {
   display: flex;
   align-items: center;

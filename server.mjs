@@ -20,6 +20,9 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "ryan@easyloanfinance.com.au";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || ADMIN_PASSWORD || "local-dev-secret-change-me";
 const PUBLIC_API_ROUTES = new Set(["/api/health", "/api/brokers", "/api/bookings"]);
+const PUBLIC_BOOKING_DURATION = 30;
+const BUSINESS_START = "09:30";
+const BUSINESS_END = "17:00";
 
 const seedBrokers = [
   {
@@ -237,6 +240,14 @@ async function deleteBroker(id, reassignTo) {
 async function listBookings() {
   if (!USE_SUPABASE) return readJson("bookings.json");
   return supabaseRequest("bookings", { query: "?select=*&order=start.asc" });
+}
+
+function sortBrokers(brokers) {
+  return [...brokers].sort((a, b) => {
+    if (a.id === "ryan-vu") return -1;
+    if (b.id === "ryan-vu") return 1;
+    return a.name.localeCompare(b.name);
+  });
 }
 
 async function createBooking(payload) {
@@ -492,6 +503,11 @@ function bookingLocalDateTime(value) {
   };
 }
 
+function isBusinessDay(date) {
+  const day = new Date(`${date}T12:00:00`).getDay();
+  return day >= 1 && day <= 5;
+}
+
 function overlaps(startA, endA, startB, endB) {
   return startA < endB && endA > startB;
 }
@@ -505,11 +521,39 @@ function hasBookingConflict(candidate, bookings) {
   });
 }
 
+function validatePublicBookingWindow(candidate) {
+  const localStart = bookingLocalDateTime(candidate.start);
+  const localEnd = bookingLocalDateTime(candidate.end);
+  if (!isBusinessDay(localStart.date) || localStart.date !== localEnd.date) {
+    return "Bookings are available Monday to Friday only.";
+  }
+  const startMinutes = minutesFromTime(BUSINESS_START);
+  const endMinutes = minutesFromTime(BUSINESS_END);
+  if (localStart.minutes < startMinutes || localEnd.minutes > endMinutes) {
+    return "Please choose a time between 9:30 AM and 5:00 PM.";
+  }
+  if (localEnd.minutes - localStart.minutes !== PUBLIC_BOOKING_DURATION) {
+    return "Bookings are fixed at 30 minutes.";
+  }
+  if ((localStart.minutes - startMinutes) % 30 !== 0) {
+    return "Please choose one of the available 30-minute slots.";
+  }
+  return "";
+}
+
 function availabilityFor({ brokerId, date, duration }, brokers, bookings) {
   const broker = brokers.find((item) => item.id === brokerId) || brokers[0];
-  const startMinutes = minutesFromTime(broker?.hours?.start || "09:00");
-  const endMinutes = minutesFromTime(broker?.hours?.end || "17:00");
-  const slotDuration = Math.max(30, Number(duration) || 30);
+  const startMinutes = minutesFromTime(BUSINESS_START);
+  const endMinutes = minutesFromTime(BUSINESS_END);
+  const slotDuration = PUBLIC_BOOKING_DURATION;
+  if (!isBusinessDay(date)) {
+    return {
+      brokerId: broker?.id || brokerId,
+      date,
+      duration: slotDuration,
+      slots: []
+    };
+  }
   const brokerBookings = bookings
     .filter((booking) => booking.brokerId === broker?.id && booking.status !== "Cancelled")
     .map((booking) => {
@@ -847,7 +891,7 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/brokers") {
-    return sendJson(res, 200, brokers);
+    return sendJson(res, 200, sortBrokers(brokers));
   }
 
   if (req.method === "GET" && url.pathname === "/api/availability") {
@@ -915,6 +959,10 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/bookings") {
     const body = await readBody(req);
     const next = { ...body, id: body.id || `bk-${Date.now()}` };
+    if (isPublicRequest(req, url)) {
+      const windowError = validatePublicBookingWindow(next);
+      if (windowError) return sendJson(res, 400, { error: windowError });
+    }
     const existingBookings = await listBookings();
     if (hasBookingConflict(next, existingBookings)) {
       return sendJson(res, 409, { error: "This time is already booked. Please choose another available slot." });
