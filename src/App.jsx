@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Building2,
@@ -1281,6 +1281,7 @@ function PublicBookingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [loading, setLoading] = useState(true);
+  const emailInputRef = useRef(null);
 
   useEffect(() => {
     fetch("/api/brokers")
@@ -1331,6 +1332,17 @@ function PublicBookingPage() {
 
   async function submitPublicBooking(event) {
     event.preventDefault();
+    const cleanEmail = form.email.trim();
+    if (!cleanEmail) {
+      setSubmitError("Please enter your email so we can send the booking confirmation and reminder.");
+      emailInputRef.current?.focus();
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setSubmitError("Please enter a valid email address.");
+      emailInputRef.current?.focus();
+      return;
+    }
     if (!selectedSlot) {
       setSubmitError("Please choose an available time.");
       return;
@@ -1342,7 +1354,7 @@ function PublicBookingPage() {
     const payload = {
       clientName: form.clientName.trim() || "New client",
       phone: form.phone.trim(),
-      email: form.email.trim(),
+      email: cleanEmail,
       brokerId: form.brokerId,
       service: form.service,
       channel: form.channel,
@@ -1433,7 +1445,7 @@ function PublicBookingPage() {
         {loading ? (
           <div className="loading">Loading booking page...</div>
         ) : (
-          <form onSubmit={submitPublicBooking} className="booking-form">
+          <form onSubmit={submitPublicBooking} className="booking-form" noValidate>
             <div className="service-summary">
               <div>
                 <span>Recommended</span>
@@ -1452,7 +1464,7 @@ function PublicBookingPage() {
               </label>
               <label>
                 Email (required)
-                <input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="name@email.com" />
+                <input ref={emailInputRef} required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="name@email.com" />
                 <small className="field-help">Confirmation and reminders will be sent here.</small>
               </label>
             </div>
