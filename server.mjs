@@ -13,6 +13,9 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
 const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 const TIME_ZONE = process.env.BOOKING_TIME_ZONE || "Australia/Adelaide";
+const EAST_COAST_TIME_ZONE = process.env.BOOKING_EAST_COAST_TIME_ZONE || "Australia/Sydney";
+const BOOKING_TIME_LABEL = process.env.BOOKING_TIME_LABEL || "Adelaide time";
+const EAST_COAST_TIME_LABEL = process.env.BOOKING_EAST_COAST_TIME_LABEL || "Sydney/Melbourne time";
 const NOTIFY_EMAIL = process.env.BOOKING_NOTIFY_EMAIL || process.env.NOTIFY_EMAIL;
 const CLIENT_CONFIRMATION_EMAILS = process.env.CLIENT_CONFIRMATION_EMAILS !== "false";
 const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
@@ -740,11 +743,16 @@ function clientSenderFrom() {
 }
 
 function formattedBookingTime(booking) {
-  return new Intl.DateTimeFormat("en-AU", {
+  const adelaide = new Intl.DateTimeFormat("en-AU", {
     timeZone: TIME_ZONE,
     dateStyle: "full",
     timeStyle: "short"
   }).format(new Date(booking.start));
+  const eastCoast = new Intl.DateTimeFormat("en-AU", {
+    timeZone: EAST_COAST_TIME_ZONE,
+    timeStyle: "short"
+  }).format(new Date(booking.start));
+  return `${adelaide} (${BOOKING_TIME_LABEL}; ${eastCoast} ${EAST_COAST_TIME_LABEL})`;
 }
 
 function clientConfirmationEmailContent(booking, broker) {

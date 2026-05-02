@@ -1570,6 +1570,14 @@ textarea:focus {
   font-weight: 800;
 }
 
+.time-zone-note {
+  margin: -4px 0 2px;
+  color: #756c5f;
+  font-size: 0.8rem;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 .slot-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

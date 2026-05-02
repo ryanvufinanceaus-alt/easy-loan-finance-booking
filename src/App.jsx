@@ -35,6 +35,10 @@ const PUBLIC_SERVICE_OPTIONS = [
   "Investment loan planning",
   "Borrowing capacity check"
 ];
+const BOOKING_TIME_ZONE = "Australia/Adelaide";
+const EAST_COAST_TIME_ZONE = "Australia/Sydney";
+const BOOKING_TIME_LABEL = "Adelaide time";
+const EAST_COAST_TIME_LABEL = "Sydney/Melbourne time is 30 minutes later";
 const NOTIFICATION_SNAPSHOT_KEY = "elfBookingNotificationSnapshot";
 const NOTIFICATION_ITEMS_KEY = "elfBookingNotifications";
 const DISMISSED_FOLLOWUPS_KEY = "elfDismissedFollowups";
@@ -74,6 +78,7 @@ function displayMonth(date) {
 
 function displayDay(date) {
   return new Intl.DateTimeFormat("en-AU", {
+    timeZone: BOOKING_TIME_ZONE,
     weekday: "short",
     day: "numeric",
     month: "short"
@@ -82,6 +87,15 @@ function displayDay(date) {
 
 function displayTime(value) {
   return new Intl.DateTimeFormat("en-AU", {
+    timeZone: BOOKING_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
+function displayEastCoastTime(value) {
+  return new Intl.DateTimeFormat("en-AU", {
+    timeZone: EAST_COAST_TIME_ZONE,
     hour: "numeric",
     minute: "2-digit"
   }).format(new Date(value));
@@ -139,8 +153,29 @@ function nextBusinessDateInput(from = new Date()) {
   return toLocalDateInput(date);
 }
 
-function isoFor(dateValue, timeValue) {
-  return new Date(`${dateValue}T${timeValue}:00`).toISOString();
+function timeZoneOffsetMs(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date);
+  const get = (type) => Number(parts.find((part) => part.type === type)?.value || 0);
+  const asUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+  return asUtc - date.getTime();
+}
+
+function isoFor(dateValue, timeValue, timeZone = BOOKING_TIME_ZONE) {
+  const [year, month, day] = dateValue.split("-").map(Number);
+  const [hour, minute] = timeValue.split(":").map(Number);
+  const targetUtc = Date.UTC(year, month - 1, day, hour, minute, 0);
+  let result = new Date(targetUtc - timeZoneOffsetMs(new Date(targetUtc), timeZone));
+  result = new Date(targetUtc - timeZoneOffsetMs(result, timeZone));
+  return result.toISOString();
 }
 
 function googleDate(value) {
@@ -811,7 +846,7 @@ function App() {
                   <input type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value })} />
                 </label>
                 <label>
-                  Time
+                  Time ({BOOKING_TIME_LABEL})
                   <input type="time" value={form.startTime} onChange={(event) => setForm({ ...form, startTime: event.target.value })} />
                 </label>
               </div>
@@ -1247,7 +1282,8 @@ function PublicBookingPage() {
           <h1>Thanks, {submitted.clientName}</h1>
           <p>Your Easy Loan Finance appointment is confirmed. We have sent the details to your email.</p>
           <div className="success-details">
-            <span><Clock size={16} /> {displayDay(new Date(submitted.start))}, {displayTime(submitted.start)}</span>
+            <span><Clock size={16} /> {displayDay(new Date(submitted.start))}, {displayTime(submitted.start)} {BOOKING_TIME_LABEL}</span>
+            <span><Clock size={16} /> {displayEastCoastTime(submitted.start)} Sydney/Melbourne time</span>
             <span><Users size={16} /> {selectedBroker?.name || "Easy Loan Finance"}</span>
             <span><Phone size={16} /> {submitted.channel}</span>
           </div>
@@ -1336,7 +1372,7 @@ function PublicBookingPage() {
             </label>
             <div className="two-col">
               <label>
-                Preferred date
+                Preferred date ({BOOKING_TIME_LABEL})
                 <input required type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value })} />
               </label>
               <div className="fixed-duration">
@@ -1348,6 +1384,8 @@ function PublicBookingPage() {
               slots={availability.slots}
               value={form.startTime}
               loading={availabilityLoading}
+              timeLabel={BOOKING_TIME_LABEL}
+              eastCoastLabel={EAST_COAST_TIME_LABEL}
               onChange={(time) => setForm({ ...form, startTime: time })}
             />
             <label>
@@ -1372,13 +1410,14 @@ function PublicBookingPage() {
   );
 }
 
-function TimeSlotPicker({ slots, value, loading, onChange }) {
+function TimeSlotPicker({ slots, value, loading, onChange, timeLabel, eastCoastLabel }) {
   return (
     <div className="slot-picker">
       <div className="slot-heading">
-        <span>Preferred time</span>
+        <span>Preferred time ({timeLabel})</span>
         <small>{loading ? "Checking..." : "Mon-Fri, 9:30 AM-5:00 PM"}</small>
       </div>
+      <p className="time-zone-note">{eastCoastLabel}</p>
       <div className="slot-grid">
         {slots.length === 0 && <div className="empty-slot">No slots available for this date</div>}
         {slots.map((slot) => (
