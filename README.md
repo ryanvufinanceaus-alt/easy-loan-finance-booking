@@ -49,19 +49,22 @@ http://localhost:3000/book/ryan-vu
 
 ## Email alerts
 
-Add these environment variables so every new client booking sends you an email immediately:
+Current free email setup: Gmail sends as the verified alias `hello@easyloanfinance.com.au`, internal alerts go to `ryan.vufinanceaus@gmail.com`, and `ryan@easyloanfinance.com.au` stays reserved for settled clients.
 
 ```text
-BOOKING_NOTIFY_EMAIL=ryan@easyloanfinance.com.au
-SMTP_HOST=smtp.office365.com
+BOOKING_NOTIFY_EMAIL=ryan.vufinanceaus@gmail.com
+SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_SECURE=false
-SMTP_USER=your-email@easyloanfinance.com.au
-SMTP_PASS=your-email-password-or-app-password
-SMTP_FROM=Easy Loan Finance <your-email@easyloanfinance.com.au>
+SMTP_USER=ryan.vufinanceaus@gmail.com
+SMTP_PASS=your-gmail-app-password
+SMTP_FROM=Easy Loan Finance <hello@easyloanfinance.com.au>
+CLIENT_CONFIRMATION_EMAILS=true
+CLIENT_CONFIRMATION_FROM=Easy Loan Finance <hello@easyloanfinance.com.au>
+CLIENT_REPLY_TO=hello@easyloanfinance.com.au
 ```
 
-For Gmail, use `smtp.gmail.com`, port `587`, and a Gmail app password.
+Use a Gmail app password, not the normal Gmail login password.
 
 ## Google Calendar on phone
 
@@ -109,10 +112,8 @@ Once configured, new booking requests are created directly in that Google Calend
 
 ```text
 SUPABASE_URL=your-project-url
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_SECRET_KEY=sb_secret_...
 ```
-
-If your Supabase dashboard shows a newer `sb_secret_...` key instead of `service_role`, use `SUPABASE_SECRET_KEY=sb_secret_...`.
 
 If those variables are present, the server uses Supabase. If they are blank, it uses local JSON storage in `data/`.
 

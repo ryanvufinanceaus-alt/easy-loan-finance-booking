@@ -41,23 +41,16 @@ Sau buoc nay Supabase da co bang `brokers` va `bookings`.
 2. Bam `API`.
 3. Copy `Project URL`.
 4. Copy `secret` key neu thay key dang `sb_secret_...`.
-5. Neu thay tab `Legacy API Keys`, co the copy `service_role` key cung duoc.
+5. Khong dung `Publishable key` cho server. App nay can `Secret key`.
 
 Can dung 2 gia tri nay khi setup Render:
-
-```text
-SUPABASE_URL=Project URL
-SUPABASE_SERVICE_ROLE_KEY=service_role key
-```
-
-Neu Supabase cua anh hien key moi dang `sb_secret_...`, dung:
 
 ```text
 SUPABASE_URL=Project URL
 SUPABASE_SECRET_KEY=sb_secret_...
 ```
 
-Quan trong: `service_role` key khong gui cho ai, khong paste len frontend, chi de trong Render environment variables.
+Quan trong: `sb_secret_...` key khong gui cho ai, khong paste len frontend, chi de trong Render environment variables.
 
 ## Buoc 3 - Dua code len GitHub
 
@@ -104,16 +97,10 @@ Start Command: npm start
 ```text
 PORT=3000
 BOOKING_TIME_ZONE=Australia/Adelaide
-ADMIN_EMAIL=ryan@easyloanfinance.com.au
+ADMIN_EMAIL=ryan.vufinanceaus@gmail.com
 ADMIN_PASSWORD=dat-mat-khau-manh-o-day
 ADMIN_SESSION_SECRET=dat-chuoi-bi-mat-dai-khac-password
-SUPABASE_URL=link Supabase Project URL
-SUPABASE_SERVICE_ROLE_KEY=Supabase service_role key
-```
-
-Neu khong thay `service_role`, them bien nay thay vao do:
-
-```text
+SUPABASE_URL=https://fmjjtajccryyabnvvzev.supabase.co
 SUPABASE_SECRET_KEY=sb_secret_...
 ```
 
@@ -207,29 +194,30 @@ https://booking.easyloanfinance.com.au/book/ryan-vu
 
 ## Buoc 7 - Bat email bao ve cho anh
 
-Neu anh co email Microsoft 365, them vao Render Environment Variables:
+Setup hien tai cua anh:
+
+- `ryan@easyloanfinance.com.au`: de rieng cho khach da chot vay, khong dung lam email he thong booking.
+- `hello@easyloanfinance.com.au`: dung lam email gui xac nhan booking cho khach.
+- `ryan.vufinanceaus@gmail.com`: nhan email bao ve noi bo va co the dung lam SMTP tam thoi.
+
+Neu dung Gmail tam thoi de gui email tu `hello@easyloanfinance.com.au`, Gmail phai duoc cau hinh `Send mail as` cho `hello@easyloanfinance.com.au` truoc. Neu chua cau hinh alias nay, Gmail co the khong cho gui voi From la `hello@easyloanfinance.com.au`.
+
+Bien Render nen dung cho setup nay:
 
 ```text
-BOOKING_NOTIFY_EMAIL=ryan@easyloanfinance.com.au
-SMTP_HOST=smtp.office365.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=ryan@easyloanfinance.com.au
-SMTP_PASS=mat-khau-email-hoac-app-password
-SMTP_FROM=Easy Loan Finance <ryan@easyloanfinance.com.au>
-```
-
-Neu dung Gmail:
-
-```text
-BOOKING_NOTIFY_EMAIL=ryan@easyloanfinance.com.au
+BOOKING_NOTIFY_EMAIL=ryan.vufinanceaus@gmail.com
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_SECURE=false
-SMTP_USER=yourgmail@gmail.com
+SMTP_USER=ryan.vufinanceaus@gmail.com
 SMTP_PASS=gmail-app-password
-SMTP_FROM=Easy Loan Finance <yourgmail@gmail.com>
+SMTP_FROM=Easy Loan Finance <hello@easyloanfinance.com.au>
+CLIENT_CONFIRMATION_EMAILS=true
+CLIENT_CONFIRMATION_FROM=Easy Loan Finance <hello@easyloanfinance.com.au>
+CLIENT_REPLY_TO=hello@easyloanfinance.com.au
 ```
+
+Neu sau nay muon gui truc tiep bang Zoho `hello@easyloanfinance.com.au`, co the doi SMTP thanh Zoho. Hien tai vi anh da setup Gmail `Send mail as` alias roi, cu dung Gmail truoc.
 
 Sau khi them env var:
 
@@ -318,7 +306,7 @@ Trong Render environment:
 
 ```text
 SUPABASE_URL=co dien
-SUPABASE_SERVICE_ROLE_KEY=co dien
+SUPABASE_SECRET_KEY=co dien
 BOOKING_NOTIFY_EMAIL=co dien
 SMTP_HOST=co dien
 SMTP_USER=co dien

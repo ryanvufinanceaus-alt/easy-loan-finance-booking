@@ -40,7 +40,7 @@ Neu Git chua co ten/email, chay:
 
 ```powershell
 git config user.name "Ryan Vu"
-git config user.email "ryan@easyloanfinance.com.au"
+git config user.email "ryan.vufinanceaus@gmail.com"
 ```
 
 Add file vao commit:
@@ -141,24 +141,29 @@ Bat buoc:
 ```text
 PORT=3000
 BOOKING_TIME_ZONE=Australia/Adelaide
-ADMIN_EMAIL=ryan@easyloanfinance.com.au
+ADMIN_EMAIL=ryan.vufinanceaus@gmail.com
 ADMIN_PASSWORD=mat-khau-dashboard-cua-anh
 ADMIN_SESSION_SECRET=chuoi-bi-mat-dai-khac-password
 SUPABASE_URL=https://fmjjtajccryyabnvvzev.supabase.co
 SUPABASE_SECRET_KEY=sb_secret_cua_anh
 ```
 
-Neu da co email SMTP:
+Neu da co email SMTP. Setup hien tai cua anh la Gmail tam thoi gui behalf of `hello@easyloanfinance.com.au`, va notification noi bo ve Gmail:
 
 ```text
-BOOKING_NOTIFY_EMAIL=ryan@easyloanfinance.com.au
-SMTP_HOST=smtp.office365.com
+BOOKING_NOTIFY_EMAIL=ryan.vufinanceaus@gmail.com
+SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_SECURE=false
-SMTP_USER=ryan@easyloanfinance.com.au
-SMTP_PASS=mat-khau-hoac-app-password
-SMTP_FROM=Easy Loan Finance <ryan@easyloanfinance.com.au>
+SMTP_USER=ryan.vufinanceaus@gmail.com
+SMTP_PASS=gmail-app-password
+SMTP_FROM=Easy Loan Finance <hello@easyloanfinance.com.au>
+CLIENT_CONFIRMATION_EMAILS=true
+CLIENT_CONFIRMATION_FROM=Easy Loan Finance <hello@easyloanfinance.com.au>
+CLIENT_REPLY_TO=hello@easyloanfinance.com.au
 ```
+
+Luu y: Gmail phai co app password va neu muon hien From la `hello@easyloanfinance.com.au`, Gmail can duoc setup alias `Send mail as` cho dia chi hello.
 
 Google API de trong luc dau:
 
@@ -224,7 +229,7 @@ Chua set Git user:
 
 ```powershell
 git config user.name "Ryan Vu"
-git config user.email "ryan@easyloanfinance.com.au"
+git config user.email "ryan.vufinanceaus@gmail.com"
 ```
 
 Sau do commit lai.

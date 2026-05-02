@@ -14,6 +14,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || proce
 const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 const TIME_ZONE = process.env.BOOKING_TIME_ZONE || "Australia/Adelaide";
 const NOTIFY_EMAIL = process.env.BOOKING_NOTIFY_EMAIL || process.env.NOTIFY_EMAIL;
+const CLIENT_CONFIRMATION_EMAILS = process.env.CLIENT_CONFIRMATION_EMAILS !== "false";
 const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "ryan@easyloanfinance.com.au";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
@@ -535,13 +536,13 @@ async function syncGoogleEvent(booking, broker, origin = "") {
 }
 
 function smtpConfigured() {
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS && NOTIFY_EMAIL);
+  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
-async function sendBookingEmail(booking, broker, origin = "") {
-  if (!smtpConfigured()) return false;
+function mailTransporter() {
+  if (!smtpConfigured()) return null;
 
-  const transporter = nodemailer.createTransport({
+  return nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
     secure: process.env.SMTP_SECURE === "true",
@@ -550,7 +551,19 @@ async function sendBookingEmail(booking, broker, origin = "") {
       pass: process.env.SMTP_PASS
     }
   });
+}
 
+function formattedBookingTime(booking) {
+  return new Intl.DateTimeFormat("en-AU", {
+    timeZone: TIME_ZONE,
+    dateStyle: "full",
+    timeStyle: "short"
+  }).format(new Date(booking.start));
+}
+
+async function sendBookingEmail(booking, broker, origin = "") {
+  const transporter = mailTransporter();
+  if (!transporter || !NOTIFY_EMAIL) return false;
   const when = new Intl.DateTimeFormat("en-AU", {
     timeZone: TIME_ZONE,
     dateStyle: "full",
@@ -597,6 +610,51 @@ async function sendBookingEmail(booking, broker, origin = "") {
   return true;
 }
 
+async function sendClientConfirmationEmail(booking, broker) {
+  const transporter = mailTransporter();
+  if (!CLIENT_CONFIRMATION_EMAILS || !transporter || !booking.email) return false;
+
+  const when = formattedBookingTime(booking);
+  const from = process.env.CLIENT_CONFIRMATION_FROM || process.env.SMTP_FROM || process.env.SMTP_USER;
+  const replyTo = process.env.CLIENT_REPLY_TO || NOTIFY_EMAIL || process.env.SMTP_USER;
+
+  await transporter.sendMail({
+    from,
+    to: booking.email,
+    replyTo,
+    subject: `Booking request received - Easy Loan Finance`,
+    text: [
+      `Hi ${booking.clientName},`,
+      "",
+      "Thanks for booking with Easy Loan Finance. We have received your appointment request.",
+      "",
+      `Broker: ${broker?.name || "Easy Loan Finance"}`,
+      `Service: ${booking.service}`,
+      `Requested time: ${when}`,
+      `Meeting style: ${booking.channel}`,
+      "",
+      "A broker will confirm the appointment shortly.",
+      "",
+      "Easy Loan Finance"
+    ].join("\n"),
+    html: `
+      <div style="font-family:Arial,sans-serif;color:#161411;line-height:1.5">
+        <h2 style="margin:0 0 12px">Booking request received</h2>
+        <p>Hi ${escapeHtml(booking.clientName)},</p>
+        <p>Thanks for booking with Easy Loan Finance. We have received your appointment request.</p>
+        <p><strong>Broker:</strong> ${escapeHtml(broker?.name || "Easy Loan Finance")}</p>
+        <p><strong>Service:</strong> ${escapeHtml(booking.service)}</p>
+        <p><strong>Requested time:</strong> ${escapeHtml(when)}</p>
+        <p><strong>Meeting style:</strong> ${escapeHtml(booking.channel)}</p>
+        <p>A broker will confirm the appointment shortly.</p>
+        <p>Easy Loan Finance</p>
+      </div>
+    `
+  });
+
+  return true;
+}
+
 function escapeHtml(value = "") {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -609,11 +667,12 @@ async function afterBookingSaved(booking, brokers, req, { sendEmail = true } = {
   const broker = brokers.find((item) => item.id === booking.brokerId);
   const origin = requestOrigin(req);
 
-  const results = { emailSent: false, googleSynced: false, googleEventId: booking.googleEventId || null };
+  const results = { emailSent: false, clientConfirmationSent: false, googleSynced: false, googleEventId: booking.googleEventId || null };
 
   if (sendEmail) {
     try {
       results.emailSent = await sendBookingEmail(booking, broker, origin);
+      results.clientConfirmationSent = await sendClientConfirmationEmail(booking, broker);
     } catch (error) {
       console.warn(error.message);
     }
@@ -651,6 +710,14 @@ function contentType(file) {
   if (file.endsWith(".svg")) return "image/svg+xml";
   if (file.endsWith(".png")) return "image/png";
   return "application/octet-stream";
+}
+
+function isStaticAsset(pathname) {
+  return pathname.startsWith("/assets/")
+    || pathname === "/favicon.ico"
+    || pathname === "/robots.txt"
+    || pathname === "/manifest.webmanifest"
+    || /\.(css|js|mjs|map|png|jpg|jpeg|svg|gif|webp|ico|woff2?|ttf)$/i.test(pathname);
 }
 
 async function handleApi(req, res, url) {
@@ -827,6 +894,9 @@ createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/")) return await handleApi(req, res, url);
     if (url.pathname === "/calendar/team.ics" || url.pathname.startsWith("/calendar/broker/")) {
       return await handleCalendar(req, res, url);
+    }
+    if (isStaticAsset(url.pathname)) {
+      return await handleStatic(req, res, url);
     }
     if (!ADMIN_PASSWORD || url.pathname.startsWith("/book") || adminSession(req)) {
       return await handleStatic(req, res, url);

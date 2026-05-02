@@ -8,7 +8,7 @@ This setup keeps the booking system as close to $0 as possible until the broker 
 | --- | --- | --- |
 | Website hosting | Render free web service | Cold starts hurt client conversion or traffic grows |
 | Database | Supabase free Postgres | Storage, traffic, backups, or team access needs grow |
-| Email alerts to broker | Existing Microsoft 365/Gmail SMTP | Sending limits or deliverability become a problem |
+| Email alerts to broker | Gmail SMTP with verified `hello@easyloanfinance.com.au` alias | Sending limits or deliverability become a problem |
 | Google Calendar visibility | ICS subscription feed | You need instant two-way sync or high booking volume |
 | Client booking page | `/book` and `/book/ryan-vu` | Add custom domain, SMS reminders, payments |
 | Admin security | `ADMIN_PASSWORD` login | Add full multi-user roles later |
@@ -18,7 +18,7 @@ This setup keeps the booking system as close to $0 as possible until the broker 
 Protect the dashboard first:
 
 ```text
-ADMIN_EMAIL=ryan@easyloanfinance.com.au
+ADMIN_EMAIL=ryan.vufinanceaus@gmail.com
 ADMIN_PASSWORD=use-a-strong-password
 ADMIN_SESSION_SECRET=use-a-long-random-secret
 ```
@@ -47,31 +47,22 @@ Google Calendar can subscribe to those URLs after the app is deployed publicly. 
 
 Email alerts do not need a paid API. Use the SMTP account you already have.
 
-Microsoft 365 example:
+Current Gmail alias setup:
 
 ```text
-BOOKING_NOTIFY_EMAIL=ryan@easyloanfinance.com.au
-SMTP_HOST=smtp.office365.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=your-email@easyloanfinance.com.au
-SMTP_PASS=your-password-or-app-password
-SMTP_FROM=Easy Loan Finance <your-email@easyloanfinance.com.au>
-```
-
-Gmail example:
-
-```text
-BOOKING_NOTIFY_EMAIL=ryan@easyloanfinance.com.au
+BOOKING_NOTIFY_EMAIL=ryan.vufinanceaus@gmail.com
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_SECURE=false
-SMTP_USER=your-gmail@gmail.com
+SMTP_USER=ryan.vufinanceaus@gmail.com
 SMTP_PASS=your-gmail-app-password
-SMTP_FROM=Easy Loan Finance <your-gmail@gmail.com>
+SMTP_FROM=Easy Loan Finance <hello@easyloanfinance.com.au>
+CLIENT_CONFIRMATION_EMAILS=true
+CLIENT_CONFIRMATION_FROM=Easy Loan Finance <hello@easyloanfinance.com.au>
+CLIENT_REPLY_TO=hello@easyloanfinance.com.au
 ```
 
-Keep email alerts to brokers/admins only at first. Avoid sending many client reminder emails until deliverability is tested.
+Use a Gmail app password. `hello@easyloanfinance.com.au` must stay configured as a Gmail `Send mail as` alias.
 
 ## Supabase free mode
 
@@ -81,7 +72,7 @@ Required env vars:
 
 ```text
 SUPABASE_URL=your-project-url
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_SECRET_KEY=sb_secret_...
 ```
 
 Paste `supabase-schema.sql` into Supabase SQL Editor once.
