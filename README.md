@@ -121,7 +121,7 @@ SUPABASE_SECRET_KEY=sb_secret_...
 
 If those variables are present, the server uses Supabase. If they are blank, it uses local JSON storage in `data/`.
 
-If your Supabase project already existed before broker access codes were added, run this once in SQL Editor:
+If your Supabase project already existed before broker access codes were added, run the one-line migration in [add-broker-access-code.sql](./add-broker-access-code.sql), or paste this once in SQL Editor:
 
 ```sql
 alter table public.brokers add column if not exists "accessCode" text;

@@ -52,6 +52,14 @@ SUPABASE_SECRET_KEY=sb_secret_...
 
 Quan trong: `sb_secret_...` key khong gui cho ai, khong paste len frontend, chi de trong Render environment variables.
 
+Neu database Supabase cua anh da tao tu ban cu, muon dung broker access code thi chi can chay them 1 dong SQL nay, khong phai paste lai toan bo schema:
+
+```sql
+alter table public.brokers add column if not exists "accessCode" text;
+```
+
+Y nghia: no chi them cot `accessCode` vao bang broker neu chua co. Neu cot da co roi thi no khong lam gi, nen an toan.
+
 ## Buoc 3 - Dua code len GitHub
 
 Neu can huong dan chi tiet tung nut bam va tung lenh, doc file:

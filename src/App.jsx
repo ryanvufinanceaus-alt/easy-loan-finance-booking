@@ -1007,16 +1007,16 @@ function PublicBookingPage() {
   return (
     <main className="public-page">
       <section className="public-hero">
-        <div className="brand-block">
+        <div className="public-brand-lockup">
           <BrandMark />
           <div>
-            <p className="eyebrow">Easy Loan Finance</p>
-            <h1>Home loan consultation</h1>
+            <strong>Easy Loan Finance</strong>
+            <span>Adelaide mortgage and lending brokers</span>
           </div>
         </div>
+        <h1>Home loan consultation</h1>
         <div className="consultation-panel" aria-label="Consultation summary">
           <div className="consultation-panel-head">
-            <BrandMark />
             <div>
               <span>Free consultation</span>
               <strong>Home loan consultation - 30 mins</strong>

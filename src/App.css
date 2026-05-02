@@ -1009,14 +1009,42 @@ textarea:focus {
   max-width: 620px;
 }
 
-.public-hero .brand-block {
-  margin-bottom: 26px;
-}
-
 .public-hero h1 {
   max-width: 600px;
+  margin-top: 24px;
   font-size: clamp(2.6rem, 5.3vw, 5.4rem);
   line-height: 0.95;
+}
+
+.public-brand-lockup {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  max-width: 520px;
+}
+
+.public-brand-lockup .brand-mark {
+  width: 62px;
+  height: 62px;
+}
+
+.public-brand-lockup strong,
+.public-brand-lockup span {
+  display: block;
+}
+
+.public-brand-lockup strong {
+  color: #fff8ed;
+  font-size: clamp(1.72rem, 3.6vw, 2.75rem);
+  line-height: 1;
+}
+
+.public-brand-lockup span {
+  margin-top: 6px;
+  color: #f5dfad;
+  font-size: 0.9rem;
+  font-weight: 850;
 }
 
 .public-copy {
@@ -1039,10 +1067,7 @@ textarea:focus {
 }
 
 .consultation-panel-head {
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr);
-  gap: 12px;
-  align-items: center;
+  display: block;
 }
 
 .consultation-panel-head span {
@@ -1368,8 +1393,13 @@ textarea:focus {
     gap: 18px;
   }
 
-  .public-hero .brand-block {
-    margin-bottom: 18px;
+  .public-brand-lockup {
+    grid-template-columns: 54px minmax(0, 1fr);
+  }
+
+  .public-brand-lockup .brand-mark {
+    width: 54px;
+    height: 54px;
   }
 
   .consultation-panel {
