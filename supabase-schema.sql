@@ -33,8 +33,15 @@ create index if not exists bookings_start_idx on public.bookings (start);
 
 alter table public.brokers add column if not exists "accessCode" text;
 
+create table if not exists public.app_settings (
+  key text primary key,
+  value jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
 alter table public.brokers enable row level security;
 alter table public.bookings enable row level security;
+alter table public.app_settings enable row level security;
 
 insert into public.brokers (id, name, title, location, email, phone, color, services, hours)
 values

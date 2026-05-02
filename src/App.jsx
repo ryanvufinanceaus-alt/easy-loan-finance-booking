@@ -13,6 +13,7 @@ import {
   Trash2,
   ExternalLink,
   Link2,
+  Mail,
   Phone,
   Plus,
   Search,
@@ -263,6 +264,8 @@ function App() {
   const [auth, setAuth] = useState({ required: false, authenticated: false, email: null });
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [emailTestStatus, setEmailTestStatus] = useState("");
+  const [emailTemplates, setEmailTemplates] = useState(null);
+  const [emailTemplateStatus, setEmailTemplateStatus] = useState("");
   const [notificationItems, setNotificationItems] = useState(() => {
     try {
       return JSON.parse(window.localStorage.getItem(NOTIFICATION_ITEMS_KEY) || "[]");
@@ -351,9 +354,10 @@ function App() {
       fetch("/api/auth/status").then((res) => res.json()),
       fetch("/api/brokers").then((res) => res.json()),
       fetch("/api/bookings").then((res) => res.json()),
-      fetch("/api/integrations").then((res) => res.json())
+      fetch("/api/integrations").then((res) => res.json()),
+      fetch("/api/email-templates").then((res) => res.ok ? res.json() : null)
     ])
-      .then(([authData, brokerData, bookingData, integrationData]) => {
+      .then(([authData, brokerData, bookingData, integrationData, templateData]) => {
         if (authData.required && !authData.authenticated) {
           window.location.href = "/login";
           return;
@@ -364,6 +368,7 @@ function App() {
         setBookings(bookingData);
         updateBookingNotifications(bookingData, sortedBrokers, { initial: true });
         setIntegrations(integrationData);
+        if (templateData?.templates) setEmailTemplates(templateData);
         setLastSyncedAt(new Date());
         if (authData.role === "broker" && authData.brokerId) {
           setBrokerFilter(authData.brokerId);
@@ -571,6 +576,22 @@ function App() {
     const remaining = notificationItems.filter((entry) => entry.key !== item.key);
     persistNotificationItems(remaining);
     setNotificationsOpen(false);
+  }
+
+  async function saveEmailTemplates(nextTemplates) {
+    setEmailTemplateStatus("Saving templates...");
+    const res = await fetch("/api/email-templates", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(nextTemplates)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setEmailTemplateStatus(data.error || "Could not save email templates");
+      return;
+    }
+    setEmailTemplates(data);
+    setEmailTemplateStatus(data.warning || "Email templates saved");
   }
 
   async function deleteSelectedBooking(booking) {
@@ -917,6 +938,20 @@ function App() {
               />
             </details>
 
+            {emailTemplates && (
+              <details className="control-details">
+                <summary>
+                  <span><Mail size={18} /> Email Templates</span>
+                  <small>Edit confirmation and reminder emails</small>
+                </summary>
+                <EmailTemplateManager
+                  data={emailTemplates}
+                  status={emailTemplateStatus}
+                  onSave={saveEmailTemplates}
+                />
+              </details>
+            )}
+
           </aside> : (
             <aside className="booking-panel read-only-panel">
               <div className="section-title">
@@ -948,6 +983,63 @@ function App() {
         />
       )}
     </main>
+  );
+}
+
+function EmailTemplateManager({ data, status, onSave }) {
+  const [draft, setDraft] = useState(data.templates);
+
+  useEffect(() => {
+    setDraft(data.templates);
+  }, [data.templates]);
+
+  const placeholders = data.placeholders || [];
+
+  function update(field, value) {
+    setDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  return (
+    <section className="email-template-panel">
+      <div className="template-logo-row">
+        {data.logoUrl && <img src={data.logoUrl} alt="Easy Loan Finance" />}
+        <div>
+          <strong>Branded email layout</strong>
+          <small>Logo is added automatically. Edit the subject and message below.</small>
+        </div>
+      </div>
+
+      <div className="template-editor">
+        <label>
+          Confirmation subject
+          <input value={draft.confirmationSubject} onChange={(event) => update("confirmationSubject", event.target.value)} />
+        </label>
+        <label>
+          Confirmation message
+          <textarea value={draft.confirmationBody} onChange={(event) => update("confirmationBody", event.target.value)} />
+        </label>
+      </div>
+
+      <div className="template-editor">
+        <label>
+          Reminder subject
+          <input value={draft.reminderSubject} onChange={(event) => update("reminderSubject", event.target.value)} />
+        </label>
+        <label>
+          Reminder message
+          <textarea value={draft.reminderBody} onChange={(event) => update("reminderBody", event.target.value)} />
+        </label>
+      </div>
+
+      <p className="template-help">
+        Placeholders: {placeholders.map((item) => `{{${item}}}`).join(", ")}
+      </p>
+      <button className="primary-button full-width" type="button" onClick={() => onSave(draft)}>
+        <Check size={17} />
+        Save Email Templates
+      </button>
+      {status && <p className="integration-note">{status}</p>}
+    </section>
   );
 }
 

@@ -667,32 +667,35 @@ h1 {
 
 .booking-chip {
   display: grid;
-  grid-template-columns: 22px auto minmax(0, 1fr) auto;
+  grid-template-columns: 28px auto minmax(0, 1fr);
   align-items: center;
   gap: 6px;
   width: 100%;
-  min-height: 31px;
+  min-height: 40px;
   overflow: hidden;
-  padding: 6px 8px;
-  border: 1px solid rgba(22, 20, 17, 0.10);
-  border-left: 4px solid #b89044;
+  padding: 7px 8px;
+  border: 2px solid var(--broker-color, #b89044);
+  border-left-width: 9px;
   border-radius: 7px;
-  background: color-mix(in srgb, var(--broker-color, #b89044) 12%, #fffdf8);
+  background: color-mix(in srgb, var(--broker-color, #b89044) 24%, #fffdf8);
   color: #161411;
   text-align: left;
   text-overflow: ellipsis;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--broker-color, #b89044) 18%, transparent);
 }
 
 .broker-initials {
   display: inline-grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.72);
   color: #fff;
-  font-size: 0.62rem;
+  font-size: 0.7rem;
   font-weight: 950;
   line-height: 1;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--broker-color, #b89044) 28%, transparent);
 }
 
 .booking-time {
@@ -710,6 +713,8 @@ h1 {
 }
 
 .booking-chip em {
+  grid-column: 2 / -1;
+  width: fit-content;
   padding: 2px 6px;
   border-radius: 999px;
   background: rgba(22, 20, 17, 0.08);
@@ -722,26 +727,26 @@ h1 {
 
 .booking-chip.status-pending,
 .agenda-booking.status-pending {
-  background: #fff7df;
+  background: color-mix(in srgb, var(--broker-color, #b89044) 24%, #fff7df);
 }
 
 .booking-chip.status-confirmed,
 .agenda-booking.status-confirmed {
-  background: #eaf6f1;
+  background: color-mix(in srgb, var(--broker-color, #b89044) 24%, #eaf6f1);
 }
 
 .booking-chip.status-done,
 .booking-chip.status-completed,
 .agenda-booking.status-done,
 .agenda-booking.status-completed {
-  background: #edf1ef;
+  background: color-mix(in srgb, var(--broker-color, #b89044) 20%, #edf1ef);
 }
 
 .booking-chip.status-undone,
 .booking-chip.status-not-done,
 .agenda-booking.status-undone,
 .agenda-booking.status-not-done {
-  background: #f8e9e7;
+  background: color-mix(in srgb, var(--broker-color, #b89044) 18%, #f8e9e7);
 }
 
 .booking-chip.status-cancelled,
@@ -805,9 +810,11 @@ h1 {
   gap: 5px;
   width: 100%;
   padding: 12px;
-  border-left: 4px solid var(--broker-color, #b89044);
-  background: color-mix(in srgb, var(--broker-color, #b89044) 10%, #fffdf8);
+  border: 2px solid var(--broker-color, #b89044);
+  border-left-width: 10px;
+  background: color-mix(in srgb, var(--broker-color, #b89044) 22%, #fffdf8);
   text-align: left;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--broker-color, #b89044) 18%, transparent);
 }
 
 .agenda-booking-head {
@@ -1016,6 +1023,66 @@ h1 {
 .broker-admin-form {
   display: grid;
   gap: 10px;
+}
+
+.email-template-panel {
+  display: grid;
+  gap: 14px;
+  padding: 0 18px 18px;
+}
+
+.template-logo-row {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(22, 20, 17, 0.10);
+  border-radius: 8px;
+  background: #fffaf2;
+}
+
+.template-logo-row img {
+  width: 54px;
+  height: 54px;
+  border-radius: 8px;
+  background: #004c2f;
+  object-fit: cover;
+}
+
+.template-logo-row strong,
+.template-logo-row small {
+  display: block;
+}
+
+.template-logo-row small {
+  margin-top: 3px;
+  color: #756c5f;
+  line-height: 1.35;
+}
+
+.template-editor {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(22, 20, 17, 0.10);
+  border-radius: 8px;
+  background: #fffdf8;
+}
+
+.template-editor textarea {
+  min-height: 190px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.template-help {
+  margin: 0;
+  color: #756c5f;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.45;
 }
 
 .broker-admin-list {

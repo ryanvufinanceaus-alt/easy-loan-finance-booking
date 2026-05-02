@@ -34,6 +34,40 @@ const BUSINESS_START = "09:30";
 const BUSINESS_END = "17:00";
 const REMINDER_MINUTES_BEFORE = Number(process.env.BOOKING_REMINDER_MINUTES_BEFORE || 10);
 const reminderSendKeys = new Set();
+const EMAIL_TEMPLATES_SETTING_KEY = "email_templates";
+
+const defaultEmailTemplates = {
+  confirmationSubject: "Your Easy Loan Finance appointment is confirmed",
+  confirmationBody: [
+    "Hi {{clientName}},",
+    "",
+    "Your Easy Loan Finance appointment is confirmed.",
+    "",
+    "Broker: {{brokerName}}",
+    "Service: {{service}}",
+    "Time: {{time}}",
+    "Meeting style: {{channel}}",
+    "",
+    "We will send a reminder 10 minutes before your appointment.",
+    "",
+    "If anything changes, please reply to this email.",
+    "",
+    "Easy Loan Finance",
+    "Quick Loan, Easy Life"
+  ].join("\n"),
+  reminderSubject: "Reminder: your Easy Loan Finance appointment starts in 10 minutes",
+  reminderBody: [
+    "Hi {{clientName}},",
+    "",
+    "A quick reminder that your Easy Loan Finance appointment starts in 10 minutes.",
+    "",
+    "Broker: {{brokerName}}",
+    "Time: {{time}}",
+    "Meeting style: {{channel}}",
+    "",
+    "Easy Loan Finance"
+  ].join("\n")
+};
 
 const seedBrokers = [
   {
@@ -145,6 +179,20 @@ async function writeJson(name, value) {
   await fs.writeFile(path.join(DATA_DIR, name), JSON.stringify(value, null, 2));
 }
 
+async function readLocalSettings() {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  try {
+    return JSON.parse(await fs.readFile(path.join(DATA_DIR, "settings.json"), "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+async function writeLocalSettings(value) {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(path.join(DATA_DIR, "settings.json"), JSON.stringify(value, null, 2));
+}
+
 async function supabaseRequest(table, { method = "GET", query = "", body, prefer } = {}) {
   const url = `${SUPABASE_URL}/rest/v1/${table}${query}`;
   const response = await fetch(url, {
@@ -251,6 +299,66 @@ async function deleteBroker(id, reassignTo) {
 async function listBookings() {
   if (!USE_SUPABASE) return readJson("bookings.json");
   return supabaseRequest("bookings", { query: "?select=*&order=start.asc" });
+}
+
+async function readAppSetting(key, fallback) {
+  if (!USE_SUPABASE) {
+    const settings = await readLocalSettings();
+    return settings[key] || fallback;
+  }
+
+  try {
+    const rows = await supabaseRequest("app_settings", {
+      query: `?key=eq.${encodeURIComponent(key)}&select=value`
+    });
+    return rows?.[0]?.value || fallback;
+  } catch (error) {
+    console.warn(`App setting read fallback: ${error.message}`);
+    const settings = await readLocalSettings();
+    return settings[key] || fallback;
+  }
+}
+
+async function writeAppSetting(key, value) {
+  if (!USE_SUPABASE) {
+    const settings = await readLocalSettings();
+    settings[key] = value;
+    await writeLocalSettings(settings);
+    return { value, storage: "local" };
+  }
+
+  try {
+    const [saved] = await supabaseRequest("app_settings", {
+      method: "POST",
+      query: "?on_conflict=key",
+      body: { key, value },
+      prefer: "resolution=merge-duplicates,return=representation"
+    });
+    return { value: saved?.value || value, storage: "supabase" };
+  } catch (error) {
+    console.warn(`App setting write fallback: ${error.message}`);
+    const settings = await readLocalSettings();
+    settings[key] = value;
+    await writeLocalSettings(settings);
+    return { value, storage: "temporary", warning: "Supabase app_settings table is missing. Run the SQL migration so templates persist across redeploys." };
+  }
+}
+
+async function getEmailTemplates() {
+  const saved = await readAppSetting(EMAIL_TEMPLATES_SETTING_KEY, {});
+  return { ...defaultEmailTemplates, ...saved };
+}
+
+async function saveEmailTemplates(patch) {
+  const current = await getEmailTemplates();
+  const next = {
+    confirmationSubject: String(patch.confirmationSubject ?? current.confirmationSubject).trim() || defaultEmailTemplates.confirmationSubject,
+    confirmationBody: String(patch.confirmationBody ?? current.confirmationBody).trim() || defaultEmailTemplates.confirmationBody,
+    reminderSubject: String(patch.reminderSubject ?? current.reminderSubject).trim() || defaultEmailTemplates.reminderSubject,
+    reminderBody: String(patch.reminderBody ?? current.reminderBody).trim() || defaultEmailTemplates.reminderBody
+  };
+  const result = await writeAppSetting(EMAIL_TEMPLATES_SETTING_KEY, next);
+  return { templates: result.value, storage: result.storage, warning: result.warning };
 }
 
 function sortBrokers(brokers) {
@@ -755,7 +863,66 @@ function formattedBookingTime(booking) {
   return `${adelaide} (${BOOKING_TIME_LABEL}; ${eastCoast} ${EAST_COAST_TIME_LABEL})`;
 }
 
-function clientConfirmationEmailContent(booking, broker) {
+function templateVariables(booking, broker) {
+  return {
+    clientName: booking.clientName || "there",
+    brokerName: broker?.name || "Easy Loan Finance",
+    brokerPhone: broker?.phone || "",
+    service: booking.service || "Home loan consultation",
+    time: formattedBookingTime(booking),
+    channel: booking.channel || "Phone call",
+    companyName: "Easy Loan Finance",
+    slogan: "Quick Loan, Easy Life"
+  };
+}
+
+function renderTemplate(template = "", variables = {}) {
+  return String(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => (
+    variables[key] ?? ""
+  ));
+}
+
+function emailLogoUrl(origin = "") {
+  const base = origin || process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || "";
+  return base ? `${base.replace(/\/$/, "")}/elf-logo.png` : "";
+}
+
+function brandedEmailHtml({ title, body, logoUrl }) {
+  const paragraphs = String(body || "")
+    .split(/\n{2,}/)
+    .map((block) => `<p style="margin:0 0 14px">${escapeHtml(block).replace(/\n/g, "<br/>")}</p>`)
+    .join("");
+  const logo = logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="Easy Loan Finance" width="72" height="72" style="display:block;width:72px;height:72px;border-radius:10px;margin:0 0 14px;background:#004c2f"/>` : "";
+  return `
+    <div style="margin:0;padding:0;background:#f6f3ec;font-family:Arial,sans-serif;color:#161411">
+      <div style="max-width:640px;margin:0 auto;padding:28px 18px">
+        <div style="background:#0f241d;color:#fff8ed;border-radius:10px 10px 0 0;padding:22px 24px">
+          ${logo}
+          <div style="font-size:13px;font-weight:700;color:#f5dfad;text-transform:uppercase">Easy Loan Finance</div>
+          <h1 style="margin:8px 0 0;font-size:26px;line-height:1.15">${escapeHtml(title)}</h1>
+        </div>
+        <div style="background:#fffdf8;border:1px solid #eadfca;border-top:0;border-radius:0 0 10px 10px;padding:24px;line-height:1.55">
+          ${paragraphs}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function clientConfirmationEmailContent(booking, broker, origin = "") {
+  const templates = await getEmailTemplates();
+  const variables = templateVariables(booking, broker);
+  const subject = renderTemplate(templates.confirmationSubject, variables);
+  const text = renderTemplate(templates.confirmationBody, variables);
+  const html = brandedEmailHtml({
+    title: subject,
+    body: text,
+    logoUrl: emailLogoUrl(origin)
+  });
+  return { subject, text, html };
+}
+
+function legacyClientConfirmationEmailContent(booking, broker) {
   const when = formattedBookingTime(booking);
   const brokerName = broker?.name || "Easy Loan Finance";
   const phoneLine = broker?.phone ? `Broker phone: ${broker.phone}` : "";
@@ -855,19 +1022,19 @@ async function sendBookingEmail(booking, broker, origin = "") {
   return true;
 }
 
-async function sendClientConfirmationEmail(booking, broker) {
+async function sendClientConfirmationEmail(booking, broker, origin = "") {
   const transporter = mailTransporter();
   if (!CLIENT_CONFIRMATION_EMAILS || !transporter || !booking.email) return false;
 
   const from = clientSenderFrom();
   const replyTo = process.env.CLIENT_REPLY_TO || NOTIFY_EMAIL || process.env.SMTP_USER;
-  const content = clientConfirmationEmailContent(booking, broker);
+  const content = await clientConfirmationEmailContent(booking, broker, origin);
 
   await transporter.sendMail({
     from,
     to: booking.email,
     replyTo,
-    subject: `Your Easy Loan Finance appointment is confirmed`,
+    subject: content.subject,
     text: content.text,
     html: content.html
   });
@@ -880,7 +1047,11 @@ async function sendBookingReminderEmails(booking, broker, origin = "") {
   if (!transporter) return { client: false, internal: false };
 
   const when = formattedBookingTime(booking);
-  const from = process.env.CLIENT_CONFIRMATION_FROM || process.env.SMTP_FROM || process.env.SMTP_USER;
+  const templates = await getEmailTemplates();
+  const variables = templateVariables(booking, broker);
+  const reminderSubject = renderTemplate(templates.reminderSubject, variables);
+  const reminderBody = renderTemplate(templates.reminderBody, variables);
+  const from = clientSenderFrom();
   const replyTo = process.env.CLIENT_REPLY_TO || NOTIFY_EMAIL || process.env.SMTP_USER;
   const results = { client: false, internal: false };
 
@@ -889,18 +1060,13 @@ async function sendBookingReminderEmails(booking, broker, origin = "") {
       from,
       to: booking.email,
       replyTo,
-      subject: `Reminder: your Easy Loan Finance appointment starts in 10 minutes`,
-      text: [
-        `Hi ${booking.clientName},`,
-        "",
-        "A quick reminder that your Easy Loan Finance appointment starts in 10 minutes.",
-        "",
-        `Broker: ${broker?.name || "Easy Loan Finance"}`,
-        `Time: ${when}`,
-        `Meeting style: ${booking.channel}`,
-        "",
-        "Easy Loan Finance"
-      ].join("\n")
+      subject: reminderSubject,
+      text: reminderBody,
+      html: brandedEmailHtml({
+        title: reminderSubject,
+        body: reminderBody,
+        logoUrl: emailLogoUrl(origin)
+      })
     });
     results.client = true;
   }
@@ -952,7 +1118,7 @@ async function afterBookingSaved(booking, brokers, req, { sendEmail = true } = {
       console.warn(`Internal notification failed: ${error.message}`);
     }
     try {
-      results.clientConfirmationSent = await sendClientConfirmationEmail(booking, broker);
+      results.clientConfirmationSent = await sendClientConfirmationEmail(booking, broker, origin);
     } catch (error) {
       console.warn(`Client confirmation failed: ${error.message}`);
     }
@@ -1109,6 +1275,28 @@ async function handleApi(req, res, url) {
     });
   }
 
+  if (req.method === "GET" && url.pathname === "/api/email-templates") {
+    if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
+    const templates = await getEmailTemplates();
+    return sendJson(res, 200, {
+      templates,
+      logoUrl: emailLogoUrl(requestOrigin(req)),
+      placeholders: ["clientName", "brokerName", "brokerPhone", "service", "time", "channel", "companyName", "slogan"]
+    });
+  }
+
+  if (req.method === "PATCH" && url.pathname === "/api/email-templates") {
+    if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
+    const body = await readBody(req);
+    const result = await saveEmailTemplates(body);
+    return sendJson(res, 200, {
+      ok: true,
+      ...result,
+      logoUrl: emailLogoUrl(requestOrigin(req)),
+      placeholders: ["clientName", "brokerName", "brokerPhone", "service", "time", "channel", "companyName", "slogan"]
+    });
+  }
+
   if (req.method === "POST" && url.pathname === "/api/email-test") {
     if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
     const body = await readBody(req);
@@ -1133,7 +1321,7 @@ async function handleApi(req, res, url) {
       return sendJson(res, 500, { error: `Internal email failed: ${error.message}`, results });
     }
     try {
-      results.client = await sendClientConfirmationEmail(testBooking, broker);
+      results.client = await sendClientConfirmationEmail(testBooking, broker, requestOrigin(req));
     } catch (error) {
       return sendJson(res, 500, { error: `Client confirmation failed: ${error.message}`, results });
     }
