@@ -844,23 +844,53 @@ function internalNotificationRecipients(broker) {
   ].map(normalizeEmail).filter(Boolean)));
 }
 
-function mailTransporter() {
+function mailTransporter(overrides = {}) {
   if (!smtpConfigured()) return null;
+  const dnsFamily = Number(process.env.SMTP_DNS_FAMILY || 4);
 
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
     secure: process.env.SMTP_SECURE === "true",
-    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 15000),
-    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 15000),
-    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 20000),
-    family: Number(process.env.SMTP_DNS_FAMILY || 4),
-    lookup: (hostname, options, callback) => dns.lookup(hostname, { ...options, family: Number(process.env.SMTP_DNS_FAMILY || 4) }, callback),
+    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 8000),
+    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 8000),
+    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 12000),
+    family: dnsFamily,
+    lookup: (hostname, options, callback) => dns.lookup(hostname, { ...options, family: dnsFamily }, callback),
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS
-    }
+    },
+    ...overrides
   });
+}
+
+function gmailFallbackTransporter() {
+  const host = String(process.env.SMTP_HOST || "").toLowerCase();
+  const port = Number(process.env.SMTP_PORT || 587);
+  if (!host.includes("smtp.gmail.com") || port === 465 || process.env.SMTP_DISABLE_GMAIL_465_FALLBACK === "true") {
+    return null;
+  }
+  return mailTransporter({ port: 465, secure: true });
+}
+
+async function sendSmtpMail(mailOptions) {
+  const transporter = mailTransporter();
+  if (!transporter) return false;
+  try {
+    await transporter.sendMail(mailOptions);
+    return true;
+  } catch (error) {
+    const fallback = gmailFallbackTransporter();
+    if (!fallback) throw error;
+    try {
+      await fallback.sendMail(mailOptions);
+      return true;
+    } catch (fallbackError) {
+      fallbackError.message = `${error.message}; Gmail 465 fallback failed: ${fallbackError.message}`;
+      throw fallbackError;
+    }
+  }
 }
 
 function senderFrom() {
@@ -994,16 +1024,15 @@ function legacyClientConfirmationEmailContent(booking, broker) {
 }
 
 async function sendBookingEmail(booking, broker, origin = "") {
-  const transporter = mailTransporter();
   const recipients = internalNotificationRecipients(broker);
-  if (!transporter || recipients.length === 0) return false;
+  if (recipients.length === 0) return false;
   const when = new Intl.DateTimeFormat("en-AU", {
     timeZone: TIME_ZONE,
     dateStyle: "full",
     timeStyle: "short"
   }).format(new Date(booking.start));
 
-  await transporter.sendMail({
+  return sendSmtpMail({
     from: senderFrom(),
     to: recipients.join(", "),
     replyTo: booking.email || undefined,
@@ -1039,19 +1068,16 @@ async function sendBookingEmail(booking, broker, origin = "") {
       </div>
     `
   });
-
-  return true;
 }
 
 async function sendClientConfirmationEmail(booking, broker, origin = "") {
-  const transporter = mailTransporter();
-  if (!CLIENT_CONFIRMATION_EMAILS || !transporter || !booking.email) return false;
+  if (!CLIENT_CONFIRMATION_EMAILS || !booking.email) return false;
 
   const from = clientSenderFrom();
   const replyTo = process.env.CLIENT_REPLY_TO || NOTIFY_EMAIL || process.env.SMTP_USER;
   const content = await clientConfirmationEmailContent(booking, broker, origin);
 
-  await transporter.sendMail({
+  return sendSmtpMail({
     from,
     to: booking.email,
     replyTo,
@@ -1059,13 +1085,10 @@ async function sendClientConfirmationEmail(booking, broker, origin = "") {
     text: content.text,
     html: content.html
   });
-
-  return true;
 }
 
 async function sendBookingReminderEmails(booking, broker, origin = "") {
-  const transporter = mailTransporter();
-  if (!transporter) return { client: false, internal: false };
+  if (!smtpConfigured()) return { client: false, internal: false };
 
   const when = formattedBookingTime(booking);
   const templates = await getEmailTemplates();
@@ -1077,7 +1100,7 @@ async function sendBookingReminderEmails(booking, broker, origin = "") {
   const results = { client: false, internal: false };
 
   if (booking.email) {
-    await transporter.sendMail({
+    results.client = await sendSmtpMail({
       from,
       to: booking.email,
       replyTo,
@@ -1089,12 +1112,11 @@ async function sendBookingReminderEmails(booking, broker, origin = "") {
         logoUrl: emailLogoUrl(origin)
       })
     });
-    results.client = true;
   }
 
   const internalRecipients = internalNotificationRecipients(broker);
   if (internalRecipients.length > 0) {
-    await transporter.sendMail({
+    results.internal = await sendSmtpMail({
       from: senderFrom(),
       to: internalRecipients.join(", "),
       replyTo: booking.email || undefined,
@@ -1112,7 +1134,6 @@ async function sendBookingReminderEmails(booking, broker, origin = "") {
         origin ? `Dashboard: ${origin}` : ""
       ].filter(Boolean).join("\n")
     });
-    results.internal = true;
   }
 
   return results;
@@ -1465,9 +1486,9 @@ async function handleApi(req, res, url) {
       return sendJson(res, 409, { error: "This time is already booked. Please choose another available slot." });
     }
     const saved = await createBooking(next);
-    const integrations = await afterBookingSaved(saved, brokers, req, { syncCalendar: false });
+    afterBookingSaved(saved, brokers, req, { syncCalendar: false }).catch((error) => console.warn(error.message));
     afterBookingSaved(saved, brokers, req, { sendEmail: false }).catch((error) => console.warn(error.message));
-    return sendJson(res, 201, { ...saved, integrations });
+    return sendJson(res, 201, { ...saved, integrations: { queued: true } });
   }
 
   const bookingMatch = url.pathname.match(/^\/api\/bookings\/([^/]+)$/);

@@ -1382,8 +1382,6 @@ function PublicBookingPage() {
   }
 
   if (submitted) {
-    const clientEmailSent = Boolean(submitted.integrations?.clientConfirmationSent);
-
     return (
       <main className="public-page">
         <section className="public-success">
@@ -1393,11 +1391,7 @@ function PublicBookingPage() {
             Booking confirmed
           </div>
           <h1>Thanks, {submitted.clientName}</h1>
-          <p>
-            Your Easy Loan Finance appointment is confirmed. {clientEmailSent
-              ? "Please check your inbox, junk, or spam folder."
-              : "Please check your junk or spam folder."}
-          </p>
+          <p>Your Easy Loan Finance appointment is confirmed. Please check your inbox first, then junk/spam also.</p>
           <div className="success-details">
             <span><Clock size={16} /> {displayDay(new Date(submitted.start))}, {displayTime(submitted.start)} {BOOKING_TIME_LABEL}</span>
             <span><Clock size={16} /> {displayEastCoastTime(submitted.start)} Sydney/Melbourne time</span>
