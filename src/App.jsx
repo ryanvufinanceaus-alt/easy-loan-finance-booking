@@ -27,6 +27,13 @@ const STATUS = ["Confirmed", "Pending", "Completed", "Cancelled"];
 const CHANNELS = ["Phone call", "Video call", "Office"];
 const DURATIONS = [30, 45, 60, 90];
 const PUBLIC_BOOKING_DURATION = 30;
+const PUBLIC_SERVICE_OPTIONS = [
+  "Home loan consultation",
+  "First home buyer strategy",
+  "Refinance review",
+  "Investment loan planning",
+  "Borrowing capacity check"
+];
 
 function addMinutes(date, minutes) {
   return new Date(date.getTime() + minutes * 60000);
@@ -116,7 +123,7 @@ function bookingTemplate(brokerId = "ryan-vu") {
     phone: "",
     email: "",
     brokerId,
-    service: "First home buyer",
+    service: "Home loan consultation",
     channel: "Phone call",
     status: "Confirmed",
     startDate: nextBusinessDateInput(start),
@@ -785,6 +792,7 @@ function PublicBookingPage() {
           brokerId: requested?.id || sorted[0]?.id || current.brokerId || "ryan-vu",
           status: "Pending",
           channel: "Phone call",
+          service: "Home loan consultation",
           duration: PUBLIC_BOOKING_DURATION,
           startDate: nextBusinessDateInput(),
           startTime: "09:30"
@@ -887,28 +895,41 @@ function PublicBookingPage() {
           <div className="brand-mark">ELF</div>
           <div>
             <p className="eyebrow">Easy Loan Finance</p>
-            <h1>Book a broker appointment</h1>
+            <h1>Home loan consultation</h1>
+          </div>
+        </div>
+        <div className="premium-visual" aria-hidden="true">
+          <div className="visual-glass">
+            <span>Adelaide lending desk</span>
+            <strong>30 min</strong>
           </div>
         </div>
         <p className="public-copy">
-          Choose a time for a confidential lending conversation. Your request goes directly into the Easy Loan Finance broker calendar.
+          Speak with an Easy Loan Finance broker about borrowing capacity, refinance options, or your next property move.
         </p>
         <div className="public-trust-row">
-          <span><ShieldCheck size={16} /> Private request</span>
-          <span><Clock size={16} /> Fast confirmation</span>
-          <span><Users size={16} /> Broker matched</span>
+          <span><ShieldCheck size={16} /> Free consultation</span>
+          <span><Clock size={16} /> 30 minutes</span>
+          <span><Users size={16} /> No obligation</span>
         </div>
       </section>
 
       <section className="public-form-panel">
         <div className="section-title">
           <CalendarPlus size={18} />
-          <h2>Appointment Details</h2>
+          <h2>Book Your Appointment</h2>
         </div>
         {loading ? (
           <div className="loading">Loading booking page...</div>
         ) : (
           <form onSubmit={submitPublicBooking} className="booking-form">
+            <div className="service-summary">
+              <div>
+                <span>Recommended</span>
+                <strong>Home loan consultation - 30 mins ⭐</strong>
+                <small>Free consultation with an Easy Loan Finance broker.</small>
+              </div>
+            </div>
             <label>
               Your name
               <input required value={form.clientName} onChange={(event) => setForm({ ...form, clientName: event.target.value })} placeholder="Full name" />
@@ -930,9 +951,9 @@ function PublicBookingPage() {
               </select>
             </label>
             <label>
-              What do you need help with?
+              Consultation type
               <select value={form.service} onChange={(event) => setForm({ ...form, service: event.target.value })}>
-                {(selectedBroker?.services || ["First home buyer", "Refinance", "Investment loan", "Commercial lending"]).map((service) => (
+                {PUBLIC_SERVICE_OPTIONS.map((service) => (
                   <option key={service} value={service}>{service}</option>
                 ))}
               </select>
@@ -961,7 +982,7 @@ function PublicBookingPage() {
             </label>
             <label>
               Notes
-              <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Loan purpose, property suburb, income type, preferred language" />
+              <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Loan purpose, suburb, timeframe, preferred language" />
             </label>
             {submitError && <p className="login-error">{submitError}</p>}
             <button className="primary-button" type="submit" disabled={submitting || !selectedSlot}>
