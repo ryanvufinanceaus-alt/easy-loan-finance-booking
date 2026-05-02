@@ -848,6 +848,9 @@ function mailTransporter() {
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
     secure: process.env.SMTP_SECURE === "true",
+    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 15000),
+    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 15000),
+    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 20000),
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS
@@ -1118,26 +1121,48 @@ function escapeHtml(value = "") {
     .replace(/"/g, "&quot;");
 }
 
-async function afterBookingSaved(booking, brokers, req, { sendEmail = true } = {}) {
+async function afterBookingSaved(booking, brokers, req, { sendEmail = true, syncCalendar = true } = {}) {
   const broker = brokers.find((item) => item.id === booking.brokerId);
   const origin = requestOrigin(req);
 
-  const results = { emailSent: false, clientConfirmationSent: false, googleSynced: false, googleEventId: booking.googleEventId || null };
+  const results = {
+    emailSent: false,
+    clientConfirmationSent: false,
+    emailError: "",
+    clientConfirmationError: "",
+    googleSynced: false,
+    googleEventId: booking.googleEventId || null,
+    googleError: ""
+  };
 
   if (sendEmail) {
-    try {
-      results.emailSent = await sendBookingEmail(booking, broker, origin);
-    } catch (error) {
-      console.warn(`Internal notification failed: ${error.message}`);
+    const [internalResult, clientResult] = await Promise.allSettled([
+      sendBookingEmail(booking, broker, origin),
+      sendClientConfirmationEmail(booking, broker, origin)
+    ]);
+
+    if (internalResult.status === "fulfilled") {
+      results.emailSent = internalResult.value;
+      if (!results.emailSent) {
+        results.emailError = "SMTP is not configured or no broker/admin recipient is available.";
+      }
+    } else {
+      results.emailError = internalResult.reason?.message || "Internal notification failed.";
+      console.warn(`Internal notification failed: ${results.emailError}`);
     }
-    try {
-      results.clientConfirmationSent = await sendClientConfirmationEmail(booking, broker, origin);
-    } catch (error) {
-      console.warn(`Client confirmation failed: ${error.message}`);
+
+    if (clientResult.status === "fulfilled") {
+      results.clientConfirmationSent = clientResult.value;
+      if (!results.clientConfirmationSent) {
+        results.clientConfirmationError = "SMTP is not configured, client confirmation emails are off, or client email is missing.";
+      }
+    } else {
+      results.clientConfirmationError = clientResult.reason?.message || "Client confirmation failed.";
+      console.warn(`Client confirmation failed: ${results.clientConfirmationError}`);
     }
   }
 
-  if (booking.status === "Confirmed") {
+  if (syncCalendar && booking.status === "Confirmed") {
     try {
       const event = await syncGoogleEvent(booking, broker, origin);
       if (event?.id && event.id !== booking.googleEventId) {
@@ -1146,6 +1171,7 @@ async function afterBookingSaved(booking, brokers, req, { sendEmail = true } = {
       }
       results.googleSynced = Boolean(event?.id);
     } catch (error) {
+      results.googleError = error.message || "Google Calendar sync failed.";
       console.warn(error.message);
     }
   }
@@ -1434,8 +1460,9 @@ async function handleApi(req, res, url) {
       return sendJson(res, 409, { error: "This time is already booked. Please choose another available slot." });
     }
     const saved = await createBooking(next);
-    afterBookingSaved(saved, brokers, req).catch((error) => console.warn(error.message));
-    return sendJson(res, 201, { ...saved, integrations: { queued: true } });
+    const integrations = await afterBookingSaved(saved, brokers, req, { syncCalendar: false });
+    afterBookingSaved(saved, brokers, req, { sendEmail: false }).catch((error) => console.warn(error.message));
+    return sendJson(res, 201, { ...saved, integrations });
   }
 
   const bookingMatch = url.pathname.match(/^\/api\/bookings\/([^/]+)$/);
