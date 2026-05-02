@@ -3,6 +3,7 @@ import { createHash, createHmac, createSign, timingSafeEqual } from "node:crypto
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import dns from "node:dns";
 import nodemailer from "nodemailer";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -35,6 +36,8 @@ const BUSINESS_END = "17:00";
 const REMINDER_MINUTES_BEFORE = Number(process.env.BOOKING_REMINDER_MINUTES_BEFORE || 10);
 const reminderSendKeys = new Set();
 const EMAIL_TEMPLATES_SETTING_KEY = "email_templates";
+
+dns.setDefaultResultOrder?.("ipv4first");
 
 const defaultEmailTemplates = {
   confirmationSubject: "Your Easy Loan Finance appointment is confirmed",
@@ -851,6 +854,8 @@ function mailTransporter() {
     connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 15000),
     greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 15000),
     socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 20000),
+    family: Number(process.env.SMTP_DNS_FAMILY || 4),
+    lookup: (hostname, options, callback) => dns.lookup(hostname, { ...options, family: Number(process.env.SMTP_DNS_FAMILY || 4) }, callback),
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS

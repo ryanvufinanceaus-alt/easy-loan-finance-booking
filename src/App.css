@@ -1733,23 +1733,6 @@ textarea:focus {
   line-height: 1.6;
 }
 
-.success-note {
-  margin-top: 12px;
-  padding: 12px 14px;
-  border: 1px solid rgba(184, 144, 68, 0.26);
-  border-radius: 8px;
-  background: rgba(184, 144, 68, 0.10);
-  color: #4b3b1c;
-  font-size: 0.92rem;
-  line-height: 1.45;
-}
-
-.success-note-muted {
-  border-color: rgba(22, 20, 17, 0.10);
-  background: rgba(22, 20, 17, 0.04);
-  color: #5f574c;
-}
-
 .success-details {
   display: grid;
   gap: 10px;

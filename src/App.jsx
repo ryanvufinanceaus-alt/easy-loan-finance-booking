@@ -1383,7 +1383,6 @@ function PublicBookingPage() {
 
   if (submitted) {
     const clientEmailSent = Boolean(submitted.integrations?.clientConfirmationSent);
-    const internalEmailSent = Boolean(submitted.integrations?.emailSent);
 
     return (
       <main className="public-page">
@@ -1396,19 +1395,9 @@ function PublicBookingPage() {
           <h1>Thanks, {submitted.clientName}</h1>
           <p>
             Your Easy Loan Finance appointment is confirmed. {clientEmailSent
-              ? "Your confirmation email has been sent. Please check your inbox, junk, or spam folder."
-              : "If you do not see the confirmation email shortly, please check your junk or spam folder, or contact Easy Loan Finance."}
+              ? "Please check your inbox, junk, or spam folder."
+              : "Please check your junk or spam folder."}
           </p>
-          {!clientEmailSent && (
-            <div className="success-note" role="status">
-              Email delivery notice: your booking is saved, but the confirmation email may need a moment or may be blocked by the mail provider.
-            </div>
-          )}
-          {!internalEmailSent && (
-            <div className="success-note success-note-muted" role="status">
-              Easy Loan Finance has your booking in the system. Our team can still see it in the dashboard.
-            </div>
-          )}
           <div className="success-details">
             <span><Clock size={16} /> {displayDay(new Date(submitted.start))}, {displayTime(submitted.start)} {BOOKING_TIME_LABEL}</span>
             <span><Clock size={16} /> {displayEastCoastTime(submitted.start)} Sydney/Melbourne time</span>
