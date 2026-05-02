@@ -341,6 +341,7 @@ function isPublicRequest(req, url) {
   if (url.pathname.startsWith("/book")) return true;
   if (url.pathname.startsWith("/calendar/")) return true;
   if (url.pathname === "/api/auth/login" || url.pathname === "/api/auth/status" || url.pathname === "/api/auth/logout") return true;
+  if (url.pathname === "/api/availability" && req.method === "GET") return true;
   if (url.pathname === "/api/bookings" && req.method === "POST") return true;
   if (url.pathname === "/api/brokers" && req.method === "GET") return true;
   return false;
@@ -453,6 +454,88 @@ function googleEventBody(booking, broker, origin = "") {
         easyLoanBookingId: booking.id
       }
     }
+  };
+}
+
+function minutesFromTime(time = "00:00") {
+  const [hours, minutes] = String(time).split(":").map((value) => Number(value));
+  return hours * 60 + minutes;
+}
+
+function timeFromMinutes(totalMinutes) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function slotLabel(time) {
+  const [hours, minutes] = time.split(":").map(Number);
+  const suffix = hours >= 12 ? "PM" : "AM";
+  const displayHour = hours % 12 || 12;
+  return `${displayHour}:${String(minutes).padStart(2, "0")} ${suffix}`;
+}
+
+function bookingLocalDateTime(value) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(new Date(value));
+  const get = (type) => parts.find((part) => part.type === type)?.value;
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    minutes: Number(get("hour")) * 60 + Number(get("minute"))
+  };
+}
+
+function overlaps(startA, endA, startB, endB) {
+  return startA < endB && endA > startB;
+}
+
+function hasBookingConflict(candidate, bookings) {
+  const start = new Date(candidate.start).getTime();
+  const end = new Date(candidate.end).getTime();
+  return bookings.some((booking) => {
+    if (booking.brokerId !== candidate.brokerId || booking.status === "Cancelled") return false;
+    return overlaps(start, end, new Date(booking.start).getTime(), new Date(booking.end).getTime());
+  });
+}
+
+function availabilityFor({ brokerId, date, duration }, brokers, bookings) {
+  const broker = brokers.find((item) => item.id === brokerId) || brokers[0];
+  const startMinutes = minutesFromTime(broker?.hours?.start || "09:00");
+  const endMinutes = minutesFromTime(broker?.hours?.end || "17:00");
+  const slotDuration = Math.max(30, Number(duration) || 30);
+  const brokerBookings = bookings
+    .filter((booking) => booking.brokerId === broker?.id && booking.status !== "Cancelled")
+    .map((booking) => {
+      const start = bookingLocalDateTime(booking.start);
+      const end = bookingLocalDateTime(booking.end);
+      return { date: start.date, start: start.minutes, end: end.minutes };
+    })
+    .filter((booking) => booking.date === date);
+
+  const slots = [];
+  for (let minute = startMinutes; minute + slotDuration <= endMinutes; minute += 30) {
+    const end = minute + slotDuration;
+    const booked = brokerBookings.some((booking) => overlaps(minute, end, booking.start, booking.end));
+    const time = timeFromMinutes(minute);
+    slots.push({
+      time,
+      label: slotLabel(time),
+      available: !booked
+    });
+  }
+
+  return {
+    brokerId: broker?.id || brokerId,
+    date,
+    duration: slotDuration,
+    slots
   };
 }
 
@@ -767,6 +850,14 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, brokers);
   }
 
+  if (req.method === "GET" && url.pathname === "/api/availability") {
+    const bookings = await listBookings();
+    const date = url.searchParams.get("date") || new Date().toISOString().slice(0, 10);
+    const brokerId = url.searchParams.get("brokerId") || brokers[0]?.id;
+    const duration = Number(url.searchParams.get("duration") || 30);
+    return sendJson(res, 200, availabilityFor({ brokerId, date, duration }, brokers, bookings));
+  }
+
   if (req.method === "POST" && url.pathname === "/api/brokers") {
     const body = await readBody(req);
     const id = body.id || body.name?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `broker-${Date.now()}`;
@@ -824,9 +915,13 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/bookings") {
     const body = await readBody(req);
     const next = { ...body, id: body.id || `bk-${Date.now()}` };
+    const existingBookings = await listBookings();
+    if (hasBookingConflict(next, existingBookings)) {
+      return sendJson(res, 409, { error: "This time is already booked. Please choose another available slot." });
+    }
     const saved = await createBooking(next);
-    const integrations = await afterBookingSaved(saved, brokers, req);
-    return sendJson(res, 201, { ...saved, googleEventId: integrations.googleEventId, integrations });
+    afterBookingSaved(saved, brokers, req).catch((error) => console.warn(error.message));
+    return sendJson(res, 201, { ...saved, integrations: { queued: true } });
   }
 
   const bookingMatch = url.pathname.match(/^\/api\/bookings\/([^/]+)$/);
@@ -836,7 +931,7 @@ async function handleApi(req, res, url) {
     const updated = await updateBooking(id, body);
     if (!updated) return sendJson(res, 404, { error: "Booking not found" });
     if (updated.googleEventId) {
-      await afterBookingSaved(updated, brokers, req, { sendEmail: false });
+      afterBookingSaved(updated, brokers, req, { sendEmail: false }).catch((error) => console.warn(error.message));
     }
     return sendJson(res, 200, updated);
   }

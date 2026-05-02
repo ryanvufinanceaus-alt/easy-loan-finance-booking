@@ -990,6 +990,74 @@ textarea:focus {
   margin-bottom: 20px;
 }
 
+.slot-picker {
+  display: grid;
+  gap: 10px;
+}
+
+.slot-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.slot-heading span {
+  color: #6f675a;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.slot-heading small {
+  color: #8d6a28;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.slot-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.time-slot {
+  position: relative;
+  min-height: 42px;
+  border: 1px solid rgba(22, 20, 17, 0.12);
+  border-radius: 8px;
+  background: #fffaf2;
+  color: #161411;
+  font-weight: 900;
+}
+
+.time-slot.selected {
+  border-color: #161411;
+  background: #161411;
+  color: #fff8ed;
+}
+
+.time-slot.booked {
+  overflow: hidden;
+  border-color: rgba(143, 48, 48, 0.18);
+  background: rgba(143, 48, 48, 0.06);
+  color: #8f3030;
+  cursor: not-allowed;
+  text-decoration: line-through;
+  opacity: 0.82;
+}
+
+.time-slot.booked::after {
+  content: "";
+  position: absolute;
+  left: -12px;
+  right: -12px;
+  top: 50%;
+  height: 1px;
+  background: rgba(143, 48, 48, 0.55);
+  transform: rotate(-18deg);
+}
+
 .public-success {
   grid-column: 1 / -1;
   width: min(620px, 100%);
@@ -1089,6 +1157,10 @@ textarea:focus {
   .public-hero h1 {
     line-height: 1.02;
   }
+
+  .slot-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 560px) {
@@ -1104,5 +1176,9 @@ textarea:focus {
 
   .booking-drawer {
     padding: 20px;
+  }
+
+  .slot-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

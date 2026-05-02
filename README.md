@@ -17,6 +17,7 @@ For GitHub and Render deployment steps, read [HUONG_DAN_GITHUB_RENDER.md](./HUON
 - Public client booking pages:
   - Team page: `/book`
   - Broker page: `/book/ryan-vu`
+- Public availability picker: clients choose clean 30-minute slots and booked slots are crossed out.
 - Email notifications for every new booking when SMTP settings are configured.
 - Google Calendar support without paid APIs:
   - Team feed: `/calendar/team.ics`

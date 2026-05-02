@@ -751,6 +751,10 @@ function PublicBookingPage() {
   const [brokers, setBrokers] = useState([]);
   const [form, setForm] = useState(bookingTemplate(brokerIdFromPath || "ryan-vu"));
   const [submitted, setSubmitted] = useState(null);
+  const [availability, setAvailability] = useState({ slots: [] });
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -770,9 +774,39 @@ function PublicBookingPage() {
   }, [brokerIdFromPath]);
 
   const selectedBroker = brokers.find((broker) => broker.id === form.brokerId) || brokers[0];
+  const selectedSlot = availability.slots.find((slot) => slot.time === form.startTime && slot.available);
+
+  useEffect(() => {
+    if (!form.brokerId || !form.startDate) return;
+    const controller = new AbortController();
+    setAvailabilityLoading(true);
+    fetch(`/api/availability?brokerId=${encodeURIComponent(form.brokerId)}&date=${encodeURIComponent(form.startDate)}&duration=${encodeURIComponent(form.duration)}`, {
+      signal: controller.signal
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        setAvailability(data);
+        const currentStillOpen = data.slots?.some((slot) => slot.time === form.startTime && slot.available);
+        if (!currentStillOpen) {
+          const firstOpen = data.slots?.find((slot) => slot.available);
+          setForm((current) => ({ ...current, startTime: firstOpen?.time || "" }));
+        }
+      })
+      .catch((error) => {
+        if (error.name !== "AbortError") setAvailability({ slots: [] });
+      })
+      .finally(() => setAvailabilityLoading(false));
+    return () => controller.abort();
+  }, [form.brokerId, form.startDate, form.duration]);
 
   async function submitPublicBooking(event) {
     event.preventDefault();
+    if (!selectedSlot) {
+      setSubmitError("Please choose an available time.");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError("");
     const start = isoFor(form.startDate, form.startTime);
     const end = addMinutes(new Date(start), Number(form.duration)).toISOString();
     const payload = {
@@ -788,11 +822,19 @@ function PublicBookingPage() {
       notes: form.notes.trim()
     };
 
-    const saved = await fetch("/api/bookings", {
+    const res = await fetch("/api/bookings", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload)
-    }).then((res) => res.json());
+    });
+    const saved = await res.json();
+    setSubmitting(false);
+    if (!res.ok) {
+      setSubmitError(saved.error || "This time is no longer available. Please choose another slot.");
+      const refreshed = await fetch(`/api/availability?brokerId=${encodeURIComponent(form.brokerId)}&date=${encodeURIComponent(form.startDate)}&duration=${encodeURIComponent(form.duration)}`).then((response) => response.json());
+      setAvailability(refreshed);
+      return;
+    }
 
     setSubmitted(saved);
   }
@@ -881,36 +923,62 @@ function PublicBookingPage() {
                 <input required type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value })} />
               </label>
               <label>
-                Preferred time
-                <input required type="time" value={form.startTime} onChange={(event) => setForm({ ...form, startTime: event.target.value })} />
-              </label>
-            </div>
-            <div className="two-col">
-              <label>
-                Meeting style
-                <select value={form.channel} onChange={(event) => setForm({ ...form, channel: event.target.value })}>
-                  {CHANNELS.map((channel) => <option key={channel} value={channel}>{channel}</option>)}
-                </select>
-              </label>
-              <label>
                 Duration
                 <select value={form.duration} onChange={(event) => setForm({ ...form, duration: event.target.value })}>
                   {DURATIONS.map((duration) => <option key={duration} value={duration}>{duration} min</option>)}
                 </select>
               </label>
             </div>
+            <TimeSlotPicker
+              slots={availability.slots}
+              value={form.startTime}
+              loading={availabilityLoading}
+              onChange={(time) => setForm({ ...form, startTime: time })}
+            />
+            <label>
+              Meeting style
+              <select value={form.channel} onChange={(event) => setForm({ ...form, channel: event.target.value })}>
+                {CHANNELS.map((channel) => <option key={channel} value={channel}>{channel}</option>)}
+              </select>
+            </label>
             <label>
               Notes
               <textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Loan purpose, property suburb, income type, preferred language" />
             </label>
-            <button className="primary-button" type="submit">
+            {submitError && <p className="login-error">{submitError}</p>}
+            <button className="primary-button" type="submit" disabled={submitting || !selectedSlot}>
               <CalendarPlus size={18} />
-              Request Booking
+              {submitting ? "Sending request..." : "Request Booking"}
             </button>
           </form>
         )}
       </section>
     </main>
+  );
+}
+
+function TimeSlotPicker({ slots, value, loading, onChange }) {
+  return (
+    <div className="slot-picker">
+      <div className="slot-heading">
+        <span>Preferred time</span>
+        <small>{loading ? "Checking..." : "Booked times are crossed out"}</small>
+      </div>
+      <div className="slot-grid">
+        {slots.length === 0 && <div className="empty-slot">No slots available</div>}
+        {slots.map((slot) => (
+          <button
+            key={slot.time}
+            type="button"
+            disabled={!slot.available}
+            className={classNames("time-slot", !slot.available && "booked", value === slot.time && slot.available && "selected")}
+            onClick={() => onChange(slot.time)}
+          >
+            {slot.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
