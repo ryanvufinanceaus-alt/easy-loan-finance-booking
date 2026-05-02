@@ -1359,8 +1359,9 @@ function PublicBookingPage() {
                 <input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="04..." />
               </label>
               <label>
-                Email
+                Email (required)
                 <input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="name@email.com" />
+                <small className="field-help">Confirmation and reminders will be sent here.</small>
               </label>
             </div>
             <label>
