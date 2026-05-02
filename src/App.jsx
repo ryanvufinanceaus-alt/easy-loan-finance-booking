@@ -1011,7 +1011,7 @@ function PublicBookingPage() {
           <BrandMark />
           <div>
             <strong>Easy Loan Finance</strong>
-            <span>Adelaide mortgage and lending brokers</span>
+            <span>Quick Loan, Easy Life</span>
           </div>
         </div>
         <h1>Home loan consultation</h1>
@@ -1029,7 +1029,7 @@ function PublicBookingPage() {
           </div>
         </div>
         <p className="public-copy">
-          Speak with an Easy Loan Finance broker about borrowing capacity, refinance options, or your next property move.
+          Speak with an Easy Loan Finance broker for Australia-wide support with borrowing capacity, refinance options, or your next property move.
         </p>
         <div className="public-trust-row">
           <span><ShieldCheck size={16} /> Free consultation</span>
