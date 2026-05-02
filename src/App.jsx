@@ -155,7 +155,7 @@ function sortBrokersForUi(brokers) {
 
 function BrandMark() {
   return (
-    <img className="brand-mark" src="/elf-logo.svg" alt="Easy Loan Finance" width="52" height="52" />
+    <img className="brand-mark" src="/elf-logo.png" alt="Easy Loan Finance" width="52" height="52" />
   );
 }
 

@@ -93,9 +93,9 @@ button {
 .brand-mark {
   width: 52px;
   height: 52px;
-  border: 1px solid rgba(184, 144, 68, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.20);
   border-radius: 8px;
-  background: linear-gradient(135deg, #141413, #343025);
+  background: #004c2f;
   object-fit: cover;
   flex: 0 0 auto;
 }
