@@ -837,6 +837,14 @@ function smtpConfigured() {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
+function appsScriptEmailConfigured() {
+  return Boolean(process.env.GOOGLE_APPS_SCRIPT_EMAIL_URL && process.env.GOOGLE_APPS_SCRIPT_EMAIL_TOKEN);
+}
+
+function emailDeliveryReady() {
+  return appsScriptEmailConfigured() || smtpConfigured();
+}
+
 function internalNotificationRecipients(broker) {
   return Array.from(new Set([
     NOTIFY_EMAIL,
@@ -891,6 +899,52 @@ async function sendSmtpMail(mailOptions) {
       throw fallbackError;
     }
   }
+}
+
+function parseEmailAddress(value = "") {
+  const match = String(value).match(/<([^>]+)>/);
+  return normalizeEmail(match?.[1] || value);
+}
+
+function parseEmailName(value = "") {
+  const match = String(value).match(/^([^<]+)</);
+  return match?.[1]?.replace(/"/g, "").trim() || "Easy Loan Finance";
+}
+
+async function sendAppsScriptMail(mailOptions) {
+  if (!appsScriptEmailConfigured()) return false;
+  const response = await fetch(process.env.GOOGLE_APPS_SCRIPT_EMAIL_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      token: process.env.GOOGLE_APPS_SCRIPT_EMAIL_TOKEN,
+      to: mailOptions.to,
+      from: parseEmailAddress(mailOptions.from),
+      name: parseEmailName(mailOptions.from),
+      replyTo: mailOptions.replyTo,
+      subject: mailOptions.subject,
+      text: mailOptions.text || "",
+      html: mailOptions.html || ""
+    })
+  });
+  const raw = await response.text();
+  let payload = {};
+  try {
+    payload = raw ? JSON.parse(raw) : {};
+  } catch {
+    payload = { error: raw };
+  }
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.error || `Google Apps Script email failed with HTTP ${response.status}`);
+  }
+  return true;
+}
+
+async function sendEmail(mailOptions) {
+  if (appsScriptEmailConfigured()) {
+    return sendAppsScriptMail(mailOptions);
+  }
+  return sendSmtpMail(mailOptions);
 }
 
 function senderFrom() {
@@ -1032,7 +1086,7 @@ async function sendBookingEmail(booking, broker, origin = "") {
     timeStyle: "short"
   }).format(new Date(booking.start));
 
-  return sendSmtpMail({
+  return sendEmail({
     from: senderFrom(),
     to: recipients.join(", "),
     replyTo: booking.email || undefined,
@@ -1077,7 +1131,7 @@ async function sendClientConfirmationEmail(booking, broker, origin = "") {
   const replyTo = process.env.CLIENT_REPLY_TO || NOTIFY_EMAIL || process.env.SMTP_USER;
   const content = await clientConfirmationEmailContent(booking, broker, origin);
 
-  return sendSmtpMail({
+  return sendEmail({
     from,
     to: booking.email,
     replyTo,
@@ -1088,7 +1142,7 @@ async function sendClientConfirmationEmail(booking, broker, origin = "") {
 }
 
 async function sendBookingReminderEmails(booking, broker, origin = "") {
-  if (!smtpConfigured()) return { client: false, internal: false };
+  if (!emailDeliveryReady()) return { client: false, internal: false };
 
   const when = formattedBookingTime(booking);
   const templates = await getEmailTemplates();
@@ -1100,7 +1154,7 @@ async function sendBookingReminderEmails(booking, broker, origin = "") {
   const results = { client: false, internal: false };
 
   if (booking.email) {
-    results.client = await sendSmtpMail({
+    results.client = await sendEmail({
       from,
       to: booking.email,
       replyTo,
@@ -1116,7 +1170,7 @@ async function sendBookingReminderEmails(booking, broker, origin = "") {
 
   const internalRecipients = internalNotificationRecipients(broker);
   if (internalRecipients.length > 0) {
-    results.internal = await sendSmtpMail({
+    results.internal = await sendEmail({
       from: senderFrom(),
       to: internalRecipients.join(", "),
       replyTo: booking.email || undefined,
@@ -1316,22 +1370,25 @@ async function handleApi(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/integrations") {
     if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
-    const emailReady = smtpConfigured();
+    const emailReady = emailDeliveryReady();
+    const appsScriptReady = appsScriptEmailConfigured();
     const internalRecipients = Array.from(new Set(brokers.flatMap((broker) => internalNotificationRecipients(broker))));
     return sendJson(res, 200, {
       emailNotifications: Boolean(emailReady && internalRecipients.length > 0),
       brokerEmailRouting: Boolean(emailReady && brokers.some((broker) => broker.email)),
       clientConfirmationEmails: Boolean(emailReady && CLIENT_CONFIRMATION_EMAILS),
+      emailProvider: appsScriptReady ? "google_apps_script" : "smtp",
       emailFrom: senderFrom(),
       clientEmailFrom: clientSenderFrom(),
       notifyEmail: NOTIFY_EMAIL || "",
       internalRecipients,
       clientReplyTo: process.env.CLIENT_REPLY_TO || NOTIFY_EMAIL || process.env.SMTP_USER || "",
       smtpHost: process.env.SMTP_HOST || "",
+      appsScriptEmail: appsScriptReady,
       missingEmailSettings: [
-        !process.env.SMTP_HOST && "SMTP_HOST",
-        !process.env.SMTP_USER && "SMTP_USER",
-        !process.env.SMTP_PASS && "SMTP_PASS",
+        !appsScriptReady && !process.env.SMTP_HOST && "SMTP_HOST or GOOGLE_APPS_SCRIPT_EMAIL_URL",
+        !appsScriptReady && !process.env.SMTP_USER && "SMTP_USER or GOOGLE_APPS_SCRIPT_EMAIL_TOKEN",
+        !appsScriptReady && !process.env.SMTP_PASS && "SMTP_PASS",
         !NOTIFY_EMAIL && "BOOKING_NOTIFY_EMAIL"
       ].filter(Boolean),
       googleDirectSync: Boolean(GOOGLE_CALENDAR_ID && (process.env.GOOGLE_SERVICE_ACCOUNT_JSON || (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY))),
