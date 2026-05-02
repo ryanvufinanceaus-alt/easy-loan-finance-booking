@@ -666,7 +666,10 @@ h1 {
 }
 
 .booking-chip {
-  display: block;
+  display: grid;
+  grid-template-columns: 22px auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
   width: 100%;
   min-height: 31px;
   overflow: hidden;
@@ -678,19 +681,35 @@ h1 {
   color: #161411;
   text-align: left;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.booking-chip span {
-  margin-right: 6px;
+.broker-initials {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.booking-time {
   color: #8d6a28;
   font-size: 0.72rem;
   font-weight: 900;
 }
 
+.booking-chip strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
+
 .booking-chip em {
-  float: right;
-  margin-left: 6px;
   padding: 2px 6px;
   border-radius: 999px;
   background: rgba(22, 20, 17, 0.08);
@@ -703,13 +722,11 @@ h1 {
 
 .booking-chip.status-pending,
 .agenda-booking.status-pending {
-  border-left-color: #b89044 !important;
   background: #fff7df;
 }
 
 .booking-chip.status-confirmed,
 .agenda-booking.status-confirmed {
-  border-left-color: #2f7d74 !important;
   background: #eaf6f1;
 }
 
@@ -717,7 +734,6 @@ h1 {
 .booking-chip.status-completed,
 .agenda-booking.status-done,
 .agenda-booking.status-completed {
-  border-left-color: #58706a !important;
   background: #edf1ef;
 }
 
@@ -725,13 +741,11 @@ h1 {
 .booking-chip.status-not-done,
 .agenda-booking.status-undone,
 .agenda-booking.status-not-done {
-  border-left-color: #8f3030 !important;
   background: #f8e9e7;
 }
 
 .booking-chip.status-cancelled,
 .agenda-booking.status-cancelled {
-  border-left-color: #8e867a !important;
   background: #eee9df;
   opacity: 0.72;
   text-decoration: line-through;
@@ -794,6 +808,19 @@ h1 {
   border-left: 4px solid var(--broker-color, #b89044);
   background: color-mix(in srgb, var(--broker-color, #b89044) 10%, #fffdf8);
   text-align: left;
+}
+
+.agenda-booking-head {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.agenda-booking .broker-initials {
+  width: 24px;
+  height: 24px;
+  font-size: 0.66rem;
 }
 
 .agenda-booking small,

@@ -226,6 +226,13 @@ function sortBrokersForUi(brokers) {
   });
 }
 
+function brokerInitials(name = "") {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "EL";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
 function BrandMark() {
   return (
     <img className="brand-mark" src="/elf-logo.png" alt="Easy Loan Finance" width="52" height="52" />
@@ -1477,21 +1484,26 @@ function MonthView({ anchor, bookings, brokerById, onSelect }) {
           <div key={dateKey(date)} className={classNames("month-cell", isOutside && "muted", sameDay(date, new Date()) && "today")}>
             <div className="cell-date">{date.getDate()}</div>
             <div className="booking-stack">
-              {dayBookings.slice(0, 4).map((booking) => (
-                <button
-                  key={booking.id}
-                  className={classNames("booking-chip", statusClass(booking.status))}
-                  style={{
-                    borderLeftColor: brokerById[booking.brokerId]?.color || "#b89044",
-                    "--broker-color": brokerById[booking.brokerId]?.color || "#b89044"
-                  }}
-                  onClick={() => onSelect(booking)}
-                >
-                  <span>{displayTime(booking.start)}</span>
-                  <em>{statusLabel(booking.status)}</em>
-                  {booking.clientName}
-                </button>
-              ))}
+              {dayBookings.slice(0, 4).map((booking) => {
+                const broker = brokerById[booking.brokerId];
+                const brokerColor = broker?.color || "#b89044";
+                return (
+                  <button
+                    key={booking.id}
+                    className={classNames("booking-chip", statusClass(booking.status))}
+                    style={{
+                      borderLeftColor: brokerColor,
+                      "--broker-color": brokerColor
+                    }}
+                    onClick={() => onSelect(booking)}
+                  >
+                    <span className="broker-initials" style={{ background: brokerColor }}>{brokerInitials(broker?.name)}</span>
+                    <span className="booking-time">{displayTime(booking.start)}</span>
+                    <strong>{booking.clientName}</strong>
+                    <em>{statusLabel(booking.status)}</em>
+                  </button>
+                );
+              })}
               {dayBookings.length > 4 && <small className="more-count">+{dayBookings.length - 4} more</small>}
             </div>
           </div>
@@ -1518,23 +1530,30 @@ function AgendaView({ mode, anchor, bookings, brokerById, onSelect }) {
             <div className={classNames("agenda-date", sameDay(date, new Date()) && "today")}>{displayDay(date)}</div>
             <div className="agenda-list">
               {dayBookings.length === 0 && <div className="empty-slot">Available</div>}
-              {dayBookings.map((booking) => (
-                <button
-                  className={classNames("agenda-booking", statusClass(booking.status))}
-                  key={booking.id}
-                  style={{
-                    borderLeftColor: brokerById[booking.brokerId]?.color || "#b89044",
-                    "--broker-color": brokerById[booking.brokerId]?.color || "#b89044"
-                  }}
-                  onClick={() => onSelect(booking)}
-                >
-                  <span className="time-block">{displayTime(booking.start)} - {displayTime(booking.end)}</span>
-                  <span className={classNames("status-pill", statusClass(booking.status))}>{statusLabel(booking.status)}</span>
-                  <strong>{booking.clientName}</strong>
-                  <small style={{ color: brokerById[booking.brokerId]?.color || "#8d6a28" }}>{brokerById[booking.brokerId]?.name}</small>
-                  <em>{booking.service}</em>
-                </button>
-              ))}
+              {dayBookings.map((booking) => {
+                const broker = brokerById[booking.brokerId];
+                const brokerColor = broker?.color || "#b89044";
+                return (
+                  <button
+                    className={classNames("agenda-booking", statusClass(booking.status))}
+                    key={booking.id}
+                    style={{
+                      borderLeftColor: brokerColor,
+                      "--broker-color": brokerColor
+                    }}
+                    onClick={() => onSelect(booking)}
+                  >
+                    <span className="agenda-booking-head">
+                      <span className="broker-initials" style={{ background: brokerColor }}>{brokerInitials(broker?.name)}</span>
+                      <span className="time-block">{displayTime(booking.start)} - {displayTime(booking.end)}</span>
+                      <span className={classNames("status-pill", statusClass(booking.status))}>{statusLabel(booking.status)}</span>
+                    </span>
+                    <strong>{booking.clientName}</strong>
+                    <small style={{ color: brokerColor }}>{broker?.name}</small>
+                    <em>{booking.service}</em>
+                  </button>
+                );
+              })}
             </div>
           </div>
         );
