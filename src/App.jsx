@@ -17,6 +17,7 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  Sparkles,
   Users,
   Video
 } from "lucide-react";
@@ -698,29 +699,17 @@ function App() {
           {isAdmin ? <aside className="booking-panel admin-control-panel">
             <div className="admin-control-head">
               <div>
-                <p className="eyebrow">Ryan admin</p>
-                <h2>Control Centre</h2>
+                <p className="eyebrow">Control Centre</p>
+                <h2>Dashboard tools</h2>
               </div>
               <span>Full access</span>
             </div>
 
-            <BrokerManager
-              brokers={brokers}
-              bookings={bookings}
-              brokerForm={brokerForm}
-              setBrokerForm={setBrokerForm}
-              onCreate={createBrokerFromForm}
-              onRemove={removeBroker}
-              onUpdateAccessCode={updateBrokerAccessCode}
-              onFocusBroker={setBrokerFilter}
-              reassigningBroker={reassigningBroker}
-              onCancelReassign={() => setReassigningBroker(null)}
-            />
-
-            <div className="section-title appointment-title">
-              <CalendarPlus size={18} />
-              <h2>New Appointment</h2>
-            </div>
+            <details className="control-details appointment-details">
+              <summary>
+                <span><CalendarPlus size={18} /> New Appointment</span>
+                <small>Add a booking manually</small>
+              </summary>
             <form onSubmit={submitBooking} className="booking-form">
               <label>
                 Client name
@@ -794,6 +783,26 @@ function App() {
                 Book Appointment
               </button>
             </form>
+            </details>
+
+            <details className="control-details">
+              <summary>
+                <span><ShieldCheck size={18} /> Ryan Admin</span>
+                <small>Manage brokers, access codes, and reassignment</small>
+              </summary>
+              <BrokerManager
+                brokers={brokers}
+                bookings={bookings}
+                brokerForm={brokerForm}
+                setBrokerForm={setBrokerForm}
+                onCreate={createBrokerFromForm}
+                onRemove={removeBroker}
+                onUpdateAccessCode={updateBrokerAccessCode}
+                onFocusBroker={setBrokerFilter}
+                reassigningBroker={reassigningBroker}
+                onCancelReassign={() => setReassigningBroker(null)}
+              />
+            </details>
 
           </aside> : (
             <aside className="booking-panel read-only-panel">

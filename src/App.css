@@ -151,6 +151,7 @@ h1 {
   min-height: 96px;
   padding: 14px;
   background: rgba(255, 248, 237, 0.96);
+  color: #161411;
 }
 
 .metric-card svg {
@@ -163,12 +164,14 @@ h1 {
 }
 
 .metric-card strong {
+  color: #161411;
   font-size: 1.55rem;
 }
 
 .panel {
   padding: 16px;
   margin-bottom: 14px;
+  color: #161411;
 }
 
 .section-title {
@@ -822,7 +825,60 @@ h1 {
   border-top: 1px solid rgba(22, 20, 17, 0.10);
 }
 
-.admin-control-panel .booking-form {
+.control-details {
+  border-top: 1px solid rgba(22, 20, 17, 0.08);
+}
+
+.control-details:first-of-type {
+  border-top: 0;
+}
+
+.control-details summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  padding: 16px 18px;
+  color: #161411;
+  cursor: pointer;
+  list-style: none;
+}
+
+.control-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.control-details summary span {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 0.98rem;
+  font-weight: 900;
+}
+
+.control-details summary span svg {
+  color: #b89044;
+}
+
+.control-details summary small {
+  color: #756c5f;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.control-details summary::after {
+  content: "+";
+  position: absolute;
+  right: 18px;
+  color: #8d6a28;
+  font-weight: 900;
+}
+
+.control-details[open] summary::after {
+  content: "-";
+}
+
+.control-details .booking-form {
   padding: 0 18px 18px;
 }
 
