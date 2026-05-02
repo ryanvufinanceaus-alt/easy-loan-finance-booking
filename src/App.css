@@ -450,6 +450,125 @@ h1 {
   text-decoration: none;
 }
 
+.notification-wrap {
+  position: relative;
+}
+
+.notification-button {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(22, 20, 17, 0.12);
+  border-radius: 8px;
+  background: #fffaf2;
+  color: #161411;
+}
+
+.notification-button span {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 2px solid #fffdf8;
+  border-radius: 999px;
+  background: #8f3030;
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.notification-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 15;
+  width: min(360px, calc(100vw - 36px));
+  overflow: hidden;
+  border: 1px solid rgba(22, 20, 17, 0.12);
+  border-radius: 8px;
+  background: #fffdf8;
+  box-shadow: 0 24px 70px rgba(22, 20, 17, 0.16);
+}
+
+.notification-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(22, 20, 17, 0.08);
+}
+
+.notification-head strong {
+  font-size: 0.92rem;
+}
+
+.notification-head button {
+  border: 0;
+  background: transparent;
+  color: #8d6a28;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.notification-empty {
+  margin: 0;
+  padding: 16px;
+  color: #756c5f;
+  font-size: 0.86rem;
+}
+
+.notification-list {
+  display: grid;
+  max-height: 380px;
+  overflow: auto;
+}
+
+.notification-list button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  border-bottom: 1px solid rgba(22, 20, 17, 0.07);
+  background: #fffdf8;
+  color: #161411;
+  text-align: left;
+}
+
+.notification-list button:hover {
+  background: #f7f1e5;
+}
+
+.notification-list span {
+  width: fit-content;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(47, 125, 116, 0.12);
+  color: #225d56;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.notification-list strong,
+.notification-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-list small {
+  color: #756c5f;
+  font-weight: 800;
+}
+
 .segment {
   display: flex;
   height: 40px;
@@ -816,6 +935,14 @@ label {
   font-size: 0.76rem;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.field-help {
+  color: #756c5f;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-transform: none;
 }
 
 input,

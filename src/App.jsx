@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Building2,
+  Bell,
   CalendarDays,
   CalendarPlus,
   Check,
@@ -16,7 +17,6 @@ import {
   Plus,
   Search,
   ShieldCheck,
-  Sparkles,
   Users,
   Video
 } from "lucide-react";
@@ -34,6 +34,8 @@ const PUBLIC_SERVICE_OPTIONS = [
   "Investment loan planning",
   "Borrowing capacity check"
 ];
+const NOTIFICATION_SNAPSHOT_KEY = "elfBookingNotificationSnapshot";
+const NOTIFICATION_ITEMS_KEY = "elfBookingNotifications";
 
 function addMinutes(date, minutes) {
   return new Date(date.getTime() + minutes * 60000);
@@ -81,6 +83,25 @@ function displayTime(value) {
     hour: "numeric",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function bookingSignature(booking) {
+  return [
+    booking.clientName,
+    booking.phone,
+    booking.email,
+    booking.brokerId,
+    booking.service,
+    booking.channel,
+    booking.status,
+    booking.start,
+    booking.end,
+    booking.notes
+  ].map((value) => String(value || "")).join("|");
+}
+
+function notificationDetail(booking, broker) {
+  return `${displayDay(new Date(booking.start))} at ${displayTime(booking.start)} - ${broker?.name || "Easy Loan Finance"}`;
 }
 
 function toLocalDateInput(value = new Date()) {
@@ -184,7 +205,68 @@ function App() {
   const [auth, setAuth] = useState({ required: false, authenticated: false, email: null });
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [emailTestStatus, setEmailTestStatus] = useState("");
+  const [notificationItems, setNotificationItems] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem(NOTIFICATION_ITEMS_KEY) || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  function persistNotificationItems(items) {
+    const next = items.slice(0, 30);
+    setNotificationItems(next);
+    window.localStorage.setItem(NOTIFICATION_ITEMS_KEY, JSON.stringify(next));
+  }
+
+  function persistBookingSnapshot(nextBookings) {
+    const snapshot = Object.fromEntries(nextBookings.map((booking) => [booking.id, bookingSignature(booking)]));
+    window.localStorage.setItem(NOTIFICATION_SNAPSHOT_KEY, JSON.stringify(snapshot));
+  }
+
+  function updateBookingNotifications(nextBookings, nextBrokers = brokers, { initial = false } = {}) {
+    let previous = {};
+    try {
+      previous = JSON.parse(window.localStorage.getItem(NOTIFICATION_SNAPSHOT_KEY) || "{}");
+    } catch {
+      previous = {};
+    }
+
+    const hasPreviousSnapshot = Object.keys(previous).length > 0;
+    const nextSnapshot = Object.fromEntries(nextBookings.map((booking) => [booking.id, bookingSignature(booking)]));
+    window.localStorage.setItem(NOTIFICATION_SNAPSHOT_KEY, JSON.stringify(nextSnapshot));
+
+    if (initial && !hasPreviousSnapshot) return;
+
+    const brokerMap = Object.fromEntries(nextBrokers.map((broker) => [broker.id, broker]));
+    const updates = nextBookings
+      .filter((booking) => !previous[booking.id] || previous[booking.id] !== nextSnapshot[booking.id])
+      .map((booking) => {
+        const type = previous[booking.id] ? "changed" : "new";
+        return {
+          key: `${type}-${booking.id}-${nextSnapshot[booking.id]}`,
+          bookingId: booking.id,
+          type,
+          title: type === "new" ? `New booking: ${booking.clientName}` : `Updated booking: ${booking.clientName}`,
+          detail: notificationDetail(booking, brokerMap[booking.brokerId]),
+          createdAt: new Date().toISOString()
+        };
+      });
+
+    if (updates.length === 0) return;
+    let storedItems = notificationItems;
+    try {
+      storedItems = JSON.parse(window.localStorage.getItem(NOTIFICATION_ITEMS_KEY) || "[]");
+    } catch {
+      storedItems = [];
+    }
+    const merged = [...updates, ...storedItems].filter((item, index, array) => (
+      array.findIndex((candidate) => candidate.key === item.key) === index
+    ));
+    persistNotificationItems(merged);
+  }
 
   useEffect(() => {
     Promise.all([
@@ -202,6 +284,7 @@ function App() {
         setAuth(authData);
         setBrokers(sortedBrokers);
         setBookings(bookingData);
+        updateBookingNotifications(bookingData, sortedBrokers, { initial: true });
         setIntegrations(integrationData);
         setLastSyncedAt(new Date());
         if (authData.role === "broker" && authData.brokerId) {
@@ -218,6 +301,7 @@ function App() {
     const res = await fetch("/api/bookings");
     if (!res.ok) return;
     const data = await res.json();
+    updateBookingNotifications(data, brokers);
     setBookings(data);
     setLastSyncedAt(new Date());
     if (!quiet) {
@@ -336,7 +420,11 @@ function App() {
       body: JSON.stringify(payload)
     }).then((res) => res.json());
 
-    setBookings((current) => [...current, saved]);
+    setBookings((current) => {
+      const next = [...current, saved];
+      persistBookingSnapshot(next);
+      return next;
+    });
     setSelectedBooking(saved);
     setForm(bookingTemplate(form.brokerId));
   }
@@ -347,7 +435,11 @@ function App() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ status })
     }).then((res) => res.json());
-    setBookings((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+    setBookings((current) => {
+      const next = current.map((item) => (item.id === saved.id ? saved : item));
+      persistBookingSnapshot(next);
+      return next;
+    });
     setSelectedBooking(saved);
   }
 
@@ -359,12 +451,34 @@ function App() {
       body: JSON.stringify({ clientEmail: integrations.notifyEmail })
     });
     const data = await res.json();
-    setEmailTestStatus(res.ok ? "Test email sent" : data.error || "Email test failed");
+    if (!res.ok) {
+      setEmailTestStatus(data.error || "Email test failed");
+      return;
+    }
+    const recipients = data.internalRecipients?.length ? ` to ${data.internalRecipients.join(", ")}` : "";
+    setEmailTestStatus(`Test email sent${recipients}`);
+  }
+
+  function clearNotifications() {
+    persistNotificationItems([]);
+    setNotificationsOpen(false);
+  }
+
+  function openNotification(item) {
+    const booking = bookings.find((entry) => entry.id === item.bookingId);
+    if (booking) setSelectedBooking(booking);
+    const remaining = notificationItems.filter((entry) => entry.key !== item.key);
+    persistNotificationItems(remaining);
+    setNotificationsOpen(false);
   }
 
   async function deleteSelectedBooking(booking) {
     await fetch(`/api/bookings/${booking.id}`, { method: "DELETE" });
-    setBookings((current) => current.filter((item) => item.id !== booking.id));
+    setBookings((current) => {
+      const next = current.filter((item) => item.id !== booking.id);
+      persistBookingSnapshot(next);
+      return next;
+    });
     setSelectedBooking(null);
   }
 
@@ -521,6 +635,7 @@ function App() {
             <h2>Alerts & Sync</h2>
           </div>
           <IntegrationFlag label="Email alerts" active={integrations.emailNotifications} />
+          <IntegrationFlag label="Broker email routing" active={integrations.brokerEmailRouting} />
           <IntegrationFlag label="Client confirmation" active={integrations.clientConfirmationEmails} />
           <IntegrationFlag label="Google direct sync" active={integrations.googleDirectSync} />
           <IntegrationFlag label="ICS calendar feed" active={integrations.icsSync} />
@@ -557,6 +672,13 @@ function App() {
                 </button>
               ))}
             </div>
+            <NotificationButton
+              items={notificationItems}
+              open={notificationsOpen}
+              onToggle={() => setNotificationsOpen((value) => !value)}
+              onOpen={openNotification}
+              onClear={clearNotifications}
+            />
             <a className="client-page-button" href={brokerBookingUrl} target="_blank" rel="noreferrer">
               <ExternalLink size={16} />
               Client page
@@ -707,6 +829,38 @@ function App() {
   );
 }
 
+function NotificationButton({ items, open, onToggle, onOpen, onClear }) {
+  return (
+    <div className="notification-wrap">
+      <button className="notification-button" type="button" onClick={onToggle} aria-label="Booking notifications">
+        <Bell size={18} />
+        {items.length > 0 && <span>{items.length > 9 ? "9+" : items.length}</span>}
+      </button>
+      {open && (
+        <div className="notification-menu">
+          <div className="notification-head">
+            <strong>Booking updates</strong>
+            {items.length > 0 && <button type="button" onClick={onClear}>Clear</button>}
+          </div>
+          {items.length === 0 ? (
+            <p className="notification-empty">No new booking updates.</p>
+          ) : (
+            <div className="notification-list">
+              {items.map((item) => (
+                <button type="button" key={item.key} onClick={() => onOpen(item)}>
+                  <span>{item.type === "new" ? "New" : "Changed"}</span>
+                  <strong>{item.title}</strong>
+                  <small>{item.detail}</small>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function IntegrationFlag({ label, active }) {
   return (
     <div className="integration-flag">
@@ -834,6 +988,7 @@ function BrokerManager({ brokers, bookings, brokerForm, setBrokerForm, onCreate,
         <label>
           Broker access code
           <input value={brokerForm.accessCode} onChange={(event) => setBrokerForm({ ...brokerForm, accessCode: event.target.value })} placeholder="Set a private login code" />
+          <small className="field-help">Private code for this broker to log in with their email. Ryan admin still uses the main admin password.</small>
         </label>
         <label>
           Services

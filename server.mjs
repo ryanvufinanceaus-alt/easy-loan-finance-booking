@@ -708,6 +708,13 @@ function smtpConfigured() {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
+function internalNotificationRecipients(broker) {
+  return Array.from(new Set([
+    NOTIFY_EMAIL,
+    broker?.email
+  ].map(normalizeEmail).filter(Boolean)));
+}
+
 function mailTransporter() {
   if (!smtpConfigured()) return null;
 
@@ -732,7 +739,8 @@ function formattedBookingTime(booking) {
 
 async function sendBookingEmail(booking, broker, origin = "") {
   const transporter = mailTransporter();
-  if (!transporter || !NOTIFY_EMAIL) return false;
+  const recipients = internalNotificationRecipients(broker);
+  if (!transporter || recipients.length === 0) return false;
   const when = new Intl.DateTimeFormat("en-AU", {
     timeZone: TIME_ZONE,
     dateStyle: "full",
@@ -741,7 +749,7 @@ async function sendBookingEmail(booking, broker, origin = "") {
 
   await transporter.sendMail({
     from: process.env.SMTP_FROM || process.env.SMTP_USER,
-    to: NOTIFY_EMAIL,
+    to: recipients.join(", "),
     replyTo: booking.email || undefined,
     subject: `New booking request: ${booking.clientName} (${booking.service})`,
     text: [
@@ -952,11 +960,14 @@ async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/integrations") {
     if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
     const emailReady = smtpConfigured();
+    const internalRecipients = Array.from(new Set(brokers.flatMap((broker) => internalNotificationRecipients(broker))));
     return sendJson(res, 200, {
-      emailNotifications: Boolean(emailReady && NOTIFY_EMAIL),
+      emailNotifications: Boolean(emailReady && internalRecipients.length > 0),
+      brokerEmailRouting: Boolean(emailReady && brokers.some((broker) => broker.email)),
       clientConfirmationEmails: Boolean(emailReady && CLIENT_CONFIRMATION_EMAILS),
       emailFrom: process.env.SMTP_FROM || process.env.SMTP_USER || "",
       notifyEmail: NOTIFY_EMAIL || "",
+      internalRecipients,
       clientReplyTo: process.env.CLIENT_REPLY_TO || NOTIFY_EMAIL || process.env.SMTP_USER || "",
       smtpHost: process.env.SMTP_HOST || "",
       missingEmailSettings: [
@@ -998,7 +1009,7 @@ async function handleApi(req, res, url) {
     } catch (error) {
       return sendJson(res, 500, { error: `Client confirmation failed: ${error.message}`, results });
     }
-    return sendJson(res, 200, { ok: true, results });
+    return sendJson(res, 200, { ok: true, results, internalRecipients: internalNotificationRecipients(broker) });
   }
 
   if (req.method === "GET" && url.pathname === "/api/brokers") {
