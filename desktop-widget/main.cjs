@@ -4,6 +4,7 @@ const path = require("path");
 
 const DEFAULT_WIDGET_URL = "https://easy-loan-finance-booking.onrender.com/widget?desktop=1";
 const widgetUrl = process.env.ELF_WIDGET_URL || DEFAULT_WIDGET_URL;
+const alwaysOnTop = process.env.ELF_WIDGET_ALWAYS_ON_TOP === "true";
 
 let mainWindow;
 
@@ -43,7 +44,7 @@ function createWindow() {
     frame: false,
     resizable: true,
     movable: true,
-    alwaysOnTop: true,
+    alwaysOnTop,
     skipTaskbar: false,
     title: "ELF Booking Widget",
     backgroundColor: "#121715",
@@ -57,7 +58,7 @@ function createWindow() {
   });
 
   mainWindow.setMenu(null);
-  mainWindow.setAlwaysOnTop(true, "floating");
+  mainWindow.setAlwaysOnTop(alwaysOnTop, "floating");
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);

@@ -77,12 +77,18 @@ The desktop widget app:
 
 1. Has no browser address bar.
 2. Has no normal browser frame.
-3. Stays always on top.
+3. Behaves like a normal desktop widget, so other windows can cover it.
 4. Remembers its last size and position.
 5. Press `Esc` or `Ctrl + W` to close.
 6. Press `Ctrl + R` to refresh.
 
 You can drag the widget by the top header.
+
+If you ever want it to stay above every window again, set this before starting it:
+
+```text
+ELF_WIDGET_ALWAYS_ON_TOP=true
+```
 
 If Windows asks for network access, allow it. The widget only loads the Easy Loan Finance booking page.
 
