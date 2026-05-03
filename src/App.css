@@ -243,6 +243,32 @@ h1 {
   color: #f9e8bd;
 }
 
+.sync-panel .integration-flag {
+  border-top-color: rgba(255, 248, 237, 0.14);
+}
+
+.sync-panel .integration-flag strong {
+  color: #fff8ed;
+}
+
+.sync-panel .integration-flag small {
+  color: rgba(255, 248, 237, 0.68);
+}
+
+.ics-backup-details {
+  margin-top: 10px;
+  border-top: 1px solid rgba(255, 248, 237, 0.12);
+}
+
+.ics-backup-details summary {
+  padding: 12px 0 2px;
+  color: #f9e8bd;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .client-link-panel {
   background: linear-gradient(155deg, #2f7d74, #161411);
   color: #fff8ed;

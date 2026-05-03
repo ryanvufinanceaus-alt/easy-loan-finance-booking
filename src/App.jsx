@@ -746,13 +746,18 @@ function App() {
         {isAdmin && <section className="panel sync-panel">
           <div className="section-title">
             <Link2 size={18} />
-            <h2>Google Sync</h2>
+            <h2>Calendar Sync</h2>
           </div>
-          <SyncRow label="Team ICS" value={teamIcsUrl} copied={copied === "team"} onCopy={() => copyText(teamIcsUrl, "team")} />
-          <SyncRow label="Broker ICS" value={brokerIcsUrl} copied={copied === "broker"} onCopy={() => copyText(brokerIcsUrl, "broker")} />
           <p className="sync-note">
-            Best for phone and PC widgets: turn on Google direct sync through Apps Script. Use ICS as a backup feed only because it can refresh slowly.
+            Use direct Google Calendar sync for Ryan and any broker who needs fast add/delete on phone and PC widgets.
           </p>
+          <IntegrationFlag label="Direct Google sync" active={integrations.googleDirectSync} />
+          <details className="ics-backup-details">
+            <summary>Backup ICS links</summary>
+            <SyncRow label="Team ICS" value={teamIcsUrl} copied={copied === "team"} onCopy={() => copyText(teamIcsUrl, "team")} />
+            <SyncRow label="Broker ICS" value={brokerIcsUrl} copied={copied === "broker"} onCopy={() => copyText(brokerIcsUrl, "broker")} />
+            <p className="sync-note">Use ICS only for brokers without direct sync. Google may refresh ICS slowly.</p>
+          </details>
         </section>}
 
         <section className="panel client-link-panel">
