@@ -245,6 +245,9 @@ function App() {
   if (publicPath.startsWith("/book")) {
     return <PublicBookingPage />;
   }
+  if (publicPath.startsWith("/widget")) {
+    return <DesktopWidgetPage />;
+  }
   if (publicPath.startsWith("/login")) {
     return <LoginPage />;
   }
@@ -823,6 +826,10 @@ function App() {
               onOpen={openNotification}
               onClear={clearNotifications}
             />
+            <a className="client-page-button widget-launch-button" href="/widget" target="_blank" rel="noreferrer">
+              <CalendarDays size={16} />
+              Widget
+            </a>
             <a className="client-page-button" href={brokerBookingUrl} target="_blank" rel="noreferrer">
               <ExternalLink size={16} />
               Client page
@@ -993,6 +1000,219 @@ function App() {
   );
 }
 
+function DesktopWidgetPage() {
+  const [brokers, setBrokers] = useState([]);
+  const [bookings, setBookings] = useState([]);
+  const [auth, setAuth] = useState({ required: false, authenticated: false, role: null, brokerId: null });
+  const [brokerFilter, setBrokerFilter] = useState("all");
+  const [selectedBooking, setSelectedBooking] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+
+  async function loadWidgetData({ initial = false } = {}) {
+    const [authData, brokerData, bookingData] = await Promise.all([
+      fetch("/api/auth/status").then((res) => res.json()),
+      fetch("/api/brokers").then((res) => res.json()),
+      fetch("/api/bookings").then((res) => {
+        if (res.status === 401) return null;
+        return res.json();
+      })
+    ]);
+
+    if (authData.required && !authData.authenticated) {
+      const returnTo = `${window.location.pathname}${window.location.search}`;
+      window.location.href = `/login?returnTo=${encodeURIComponent(returnTo)}`;
+      return;
+    }
+
+    const sortedBrokers = sortBrokersForUi(brokerData || []);
+    const nextBookings = bookingData || [];
+    setAuth(authData);
+    setBrokers(sortedBrokers);
+    setBookings(nextBookings);
+    setLastSyncedAt(new Date());
+    if (initial) {
+      if (authData.role === "broker" && authData.brokerId) setBrokerFilter(authData.brokerId);
+      else {
+        const params = new URLSearchParams(window.location.search);
+        setBrokerFilter(params.get("broker") || "all");
+      }
+    }
+    setSelectedBooking((current) => current ? nextBookings.find((booking) => booking.id === current.id) || current : current);
+  }
+
+  useEffect(() => {
+    loadWidgetData({ initial: true }).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => loadWidgetData().catch(() => {});
+    const timer = window.setInterval(refresh, 8000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
+
+  const brokerById = useMemo(
+    () => Object.fromEntries(brokers.map((broker) => [broker.id, broker])),
+    [brokers]
+  );
+
+  const isAdmin = auth.role === "admin" || !auth.required;
+  const visibleBookings = useMemo(() => {
+    const now = Date.now();
+    return bookings
+      .filter((booking) => brokerFilter === "all" || booking.brokerId === brokerFilter)
+      .filter((booking) => !["Cancelled"].includes(statusLabel(booking.status)))
+      .filter((booking) => new Date(booking.end || booking.start).getTime() >= now - 60 * 60 * 1000)
+      .sort((a, b) => new Date(a.start) - new Date(b.start));
+  }, [bookings, brokerFilter]);
+
+  const todayBookings = visibleBookings.filter((booking) => sameDay(new Date(booking.start), new Date()));
+  const upcomingBookings = visibleBookings.filter((booking) => !sameDay(new Date(booking.start), new Date())).slice(0, 8);
+  const nextBooking = visibleBookings[0];
+  const reviewCount = visibleBookings.filter((booking) => (
+    booking.status === "Confirmed" && new Date(booking.end || booking.start).getTime() + 60 * 60 * 1000 <= Date.now()
+  )).length;
+
+  return (
+    <main className="desktop-widget-page">
+      <section className="widget-shell">
+        <header className="widget-header">
+          <div className="widget-brand">
+            <BrandMark />
+            <div>
+              <span>Easy Loan Finance</span>
+              <strong>Booking Widget</strong>
+            </div>
+          </div>
+          <a className="widget-icon-link" href="/" aria-label="Open dashboard">
+            <ExternalLink size={16} />
+          </a>
+        </header>
+
+        <div className="widget-controls">
+          {isAdmin && (
+            <select value={brokerFilter} onChange={(event) => setBrokerFilter(event.target.value)} aria-label="Broker">
+              <option value="all">All brokers</option>
+              {brokers.map((broker) => <option key={broker.id} value={broker.id}>{broker.name}</option>)}
+            </select>
+          )}
+          <button type="button" onClick={() => loadWidgetData().catch(() => {})}>
+            <Clock size={15} />
+            {lastSyncedAt ? displayTime(lastSyncedAt) : "Sync"}
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="widget-loading">Loading calendar...</div>
+        ) : (
+          <>
+            <section className="widget-hero-booking">
+              <span>Next appointment</span>
+              {nextBooking ? (
+                <button type="button" onClick={() => setSelectedBooking(nextBooking)}>
+                  <strong>{nextBooking.clientName}</strong>
+                  <small>{displayDay(new Date(nextBooking.start))}, {displayTime(nextBooking.start)} - {displayTime(nextBooking.end)}</small>
+                  <em style={{ color: brokerById[nextBooking.brokerId]?.color || "#b89044" }}>
+                    {brokerById[nextBooking.brokerId]?.name || "Easy Loan Finance"}
+                  </em>
+                </button>
+              ) : (
+                <p>No upcoming bookings.</p>
+              )}
+            </section>
+
+            <div className="widget-mini-stats">
+              <span><strong>{todayBookings.length}</strong> Today</span>
+              <span><strong>{visibleBookings.length}</strong> Upcoming</span>
+              <span><strong>{reviewCount}</strong> Review</span>
+            </div>
+
+            <WidgetBookingList
+              title="Today"
+              bookings={todayBookings}
+              brokerById={brokerById}
+              onSelect={setSelectedBooking}
+            />
+            <WidgetBookingList
+              title="Upcoming"
+              bookings={upcomingBookings}
+              brokerById={brokerById}
+              onSelect={setSelectedBooking}
+            />
+          </>
+        )}
+      </section>
+
+      {selectedBooking && (
+        <WidgetBookingDetail
+          booking={selectedBooking}
+          broker={brokerById[selectedBooking.brokerId]}
+          onClose={() => setSelectedBooking(null)}
+        />
+      )}
+    </main>
+  );
+}
+
+function WidgetBookingList({ title, bookings, brokerById, onSelect }) {
+  return (
+    <section className="widget-list-section">
+      <div className="widget-list-title">
+        <strong>{title}</strong>
+        <span>{bookings.length}</span>
+      </div>
+      <div className="widget-booking-list">
+        {bookings.length === 0 && <p className="widget-empty">Clear</p>}
+        {bookings.map((booking) => {
+          const broker = brokerById[booking.brokerId];
+          const brokerColor = broker?.color || "#b89044";
+          return (
+            <button
+              type="button"
+              key={booking.id}
+              className={classNames("widget-booking-row", statusClass(booking.status))}
+              style={{ "--broker-color": brokerColor }}
+              onClick={() => onSelect(booking)}
+            >
+              <span className="broker-initials" style={{ background: brokerColor }}>{brokerInitials(broker?.name)}</span>
+              <span>
+                <strong>{booking.clientName}</strong>
+                <small>{displayTime(booking.start)} - {displayTime(booking.end)} - {booking.service}</small>
+              </span>
+              <em>{statusLabel(booking.status)}</em>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function WidgetBookingDetail({ booking, broker, onClose }) {
+  return (
+    <div className="widget-detail-panel">
+      <button className="widget-detail-close" type="button" onClick={onClose}>Close</button>
+      <span className={classNames("status-pill", statusClass(booking.status))}>{statusLabel(booking.status)}</span>
+      <h1>{booking.clientName}</h1>
+      <div className="widget-detail-grid">
+        <span><Clock size={15} /> {displayDay(new Date(booking.start))}, {displayTime(booking.start)} - {displayTime(booking.end)}</span>
+        <span><Users size={15} /> {broker?.name || "Easy Loan Finance"}</span>
+        <span><Phone size={15} /> {booking.phone || "No phone"}</span>
+        <span><Mail size={15} /> {booking.email || "No email"}</span>
+      </div>
+      {booking.notes && <p>{booking.notes}</p>}
+      <a className="primary-button" href="/" target="_blank" rel="noreferrer">
+        <ExternalLink size={16} />
+        Open Dashboard
+      </a>
+    </div>
+  );
+}
+
 function EmailTemplateManager({ data, status, onSave }) {
   const [draft, setDraft] = useState(data.templates);
 
@@ -1114,7 +1334,8 @@ function LoginPage() {
       .then((res) => res.json())
       .then((status) => {
         if (!status.required || status.authenticated) {
-          window.location.href = "/";
+          const returnTo = new URLSearchParams(window.location.search).get("returnTo") || "/";
+          window.location.href = returnTo.startsWith("/") ? returnTo : "/";
         }
       });
   }, []);
@@ -1134,7 +1355,8 @@ function LoginPage() {
       setError(data.error || "Could not login");
       return;
     }
-    window.location.href = "/";
+    const returnTo = new URLSearchParams(window.location.search).get("returnTo") || "/";
+    window.location.href = returnTo.startsWith("/") ? returnTo : "/";
   }
 
   return (
