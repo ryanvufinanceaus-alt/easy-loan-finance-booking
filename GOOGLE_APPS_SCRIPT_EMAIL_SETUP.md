@@ -35,6 +35,10 @@ function doPost(e) {
       return syncCalendarEvent(payload);
     }
 
+    if (payload.type === 'calendar_delete') {
+      return deleteCalendarEvent(payload);
+    }
+
     if (!payload.to || !payload.subject) {
       return json({ ok: false, error: 'Missing to or subject' });
     }
@@ -93,6 +97,18 @@ function syncCalendarEvent(payload) {
     eventId: event.getId(),
     htmlLink: event.getHtmlLink()
   });
+}
+
+function deleteCalendarEvent(payload) {
+  if (!payload.eventId) {
+    return json({ ok: true, deleted: false, reason: 'No event ID' });
+  }
+  const calendar = getCalendar(payload.calendarId);
+  const event = calendar.getEventById(payload.eventId);
+  if (event) {
+    event.deleteEvent();
+  }
+  return json({ ok: true, deleted: Boolean(event) });
 }
 
 function getCalendar(calendarId) {

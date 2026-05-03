@@ -844,6 +844,31 @@ async function syncAppsScriptCalendarEvent(booking, broker, origin = "") {
   return { id: payload.eventId };
 }
 
+async function deleteAppsScriptCalendarEvent(booking) {
+  if (!appsScriptCalendarConfigured() || !booking?.googleEventId) return false;
+  const response = await fetch(process.env.GOOGLE_APPS_SCRIPT_EMAIL_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      token: process.env.GOOGLE_APPS_SCRIPT_EMAIL_TOKEN,
+      type: "calendar_delete",
+      calendarId: GOOGLE_APPS_SCRIPT_CALENDAR_ID,
+      eventId: booking.googleEventId
+    })
+  });
+  const raw = await response.text();
+  let payload = {};
+  try {
+    payload = raw ? JSON.parse(raw) : {};
+  } catch {
+    payload = { error: raw };
+  }
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.error || `Google Apps Script calendar delete failed with HTTP ${response.status}`);
+  }
+  return true;
+}
+
 async function syncGoogleEvent(booking, broker, origin = "") {
   if (appsScriptCalendarConfigured()) {
     return syncAppsScriptCalendarEvent(booking, broker, origin);
@@ -871,6 +896,31 @@ async function syncGoogleEvent(booking, broker, origin = "") {
   }
 
   return response.json();
+}
+
+async function deleteGoogleEvent(booking) {
+  if (!booking?.googleEventId) return false;
+  if (appsScriptCalendarConfigured()) {
+    return deleteAppsScriptCalendarEvent(booking);
+  }
+
+  const accessToken = await googleAccessToken();
+  if (!accessToken || !GOOGLE_CALENDAR_ID) return false;
+
+  const response = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GOOGLE_CALENDAR_ID)}/events/${encodeURIComponent(booking.googleEventId)}`,
+    {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${accessToken}` }
+    }
+  );
+
+  if (response.status === 404 || response.status === 410) return true;
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Google Calendar delete failed: ${detail}`);
+  }
+  return true;
 }
 
 function smtpConfigured() {
@@ -1644,6 +1694,14 @@ async function handleApi(req, res, url) {
   if (bookingMatch && req.method === "DELETE") {
     if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
     const id = bookingMatch[1];
+    const booking = (await listBookings()).find((item) => item.id === id);
+    if (!booking) return sendJson(res, 404, { error: "Booking not found" });
+    try {
+      await deleteGoogleEvent(booking);
+    } catch (error) {
+      console.warn(`Calendar delete failed: ${error.message}`);
+      return sendJson(res, 502, { error: `Calendar delete failed: ${error.message}` });
+    }
     await deleteBooking(id);
     return sendJson(res, 200, { ok: true });
   }

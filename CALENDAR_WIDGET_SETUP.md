@@ -103,3 +103,9 @@ Note: this can update slower than direct Google Calendar sync. Use Google Calend
 4. Check the PC Google Calendar app shortcut.
 
 If it does not appear, open the dashboard and check `Alerts & Sync`. `Google direct sync` should show `On`.
+
+## 6. Delete Sync
+
+After the Apps Script code includes `calendar_delete` and you redeploy the Apps Script web app, deleting a booking from the dashboard also deletes the linked Google Calendar event.
+
+If an old booking was created before Google direct sync was turned on, it may not have a linked Google event ID. In that case, delete the old calendar event manually once.
