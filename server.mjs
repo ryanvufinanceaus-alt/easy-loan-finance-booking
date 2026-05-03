@@ -20,6 +20,7 @@ const EAST_COAST_TIME_LABEL = process.env.BOOKING_EAST_COAST_TIME_LABEL || "Sydn
 const NOTIFY_EMAIL = process.env.BOOKING_NOTIFY_EMAIL || process.env.NOTIFY_EMAIL;
 const CLIENT_CONFIRMATION_EMAILS = process.env.CLIENT_CONFIRMATION_EMAILS !== "false";
 const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
+const GOOGLE_APPS_SCRIPT_CALENDAR_ID = process.env.GOOGLE_APPS_SCRIPT_CALENDAR_ID;
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "ryan.vufinanceaus@gmail.com";
 const ADMIN_EMAILS = Array.from(new Set([
   ADMIN_EMAIL,
@@ -813,7 +814,41 @@ async function googleAccessToken() {
   return token.access_token;
 }
 
+function appsScriptCalendarConfigured() {
+  return Boolean(process.env.GOOGLE_APPS_SCRIPT_EMAIL_URL && process.env.GOOGLE_APPS_SCRIPT_EMAIL_TOKEN && GOOGLE_APPS_SCRIPT_CALENDAR_ID);
+}
+
+async function syncAppsScriptCalendarEvent(booking, broker, origin = "") {
+  if (!appsScriptCalendarConfigured()) return null;
+  const response = await fetch(process.env.GOOGLE_APPS_SCRIPT_EMAIL_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      token: process.env.GOOGLE_APPS_SCRIPT_EMAIL_TOKEN,
+      type: "calendar",
+      calendarId: GOOGLE_APPS_SCRIPT_CALENDAR_ID,
+      eventId: booking.googleEventId || "",
+      event: googleEventBody(booking, broker, origin)
+    })
+  });
+  const raw = await response.text();
+  let payload = {};
+  try {
+    payload = raw ? JSON.parse(raw) : {};
+  } catch {
+    payload = { error: raw };
+  }
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.error || `Google Apps Script calendar sync failed with HTTP ${response.status}`);
+  }
+  return { id: payload.eventId };
+}
+
 async function syncGoogleEvent(booking, broker, origin = "") {
+  if (appsScriptCalendarConfigured()) {
+    return syncAppsScriptCalendarEvent(booking, broker, origin);
+  }
+
   const accessToken = await googleAccessToken();
   if (!accessToken) return null;
 
@@ -1434,7 +1469,7 @@ async function handleApi(req, res, url) {
         !appsScriptReady && !process.env.SMTP_PASS && "SMTP_PASS",
         !NOTIFY_EMAIL && "BOOKING_NOTIFY_EMAIL"
       ].filter(Boolean),
-      googleDirectSync: Boolean(GOOGLE_CALENDAR_ID && (process.env.GOOGLE_SERVICE_ACCOUNT_JSON || (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY))),
+      googleDirectSync: Boolean(appsScriptCalendarConfigured() || (GOOGLE_CALENDAR_ID && (process.env.GOOGLE_SERVICE_ACCOUNT_JSON || (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY)))),
       reminderMinutesBefore: REMINDER_MINUTES_BEFORE,
       icsSync: true
     });

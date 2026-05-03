@@ -750,7 +750,9 @@ function App() {
           </div>
           <SyncRow label="Team ICS" value={teamIcsUrl} copied={copied === "team"} onCopy={() => copyText(teamIcsUrl, "team")} />
           <SyncRow label="Broker ICS" value={brokerIcsUrl} copied={copied === "broker"} onCopy={() => copyText(brokerIcsUrl, "broker")} />
-          <p className="sync-note">Use the ICS URL after deployment to subscribe in Google Calendar and view it on mobile.</p>
+          <p className="sync-note">
+            Best for phone and PC widgets: turn on Google direct sync through Apps Script. Use ICS as a backup feed only because it can refresh slowly.
+          </p>
         </section>}
 
         <section className="panel client-link-panel">

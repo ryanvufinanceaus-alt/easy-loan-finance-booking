@@ -1,12 +1,12 @@
-# Free Email Fix: Gmail via Google Apps Script
+# Free Email And Calendar Fix: Gmail via Google Apps Script
 
-Render free can time out on Gmail SMTP ports `465` and `587`. This setup sends email through HTTPS instead, so the booking app does not depend on blocked SMTP ports.
+Render free can time out on Gmail SMTP ports `465` and `587`. This setup sends email and creates Google Calendar events through HTTPS instead, so the booking app does not depend on blocked SMTP ports or slow `.ics` refresh.
 
 ## 1. Create Apps Script
 
 1. Open https://script.google.com/
 2. Click `New project`.
-3. Name it `Easy Loan Finance Booking Email`.
+3. Name it `Easy Loan Finance Booking Email Calendar`.
 4. Delete the sample code.
 5. Paste this code:
 
@@ -19,7 +19,8 @@ function doGet() {
   return json({
     ok: true,
     email: Session.getActiveUser().getEmail(),
-    aliases: GmailApp.getAliases()
+    aliases: GmailApp.getAliases(),
+    calendar: CalendarApp.getDefaultCalendar().getName()
   });
 }
 
@@ -29,6 +30,11 @@ function doPost(e) {
     if (payload.token !== SECRET_TOKEN) {
       return json({ ok: false, error: 'Unauthorized token' });
     }
+
+    if (payload.type === 'calendar') {
+      return syncCalendarEvent(payload);
+    }
+
     if (!payload.to || !payload.subject) {
       return json({ ok: false, error: 'Missing to or subject' });
     }
@@ -62,6 +68,44 @@ function doPost(e) {
   }
 }
 
+function syncCalendarEvent(payload) {
+  const calendar = getCalendar(payload.calendarId);
+  const data = payload.event || {};
+  const start = new Date(data.start.dateTime);
+  const end = new Date(data.end.dateTime);
+  const options = {
+    description: data.description || '',
+    location: data.location || ''
+  };
+
+  let event = payload.eventId ? calendar.getEventById(payload.eventId) : null;
+  if (event) {
+    event.setTitle(data.summary || 'Easy Loan Finance booking');
+    event.setTime(start, end);
+    event.setDescription(options.description);
+    event.setLocation(options.location);
+  } else {
+    event = calendar.createEvent(data.summary || 'Easy Loan Finance booking', start, end, options);
+  }
+
+  return json({
+    ok: true,
+    eventId: event.getId(),
+    htmlLink: event.getHtmlLink()
+  });
+}
+
+function getCalendar(calendarId) {
+  if (!calendarId || calendarId === 'primary') {
+    return CalendarApp.getDefaultCalendar();
+  }
+  const calendar = CalendarApp.getCalendarById(calendarId);
+  if (!calendar) {
+    throw new Error('Calendar not found: ' + calendarId);
+  }
+  return calendar;
+}
+
 function testAuth() {
   const aliases = GmailApp.getAliases();
   Logger.log(aliases);
@@ -74,6 +118,13 @@ function testAuth() {
     'Easy Loan Finance email test',
     'Apps Script email is working.',
     options
+  );
+
+  CalendarApp.getDefaultCalendar().createEvent(
+    'Easy Loan Finance calendar test',
+    new Date(Date.now() + 60 * 60 * 1000),
+    new Date(Date.now() + 90 * 60 * 1000),
+    { description: 'Apps Script calendar sync is working.' }
   );
 }
 
@@ -104,7 +155,7 @@ elf-booking-email-2026-ryan-private
 
 Use the exact same value in Render later as `GOOGLE_APPS_SCRIPT_EMAIL_TOKEN`.
 
-## 3. Authorise Gmail
+## 3. Authorise Gmail And Calendar
 
 1. In Apps Script, choose function `testAuth`.
 2. Click `Run`.
@@ -112,9 +163,10 @@ Use the exact same value in Render later as `GOOGLE_APPS_SCRIPT_EMAIL_TOKEN`.
 4. Choose the Gmail account `ryan.vufinanceaus@gmail.com`.
 5. Click `Advanced` if Google shows a warning.
 6. Click `Go to Easy Loan Finance Booking Email`.
-7. Allow access.
+7. Allow Gmail and Calendar access.
 
 Check your Gmail inbox. You should receive `Easy Loan Finance email test`.
+Check Google Calendar. You should see `Easy Loan Finance calendar test`.
 
 Important: `hello@easyloanfinance.com.au` must appear in `GmailApp.getAliases()`. If it does not, Apps Script will send from the Gmail account instead.
 
@@ -123,7 +175,7 @@ Important: `hello@easyloanfinance.com.au` must appear in `GmailApp.getAliases()`
 1. Click `Deploy`.
 2. Click `New deployment`.
 3. Select type `Web app`.
-4. Description: `Booking email sender`.
+4. Description: `Booking email and calendar sender`.
 5. Execute as: `Me`.
 6. Who has access: `Anyone`.
 7. Click `Deploy`.
@@ -145,6 +197,7 @@ In Render, open the booking web service:
 ```text
 GOOGLE_APPS_SCRIPT_EMAIL_URL=your Web app URL
 GOOGLE_APPS_SCRIPT_EMAIL_TOKEN=the same SECRET_TOKEN
+GOOGLE_APPS_SCRIPT_CALENDAR_ID=primary
 SMTP_FROM=Easy Loan Finance <hello@easyloanfinance.com.au>
 CLIENT_CONFIRMATION_FROM=Easy Loan Finance <hello@easyloanfinance.com.au>
 CLIENT_REPLY_TO=hello@easyloanfinance.com.au
@@ -156,6 +209,8 @@ BOOKING_NOTIFY_EMAIL=ryan.vufinanceaus@gmail.com
 
 You can leave the old `SMTP_*` variables there. The app will use Apps Script first when the Apps Script URL and token are present.
 
+`GOOGLE_APPS_SCRIPT_CALENDAR_ID=primary` means bookings go into the main Google Calendar of `ryan.vufinanceaus@gmail.com`. If you later create a separate Google calendar called `Easy Loan Finance Bookings`, use that calendar ID instead.
+
 ## 6. Test
 
 1. Open the Easy Loan Finance dashboard.
@@ -166,3 +221,5 @@ You can leave the old `SMTP_*` variables there. The app will use Apps Script fir
 If it fails with `Unauthorized token`, the token in Apps Script and Render does not match.
 
 If it sends from Gmail instead of `hello@easyloanfinance.com.au`, open Gmail settings and confirm `hello@easyloanfinance.com.au` is listed under `Send mail as`, then run `testAuth` again and check the Apps Script logs.
+
+After this setup, new confirmed bookings will create Google Calendar events directly. Your phone widget and PC Google Calendar view should follow the same Google Calendar account.
