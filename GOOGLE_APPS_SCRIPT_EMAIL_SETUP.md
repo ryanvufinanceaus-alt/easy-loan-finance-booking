@@ -237,7 +237,17 @@ BOOKING_NOTIFY_EMAIL=ryan.vufinanceaus@gmail.com
 
 You can leave the old `SMTP_*` variables there. The app will use Apps Script first when the Apps Script URL and token are present.
 
-`GOOGLE_APPS_SCRIPT_CALENDAR_ID=primary` means bookings go into the main Google Calendar of `ryan.vufinanceaus@gmail.com`. If you later create a separate Google calendar called `Easy Loan Finance Bookings`, use that calendar ID instead.
+`GOOGLE_APPS_SCRIPT_CALENDAR_ID=primary` means Ryan bookings go into the main Google Calendar of `ryan.vufinanceaus@gmail.com`.
+
+Cleaner setup: create a separate Google Calendar called `Ryan - Easy Loan Finance`, copy its Calendar ID, and use that instead of `primary`.
+
+For future brokers, use a broker-to-calendar map:
+
+```text
+BROKER_GOOGLE_CALENDAR_IDS=ryan-vu:ryan-calendar-id,broker-id:broker-calendar-id
+```
+
+If a broker is not listed there, they can still use their broker ICS link as a free fallback.
 
 ## 6. Test
 

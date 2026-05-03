@@ -21,6 +21,17 @@ const NOTIFY_EMAIL = process.env.BOOKING_NOTIFY_EMAIL || process.env.NOTIFY_EMAI
 const CLIENT_CONFIRMATION_EMAILS = process.env.CLIENT_CONFIRMATION_EMAILS !== "false";
 const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
 const GOOGLE_APPS_SCRIPT_CALENDAR_ID = process.env.GOOGLE_APPS_SCRIPT_CALENDAR_ID;
+const BROKER_GOOGLE_CALENDAR_IDS = Object.fromEntries(
+  (process.env.BROKER_GOOGLE_CALENDAR_IDS || "")
+    .split(",")
+    .map((pair) => pair.trim())
+    .filter(Boolean)
+    .map((pair) => {
+      const [brokerId, ...calendarParts] = pair.split(":");
+      return [brokerId?.trim(), calendarParts.join(":").trim()];
+    })
+    .filter(([brokerId, calendarId]) => brokerId && calendarId)
+);
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "ryan.vufinanceaus@gmail.com";
 const ADMIN_EMAILS = Array.from(new Set([
   ADMIN_EMAIL,
@@ -815,19 +826,27 @@ async function googleAccessToken() {
   return token.access_token;
 }
 
-function appsScriptCalendarConfigured() {
-  return Boolean(process.env.GOOGLE_APPS_SCRIPT_EMAIL_URL && process.env.GOOGLE_APPS_SCRIPT_EMAIL_TOKEN && GOOGLE_APPS_SCRIPT_CALENDAR_ID);
+function calendarIdForBroker(broker) {
+  if (broker?.id && BROKER_GOOGLE_CALENDAR_IDS[broker.id]) return BROKER_GOOGLE_CALENDAR_IDS[broker.id];
+  if (broker?.googleCalendarId) return broker.googleCalendarId;
+  if (broker?.id === "ryan-vu") return GOOGLE_APPS_SCRIPT_CALENDAR_ID || "";
+  return "";
+}
+
+function appsScriptCalendarConfigured(broker) {
+  return Boolean(process.env.GOOGLE_APPS_SCRIPT_EMAIL_URL && process.env.GOOGLE_APPS_SCRIPT_EMAIL_TOKEN && calendarIdForBroker(broker));
 }
 
 async function syncAppsScriptCalendarEvent(booking, broker, origin = "") {
-  if (!appsScriptCalendarConfigured()) return null;
+  const calendarId = calendarIdForBroker(broker);
+  if (!appsScriptCalendarConfigured(broker)) return null;
   const response = await fetch(process.env.GOOGLE_APPS_SCRIPT_EMAIL_URL, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       token: process.env.GOOGLE_APPS_SCRIPT_EMAIL_TOKEN,
       type: "calendar",
-      calendarId: GOOGLE_APPS_SCRIPT_CALENDAR_ID,
+      calendarId,
       eventId: booking.googleEventId || "",
       event: googleEventBody(booking, broker, origin)
     })
@@ -845,17 +864,18 @@ async function syncAppsScriptCalendarEvent(booking, broker, origin = "") {
   return { id: payload.eventId };
 }
 
-async function deleteAppsScriptCalendarEvent(booking) {
-  if (!appsScriptCalendarConfigured() || !booking) return false;
+async function deleteAppsScriptCalendarEvent(booking, broker) {
+  const calendarId = calendarIdForBroker(broker);
+  if (!appsScriptCalendarConfigured(broker) || !booking) return false;
   const response = await fetch(process.env.GOOGLE_APPS_SCRIPT_EMAIL_URL, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       token: process.env.GOOGLE_APPS_SCRIPT_EMAIL_TOKEN,
       type: "calendar_delete",
-      calendarId: GOOGLE_APPS_SCRIPT_CALENDAR_ID,
+      calendarId,
       eventId: booking.googleEventId || "",
-      event: googleEventBody(booking, null, "")
+      event: googleEventBody(booking, broker, "")
     })
   });
   const raw = await response.text();
@@ -872,7 +892,7 @@ async function deleteAppsScriptCalendarEvent(booking) {
 }
 
 async function syncGoogleEvent(booking, broker, origin = "") {
-  if (appsScriptCalendarConfigured()) {
+  if (appsScriptCalendarConfigured(broker)) {
     return syncAppsScriptCalendarEvent(booking, broker, origin);
   }
 
@@ -900,11 +920,11 @@ async function syncGoogleEvent(booking, broker, origin = "") {
   return response.json();
 }
 
-async function deleteGoogleEvent(booking) {
-  if (!booking?.googleEventId) return false;
-  if (appsScriptCalendarConfigured()) {
-    return deleteAppsScriptCalendarEvent(booking);
+async function deleteGoogleEvent(booking, broker) {
+  if (appsScriptCalendarConfigured(broker)) {
+    return deleteAppsScriptCalendarEvent(booking, broker);
   }
+  if (!booking?.googleEventId) return false;
 
   const accessToken = await googleAccessToken();
   if (!accessToken || !GOOGLE_CALENDAR_ID) return false;
@@ -1521,7 +1541,7 @@ async function handleApi(req, res, url) {
         !appsScriptReady && !process.env.SMTP_PASS && "SMTP_PASS",
         !NOTIFY_EMAIL && "BOOKING_NOTIFY_EMAIL"
       ].filter(Boolean),
-      googleDirectSync: Boolean(appsScriptCalendarConfigured() || (GOOGLE_CALENDAR_ID && (process.env.GOOGLE_SERVICE_ACCOUNT_JSON || (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY)))),
+      googleDirectSync: Boolean(brokers.some((broker) => appsScriptCalendarConfigured(broker)) || (GOOGLE_CALENDAR_ID && (process.env.GOOGLE_SERVICE_ACCOUNT_JSON || (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY)))),
       reminderMinutesBefore: REMINDER_MINUTES_BEFORE,
       icsSync: true
     });
@@ -1698,8 +1718,9 @@ async function handleApi(req, res, url) {
     const id = bookingMatch[1];
     const booking = (await listBookings()).find((item) => item.id === id);
     if (!booking) return sendJson(res, 404, { error: "Booking not found" });
+    const broker = brokers.find((item) => item.id === booking.brokerId);
     try {
-      await deleteGoogleEvent(booking);
+      await deleteGoogleEvent(booking, broker);
     } catch (error) {
       console.warn(`Calendar delete failed: ${error.message}`);
       return sendJson(res, 502, { error: `Calendar delete failed: ${error.message}` });

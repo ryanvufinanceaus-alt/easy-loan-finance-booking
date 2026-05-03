@@ -2,7 +2,7 @@
 
 Best free setup:
 
-1. The booking app creates events directly in Ryan's Google Calendar through Google Apps Script.
+1. The booking app creates Ryan's events directly in a separate Google Calendar through Google Apps Script.
 2. Phone shows those events through the Google Calendar widget.
 3. PC shows the same calendar through Google Calendar in Chrome/Edge as an app, or Outlook/Windows widgets if you prefer Microsoft.
 
@@ -31,7 +31,28 @@ GOOGLE_APPS_SCRIPT_EMAIL_TOKEN=your Apps Script secret token
 4. Click `Save Changes`.
 5. Wait for Render to redeploy.
 
-Now new bookings should go straight into the Google Calendar account that owns the Apps Script, usually `ryan.vufinanceaus@gmail.com`.
+Recommended calendar:
+
+1. In Google Calendar, create a new calendar called `Ryan - Easy Loan Finance`.
+2. Open that calendar's settings.
+3. Copy its `Calendar ID`.
+4. In Render, use that ID:
+
+```text
+GOOGLE_APPS_SCRIPT_CALENDAR_ID=the Ryan - Easy Loan Finance calendar ID
+```
+
+If you use `primary`, bookings go into the main Google calendar. A separate calendar is cleaner because you can show/hide it on PC and phone widgets.
+
+Now new Ryan bookings should go straight into that Google Calendar.
+
+For future brokers, add broker-specific calendar IDs in Render:
+
+```text
+BROKER_GOOGLE_CALENDAR_IDS=ryan-vu:ryan-calendar-id,broker-id:broker-calendar-id
+```
+
+If a broker does not have a direct calendar ID yet, they can still use their broker ICS link as a free fallback.
 
 ## 2. Phone Widget
 
@@ -103,6 +124,8 @@ Note: this can update slower than direct Google Calendar sync. Use Google Calend
 4. Check the PC Google Calendar app shortcut.
 
 If it does not appear, open the dashboard and check `Alerts & Sync`. `Google direct sync` should show `On`.
+
+If you are using direct sync for Ryan, unsubscribe from the old Ryan ICS calendar in Google Calendar. Keeping both direct sync and ICS on will make duplicates.
 
 ## 6. Delete Sync
 
