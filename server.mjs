@@ -29,6 +29,7 @@ const ADMIN_EMAILS = Array.from(new Set([
 ].map(normalizeEmail).filter(Boolean)));
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || ADMIN_PASSWORD || "local-dev-secret-change-me";
+const SESSION_MAX_AGE_SECONDS = Number(process.env.SESSION_MAX_AGE_SECONDS || 8 * 60 * 60);
 const PUBLIC_API_ROUTES = new Set(["/api/health", "/api/brokers", "/api/bookings"]);
 const PUBLIC_BOOKING_DURATION = 30;
 const BUSINESS_START = "09:30";
@@ -511,7 +512,7 @@ function verifySession(token = "") {
 
 function setSessionCookie(res, token) {
   res.setHeader("set-cookie", [
-    `elf_admin=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800`,
+    `elf_admin=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}`,
   ]);
 }
 
@@ -1346,7 +1347,7 @@ async function handleApi(req, res, url) {
         brokerId: broker.id,
         email: broker.email,
         name: broker.name,
-        exp: Date.now() + 7 * 24 * 60 * 60 * 1000
+        exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000
       });
       setSessionCookie(res, token);
       return sendJson(res, 200, { ok: true, role: "broker", brokerId: broker.id, email: broker.email });
@@ -1355,7 +1356,7 @@ async function handleApi(req, res, url) {
     const token = signSession({
       role: "admin",
       email: adminEmail,
-      exp: Date.now() + 7 * 24 * 60 * 60 * 1000
+      exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000
     });
     setSessionCookie(res, token);
     return sendJson(res, 200, { ok: true, role: "admin", email: adminEmail });
