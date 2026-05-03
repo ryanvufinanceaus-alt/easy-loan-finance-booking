@@ -52,12 +52,15 @@ const defaultEmailTemplates = {
     "Time: {{time}}",
     "Meeting style: {{channel}}",
     "",
-    "We will send a reminder 10 minutes before your appointment.",
+    "You will receive a quick reminder 10 minutes before we start.",
     "",
-    "If anything changes, please reply to this email.",
+    "If anything changes, feel free to reply to this email.",
     "",
-    "Easy Loan Finance",
-    "Quick Loan, Easy Life"
+    "Kind regards,",
+    "{{brokerName}}",
+    "Easy Loan Finance | Quick Loan, Easy Life",
+    "hello@easyloanfinance.com.au",
+    "https://easyloanfinance.com.au"
   ].join("\n"),
   reminderSubject: "Reminder: your Easy Loan Finance appointment starts in 10 minutes",
   reminderBody: [
@@ -69,7 +72,7 @@ const defaultEmailTemplates = {
     "Time: {{time}}",
     "Meeting style: {{channel}}",
     "",
-    "Easy Loan Finance"
+    "Easy Loan Finance | Quick Loan, Easy Life"
   ].join("\n")
 };
 
@@ -350,17 +353,18 @@ async function writeAppSetting(key, value) {
 
 async function getEmailTemplates() {
   const saved = await readAppSetting(EMAIL_TEMPLATES_SETTING_KEY, {});
-  return { ...defaultEmailTemplates, ...saved };
+  return cleanEmailTemplates({ ...defaultEmailTemplates, ...saved });
 }
 
 async function saveEmailTemplates(patch) {
   const current = await getEmailTemplates();
-  const next = {
-    confirmationSubject: String(patch.confirmationSubject ?? current.confirmationSubject).trim() || defaultEmailTemplates.confirmationSubject,
-    confirmationBody: String(patch.confirmationBody ?? current.confirmationBody).trim() || defaultEmailTemplates.confirmationBody,
-    reminderSubject: String(patch.reminderSubject ?? current.reminderSubject).trim() || defaultEmailTemplates.reminderSubject,
-    reminderBody: String(patch.reminderBody ?? current.reminderBody).trim() || defaultEmailTemplates.reminderBody
-  };
+  const source = patch.reset ? defaultEmailTemplates : patch;
+  const next = cleanEmailTemplates({
+    confirmationSubject: String(source.confirmationSubject ?? current.confirmationSubject).trim() || defaultEmailTemplates.confirmationSubject,
+    confirmationBody: String(source.confirmationBody ?? current.confirmationBody).trim() || defaultEmailTemplates.confirmationBody,
+    reminderSubject: String(source.reminderSubject ?? current.reminderSubject).trim() || defaultEmailTemplates.reminderSubject,
+    reminderBody: String(source.reminderBody ?? current.reminderBody).trim() || defaultEmailTemplates.reminderBody
+  });
   const result = await writeAppSetting(EMAIL_TEMPLATES_SETTING_KEY, next);
   return { templates: result.value, storage: result.storage, warning: result.warning };
 }
@@ -1011,6 +1015,15 @@ function cleanEmailContent(value = "") {
     .trim();
 }
 
+function cleanEmailTemplates(templates = {}) {
+  return {
+    confirmationSubject: cleanEmailContent(templates.confirmationSubject || defaultEmailTemplates.confirmationSubject),
+    confirmationBody: cleanEmailContent(templates.confirmationBody || defaultEmailTemplates.confirmationBody),
+    reminderSubject: cleanEmailContent(templates.reminderSubject || defaultEmailTemplates.reminderSubject),
+    reminderBody: cleanEmailContent(templates.reminderBody || defaultEmailTemplates.reminderBody)
+  };
+}
+
 function renderTemplate(template = "", variables = {}) {
   return cleanEmailContent(String(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => (
     variables[key] ?? ""
@@ -1432,6 +1445,7 @@ async function handleApi(req, res, url) {
     const templates = await getEmailTemplates();
     return sendJson(res, 200, {
       templates,
+      defaults: cleanEmailTemplates(defaultEmailTemplates),
       logoUrl: emailLogoUrl(requestOrigin(req)),
       placeholders: ["clientName", "brokerName", "brokerPhone", "service", "time", "channel", "companyName", "slogan"]
     });
@@ -1444,6 +1458,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, {
       ok: true,
       ...result,
+      defaults: cleanEmailTemplates(defaultEmailTemplates),
       logoUrl: emailLogoUrl(requestOrigin(req)),
       placeholders: ["clientName", "brokerName", "brokerPhone", "service", "time", "channel", "companyName", "slogan"]
     });

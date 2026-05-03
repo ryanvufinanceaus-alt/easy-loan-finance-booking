@@ -999,6 +999,12 @@ function EmailTemplateManager({ data, status, onSave }) {
     setDraft((current) => ({ ...current, [field]: value }));
   }
 
+  function resetCleanTemplates() {
+    const cleanDefaults = data.defaults || data.templates;
+    setDraft(cleanDefaults);
+    onSave({ ...cleanDefaults, reset: true });
+  }
+
   return (
     <section className="email-template-panel">
       <div className="template-logo-row">
@@ -1034,10 +1040,15 @@ function EmailTemplateManager({ data, status, onSave }) {
       <p className="template-help">
         Placeholders: {placeholders.map((item) => `{{${item}}}`).join(", ")}
       </p>
-      <button className="primary-button full-width" type="button" onClick={() => onSave(draft)}>
-        <Check size={17} />
-        Save Email Templates
-      </button>
+      <div className="template-actions">
+        <button className="secondary-button" type="button" onClick={resetCleanTemplates}>
+          Reset Clean Template
+        </button>
+        <button className="primary-button" type="button" onClick={() => onSave(draft)}>
+          <Check size={17} />
+          Save Email Templates
+        </button>
+      </div>
       {status && <p className="integration-note">{status}</p>}
     </section>
   );
