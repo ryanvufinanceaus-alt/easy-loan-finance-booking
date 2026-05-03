@@ -100,11 +100,23 @@ function syncCalendarEvent(payload) {
 }
 
 function deleteCalendarEvent(payload) {
-  if (!payload.eventId) {
-    return json({ ok: true, deleted: false, reason: 'No event ID' });
-  }
   const calendar = getCalendar(payload.calendarId);
-  const event = calendar.getEventById(payload.eventId);
+  const data = payload.event || {};
+  let event = payload.eventId ? calendar.getEventById(payload.eventId) : null;
+
+  if (!event && data.start && data.end) {
+    const start = new Date(data.start.dateTime);
+    const end = new Date(data.end.dateTime);
+    const title = data.summary || '';
+    const events = calendar.getEvents(
+      new Date(start.getTime() - 5 * 60 * 1000),
+      new Date(end.getTime() + 5 * 60 * 1000)
+    );
+    event = events.find(function(item) {
+      return item.getTitle() === title;
+    }) || null;
+  }
+
   if (event) {
     event.deleteEvent();
   }

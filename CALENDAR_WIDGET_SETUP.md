@@ -108,4 +108,4 @@ If it does not appear, open the dashboard and check `Alerts & Sync`. `Google dir
 
 After the Apps Script code includes `calendar_delete` and you redeploy the Apps Script web app, deleting a booking from the dashboard also deletes the linked Google Calendar event.
 
-If an old booking was created before Google direct sync was turned on, it may not have a linked Google event ID. In that case, delete the old calendar event manually once.
+If an old booking was created before Google direct sync was turned on, the app will still try to find the matching Google Calendar event by title and time. If the event title/time was manually changed, delete that old calendar event manually once.

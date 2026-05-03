@@ -614,6 +614,7 @@ function calendarText(bookings, brokers, req) {
 
 function bookingDescription(booking, broker, origin = "") {
   return [
+    `Booking ID: ${booking.id}`,
     `Broker: ${broker?.name || "Easy Loan Finance"}`,
     `Status: ${booking.status}`,
     `Channel: ${booking.channel}`,
@@ -845,7 +846,7 @@ async function syncAppsScriptCalendarEvent(booking, broker, origin = "") {
 }
 
 async function deleteAppsScriptCalendarEvent(booking) {
-  if (!appsScriptCalendarConfigured() || !booking?.googleEventId) return false;
+  if (!appsScriptCalendarConfigured() || !booking) return false;
   const response = await fetch(process.env.GOOGLE_APPS_SCRIPT_EMAIL_URL, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -853,7 +854,8 @@ async function deleteAppsScriptCalendarEvent(booking) {
       token: process.env.GOOGLE_APPS_SCRIPT_EMAIL_TOKEN,
       type: "calendar_delete",
       calendarId: GOOGLE_APPS_SCRIPT_CALENDAR_ID,
-      eventId: booking.googleEventId
+      eventId: booking.googleEventId || "",
+      event: googleEventBody(booking, null, "")
     })
   });
   const raw = await response.text();
