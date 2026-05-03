@@ -956,17 +956,30 @@ function clientSenderFrom() {
   return process.env.CLIENT_CONFIRMATION_FROM || senderFrom();
 }
 
+function shortTimeZoneLabel(label = "") {
+  return String(label || "").replace(/\s*time$/i, "").trim() || label;
+}
+
+function formattedShortTime(value, timeZone) {
+  return new Intl.DateTimeFormat("en-AU", {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+  }).format(new Date(value)).replace(/\s?(am|pm)$/i, (match) => match.toUpperCase());
+}
+
 function formattedBookingTime(booking) {
-  const adelaide = new Intl.DateTimeFormat("en-AU", {
+  const date = new Intl.DateTimeFormat("en-AU", {
     timeZone: TIME_ZONE,
-    dateStyle: "full",
-    timeStyle: "short"
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric"
   }).format(new Date(booking.start));
-  const eastCoast = new Intl.DateTimeFormat("en-AU", {
-    timeZone: EAST_COAST_TIME_ZONE,
-    timeStyle: "short"
-  }).format(new Date(booking.start));
-  return `${adelaide} (${BOOKING_TIME_LABEL}; ${eastCoast} ${EAST_COAST_TIME_LABEL})`;
+  const adelaide = formattedShortTime(booking.start, TIME_ZONE);
+  const eastCoast = formattedShortTime(booking.start, EAST_COAST_TIME_ZONE);
+  return `${date}\n${adelaide} (${shortTimeZoneLabel(BOOKING_TIME_LABEL)}) | ${eastCoast} (${shortTimeZoneLabel(EAST_COAST_TIME_LABEL)})`;
 }
 
 function templateVariables(booking, broker) {
@@ -1064,7 +1077,7 @@ function legacyClientConfirmationEmailContent(booking, broker) {
           <div style="background:#f7f1e5;border:1px solid #eadfca;border-radius:8px;padding:16px;margin:0 0 18px">
             <p style="margin:0 0 8px"><strong>Broker:</strong> ${escapeHtml(brokerName)}</p>
             <p style="margin:0 0 8px"><strong>Service:</strong> ${escapeHtml(booking.service)}</p>
-            <p style="margin:0 0 8px"><strong>Time:</strong> ${escapeHtml(when)}</p>
+            <p style="margin:0 0 8px"><strong>Time:</strong> ${escapeHtmlWithBreaks(when)}</p>
             <p style="margin:0"><strong>Meeting style:</strong> ${escapeHtml(booking.channel)}</p>
           </div>
           <p style="margin:0 0 14px">We will send a reminder 10 minutes before your appointment.</p>
@@ -1081,11 +1094,7 @@ function legacyClientConfirmationEmailContent(booking, broker) {
 async function sendBookingEmail(booking, broker, origin = "") {
   const recipients = internalNotificationRecipients(broker);
   if (recipients.length === 0) return false;
-  const when = new Intl.DateTimeFormat("en-AU", {
-    timeZone: TIME_ZONE,
-    dateStyle: "full",
-    timeStyle: "short"
-  }).format(new Date(booking.start));
+  const when = formattedBookingTime(booking);
 
   return sendEmail({
     from: senderFrom(),
@@ -1100,7 +1109,7 @@ async function sendBookingEmail(booking, broker, origin = "") {
       `Email: ${booking.email || "Not provided"}`,
       `Broker: ${broker?.name || booking.brokerId}`,
       `Service: ${booking.service}`,
-      `When: ${when}`,
+      `Time: ${when}`,
       `Channel: ${booking.channel}`,
       `Status: ${booking.status}`,
       "",
@@ -1115,7 +1124,7 @@ async function sendBookingEmail(booking, broker, origin = "") {
         <p><strong>Email:</strong> ${escapeHtml(booking.email || "Not provided")}</p>
         <p><strong>Broker:</strong> ${escapeHtml(broker?.name || booking.brokerId)}</p>
         <p><strong>Service:</strong> ${escapeHtml(booking.service)}</p>
-        <p><strong>When:</strong> ${escapeHtml(when)}</p>
+        <p><strong>Time:</strong> ${escapeHtmlWithBreaks(when)}</p>
         <p><strong>Channel:</strong> ${escapeHtml(booking.channel)}</p>
         <p><strong>Status:</strong> ${escapeHtml(booking.status)}</p>
         ${booking.notes ? `<p><strong>Notes:</strong> ${escapeHtml(booking.notes)}</p>` : ""}
@@ -1200,6 +1209,10 @@ function escapeHtml(value = "") {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function escapeHtmlWithBreaks(value = "") {
+  return escapeHtml(value).replace(/\n/g, "<br/>");
 }
 
 async function afterBookingSaved(booking, brokers, req, { sendEmail = true, syncCalendar = true } = {}) {
