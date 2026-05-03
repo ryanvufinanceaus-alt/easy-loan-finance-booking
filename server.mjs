@@ -923,9 +923,9 @@ async function sendAppsScriptMail(mailOptions) {
       from: parseEmailAddress(mailOptions.from),
       name: parseEmailName(mailOptions.from),
       replyTo: mailOptions.replyTo,
-      subject: mailOptions.subject,
-      text: mailOptions.text || "",
-      html: mailOptions.html || ""
+      subject: cleanEmailContent(mailOptions.subject),
+      text: cleanEmailContent(mailOptions.text || ""),
+      html: cleanEmailContent(mailOptions.html || "")
     })
   });
   const raw = await response.text();
@@ -942,10 +942,16 @@ async function sendAppsScriptMail(mailOptions) {
 }
 
 async function sendEmail(mailOptions) {
+  const cleanOptions = {
+    ...mailOptions,
+    subject: cleanEmailContent(mailOptions.subject),
+    text: cleanEmailContent(mailOptions.text || ""),
+    html: cleanEmailContent(mailOptions.html || "")
+  };
   if (appsScriptEmailConfigured()) {
-    return sendAppsScriptMail(mailOptions);
+    return sendAppsScriptMail(cleanOptions);
   }
-  return sendSmtpMail(mailOptions);
+  return sendSmtpMail(cleanOptions);
 }
 
 function senderFrom() {
@@ -995,10 +1001,20 @@ function templateVariables(booking, broker) {
   };
 }
 
+function cleanEmailContent(value = "") {
+  return String(value)
+    .replace(/[\uFFFD]+/g, "")
+    .replace(/\p{Extended_Pictographic}/gu, "")
+    .replace(/[\uFE0E\uFE0F]/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim();
+}
+
 function renderTemplate(template = "", variables = {}) {
-  return String(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => (
+  return cleanEmailContent(String(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => (
     variables[key] ?? ""
-  ));
+  )));
 }
 
 function emailLogoUrl(origin = "") {
@@ -1007,7 +1023,7 @@ function emailLogoUrl(origin = "") {
 }
 
 function brandedEmailHtml({ title, body, logoUrl }) {
-  const paragraphs = String(body || "")
+  const paragraphs = cleanEmailContent(body || "")
     .split(/\n{2,}/)
     .map((block) => `<p style="margin:0 0 14px">${escapeHtml(block).replace(/\n/g, "<br/>")}</p>`)
     .join("");
@@ -1018,7 +1034,7 @@ function brandedEmailHtml({ title, body, logoUrl }) {
         <div style="background:#0f241d;color:#fff8ed;border-radius:10px 10px 0 0;padding:22px 24px">
           ${logo}
           <div style="font-size:13px;font-weight:700;color:#f5dfad;text-transform:uppercase">Easy Loan Finance</div>
-          <h1 style="margin:8px 0 0;font-size:26px;line-height:1.15">${escapeHtml(title)}</h1>
+          <h1 style="margin:8px 0 0;font-size:26px;line-height:1.15">${escapeHtml(cleanEmailContent(title))}</h1>
         </div>
         <div style="background:#fffdf8;border:1px solid #eadfca;border-top:0;border-radius:0 0 10px 10px;padding:24px;line-height:1.55">
           ${paragraphs}
