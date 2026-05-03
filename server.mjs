@@ -37,6 +37,7 @@ const BUSINESS_END = "17:00";
 const REMINDER_MINUTES_BEFORE = Number(process.env.BOOKING_REMINDER_MINUTES_BEFORE || 10);
 const reminderSendKeys = new Set();
 const EMAIL_TEMPLATES_SETTING_KEY = "email_templates";
+const EMAIL_TEMPLATE_DEFAULTS_SETTING_KEY = "email_template_defaults";
 
 dns.setDefaultResultOrder?.("ipv4first");
 
@@ -353,18 +354,27 @@ async function writeAppSetting(key, value) {
 
 async function getEmailTemplates() {
   const saved = await readAppSetting(EMAIL_TEMPLATES_SETTING_KEY, {});
-  return cleanEmailTemplates({ ...defaultEmailTemplates, ...saved });
+  return cleanEmailTemplates({ ...await getEmailTemplateDefaults(), ...saved });
+}
+
+async function getEmailTemplateDefaults() {
+  const savedDefaults = await readAppSetting(EMAIL_TEMPLATE_DEFAULTS_SETTING_KEY, {});
+  return cleanEmailTemplates({ ...defaultEmailTemplates, ...savedDefaults });
 }
 
 async function saveEmailTemplates(patch) {
   const current = await getEmailTemplates();
-  const source = patch.reset ? defaultEmailTemplates : patch;
+  const resetDefaults = await getEmailTemplateDefaults();
+  const source = patch.reset ? resetDefaults : patch;
   const next = cleanEmailTemplates({
     confirmationSubject: String(source.confirmationSubject ?? current.confirmationSubject).trim() || defaultEmailTemplates.confirmationSubject,
     confirmationBody: String(source.confirmationBody ?? current.confirmationBody).trim() || defaultEmailTemplates.confirmationBody,
     reminderSubject: String(source.reminderSubject ?? current.reminderSubject).trim() || defaultEmailTemplates.reminderSubject,
     reminderBody: String(source.reminderBody ?? current.reminderBody).trim() || defaultEmailTemplates.reminderBody
   });
+  if (patch.saveAsDefault) {
+    await writeAppSetting(EMAIL_TEMPLATE_DEFAULTS_SETTING_KEY, next);
+  }
   const result = await writeAppSetting(EMAIL_TEMPLATES_SETTING_KEY, next);
   return { templates: result.value, storage: result.storage, warning: result.warning };
 }
@@ -1443,9 +1453,10 @@ async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/email-templates") {
     if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
     const templates = await getEmailTemplates();
+    const defaults = await getEmailTemplateDefaults();
     return sendJson(res, 200, {
       templates,
-      defaults: cleanEmailTemplates(defaultEmailTemplates),
+      defaults,
       logoUrl: emailLogoUrl(requestOrigin(req)),
       placeholders: ["clientName", "brokerName", "brokerPhone", "service", "time", "channel", "companyName", "slogan"]
     });
@@ -1455,10 +1466,11 @@ async function handleApi(req, res, url) {
     if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
     const body = await readBody(req);
     const result = await saveEmailTemplates(body);
+    const defaults = await getEmailTemplateDefaults();
     return sendJson(res, 200, {
       ok: true,
       ...result,
-      defaults: cleanEmailTemplates(defaultEmailTemplates),
+      defaults,
       logoUrl: emailLogoUrl(requestOrigin(req)),
       placeholders: ["clientName", "brokerName", "brokerPhone", "service", "time", "channel", "companyName", "slogan"]
     });
