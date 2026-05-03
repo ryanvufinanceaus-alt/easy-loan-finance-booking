@@ -70,7 +70,7 @@ C:\Users\User\OneDrive\Documents\New project 2
 2. Double click:
 
 ```text
-Start ELF Booking Widget.cmd
+Start ELF Booking Widget Hidden.vbs
 ```
 
 The desktop widget app:
@@ -91,6 +91,24 @@ ELF_WIDGET_ALWAYS_ON_TOP=true
 ```
 
 If Windows asks for network access, allow it. The widget only loads the Easy Loan Finance booking page.
+
+To make it open automatically when Windows starts:
+
+1. Double click:
+
+```text
+Install ELF Widget Auto Start.cmd
+```
+
+2. Restart the PC once to test it.
+
+To remove auto-start later:
+
+```text
+Remove ELF Widget Auto Start.cmd
+```
+
+The old `Start ELF Booking Widget.cmd` file is only for debugging because it keeps a command window open.
 
 ## 4. PowerToys Fallback
 
