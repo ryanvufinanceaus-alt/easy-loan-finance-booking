@@ -40,7 +40,7 @@ If a broker does not have a direct calendar ID yet, they can still use their bro
 
 ## 2. PC Desktop Widget
 
-Open:
+Browser version:
 
 ```text
 https://easy-loan-finance-booking.onrender.com/widget
@@ -55,7 +55,40 @@ The widget page shows:
 5. Ryan admin can switch between all brokers or one broker.
 6. It auto refreshes every 8 seconds.
 
-To make it float like a widget:
+## 3. PC True Widget App
+
+Use this if you do not want any browser frame.
+
+On Ryan's PC:
+
+1. Open the project folder:
+
+```text
+C:\Users\User\OneDrive\Documents\New project 2
+```
+
+2. Double click:
+
+```text
+Start ELF Booking Widget.cmd
+```
+
+The desktop widget app:
+
+1. Has no browser address bar.
+2. Has no normal browser frame.
+3. Stays always on top.
+4. Remembers its last size and position.
+5. Press `Esc` or `Ctrl + W` to close.
+6. Press `Ctrl + R` to refresh.
+
+You can drag the widget by the top header.
+
+If Windows asks for network access, allow it. The widget only loads the Easy Loan Finance booking page.
+
+## 4. PowerToys Fallback
+
+Use this only if you are using the browser version and want to pin it above other windows:
 
 1. Install `Microsoft PowerToys`.
 2. Open the Easy Loan Finance widget page in Chrome or Edge.
@@ -69,7 +102,7 @@ Windows + Ctrl + T
 
 That pins the widget above other windows.
 
-## 3. Phone Widget
+## 5. Phone Widget
 
 ### iPhone
 
@@ -91,7 +124,7 @@ That pins the widget above other windows.
 5. Choose `Google Calendar`.
 6. Drag `Schedule` or `Month` to the home screen.
 
-## 4. PC Option B: Google Calendar App Shortcut
+## 6. PC Option B: Google Calendar App Shortcut
 
 Use this if you prefer to view the native Google Calendar instead of the ELF widget.
 
@@ -114,7 +147,7 @@ Use this if you prefer to view the native Google Calendar instead of the ELF wid
 5. Click `Install this site as an app`.
 6. Pin it to the taskbar.
 
-## 5. PC Option C: Windows/Outlook Widget
+## 7. PC Option C: Windows/Outlook Widget
 
 Use this only if you specifically want Windows widget-style viewing.
 
@@ -131,7 +164,7 @@ https://easy-loan-finance-booking.onrender.com/calendar/team.ics
 
 Note: this can update slower if it uses ICS. Use Google Calendar direct sync or the ELF `/widget` page as the main source of truth.
 
-## 6. Test
+## 8. Test
 
 1. Create a test booking on the client page.
 2. Wait 10-30 seconds.
@@ -146,7 +179,7 @@ If it does not appear, open the dashboard and check `Alerts & Sync`. `Google dir
 
 If you are using direct sync for Ryan, unsubscribe from the old Ryan ICS calendar in Google Calendar. Keeping both direct sync and ICS on will make duplicates.
 
-## 7. Delete Sync
+## 9. Delete Sync
 
 After the Apps Script code includes `calendar_delete` and you redeploy the Apps Script web app, deleting a booking from the dashboard also deletes the linked Google Calendar event.
 

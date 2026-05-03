@@ -1475,6 +1475,10 @@ textarea:focus {
   background: linear-gradient(135deg, #0f211b, #171411);
 }
 
+.native-widget-mode .widget-header {
+  -webkit-app-region: drag;
+}
+
 .widget-brand {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
@@ -1518,6 +1522,37 @@ textarea:focus {
   border-radius: 8px;
   background: rgba(255, 248, 237, 0.08);
   color: #f5dfad;
+}
+
+.widget-window-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.widget-window-actions button {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(245, 223, 173, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 248, 237, 0.08);
+  color: #f5dfad;
+  font-weight: 900;
+}
+
+.native-widget-mode {
+  padding: 0;
+}
+
+.native-widget-mode .widget-shell {
+  width: 100%;
+  min-height: 100vh;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .widget-controls {

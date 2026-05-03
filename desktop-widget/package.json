@@ -1,0 +1,12 @@
+{
+  "name": "elf-booking-desktop-widget",
+  "version": "1.0.0",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron main.cjs"
+  },
+  "devDependencies": {
+    "electron": "^39.2.7"
+  }
+}

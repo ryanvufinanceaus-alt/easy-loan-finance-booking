@@ -1001,6 +1001,7 @@ function App() {
 }
 
 function DesktopWidgetPage() {
+  const isDesktopMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("desktop") === "1";
   const [brokers, setBrokers] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [auth, setAuth] = useState({ required: false, authenticated: false, role: null, brokerId: null });
@@ -1078,7 +1079,7 @@ function DesktopWidgetPage() {
   )).length;
 
   return (
-    <main className="desktop-widget-page">
+    <main className={classNames("desktop-widget-page", isDesktopMode && "native-widget-mode")}>
       <section className="widget-shell">
         <header className="widget-header">
           <div className="widget-brand">
@@ -1088,9 +1089,19 @@ function DesktopWidgetPage() {
               <strong>Booking Widget</strong>
             </div>
           </div>
-          <a className="widget-icon-link" href="/" aria-label="Open dashboard">
-            <ExternalLink size={16} />
-          </a>
+          <div className="widget-window-actions">
+            <button type="button" onClick={() => loadWidgetData().catch(() => {})} aria-label="Refresh widget">
+              <Clock size={15} />
+            </button>
+            <a className="widget-icon-link" href="/" target="_blank" rel="noreferrer" aria-label="Open dashboard">
+              <ExternalLink size={16} />
+            </a>
+            {isDesktopMode && (
+              <button type="button" onClick={() => window.elfWidget?.close?.() || window.close()} aria-label="Close widget">
+                x
+              </button>
+            )}
+          </div>
         </header>
 
         <div className="widget-controls">
