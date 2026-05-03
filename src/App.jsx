@@ -1005,10 +1005,6 @@ function EmailTemplateManager({ data, status, onSave }) {
     onSave({ ...cleanDefaults, reset: true });
   }
 
-  function saveAsResetDefault() {
-    onSave({ ...draft, saveAsDefault: true });
-  }
-
   return (
     <section className="email-template-panel">
       <div className="template-logo-row">
@@ -1047,9 +1043,6 @@ function EmailTemplateManager({ data, status, onSave }) {
       <div className="template-actions">
         <button className="secondary-button" type="button" onClick={resetCleanTemplates}>
           Reset Clean Template
-        </button>
-        <button className="secondary-button" type="button" onClick={saveAsResetDefault}>
-          Save As Reset Default
         </button>
         <button className="primary-button" type="button" onClick={() => onSave(draft)}>
           <Check size={17} />
