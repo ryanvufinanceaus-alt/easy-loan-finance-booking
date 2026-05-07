@@ -102,6 +102,8 @@ Install ELF Widget Auto Start.cmd
 
 2. Restart the PC once to test it.
 
+The launcher waits 30 seconds after Windows login before opening the widget. This gives OneDrive, internet, and Node time to be ready.
+
 To remove auto-start later:
 
 ```text

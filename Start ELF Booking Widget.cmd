@@ -1,7 +1,3 @@
 @echo off
-cd /d "%~dp0"
-cd desktop-widget
-if not exist node_modules\electron (
-  npm install
-)
-npm start
+start "" wscript.exe "%~dp0Start ELF Booking Widget Hidden.vbs"
+exit /b
