@@ -79,8 +79,8 @@ The desktop widget app:
 2. Has no normal browser frame.
 3. Behaves like a normal desktop widget, so other windows can cover it.
 4. Remembers its last size and position.
-5. Press `Esc` or `Ctrl + W` to close.
-6. Press `Ctrl + R` to refresh.
+5. Stays open until you click the `x` button in the widget.
+6. Use the refresh button in the widget header if you want to refresh manually.
 
 You can drag the widget by the top header.
 
@@ -103,6 +103,8 @@ Install ELF Widget Auto Start.cmd
 2. Restart the PC once to test it.
 
 The launcher waits 30 seconds after Windows login before opening the widget. This gives OneDrive, internet, and Node time to be ready.
+
+The dashboard session can still expire after 8 hours. If that happens, the widget window stays open and shows the login screen instead of closing.
 
 To remove auto-start later:
 

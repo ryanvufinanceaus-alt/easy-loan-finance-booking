@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const fs = require("fs");
 const path = require("path");
 
@@ -65,11 +65,26 @@ function createWindow() {
     return { action: "deny" };
   });
 
+  mainWindow.webContents.on("did-fail-load", () => {
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(widgetUrl);
+    }, 10000);
+  });
+
+  mainWindow.webContents.on("render-process-gone", () => {
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.reload();
+    }, 2000);
+  });
+
   mainWindow.loadURL(widgetUrl);
 
   mainWindow.on("moved", () => saveWindowState(mainWindow));
   mainWindow.on("resized", () => saveWindowState(mainWindow));
   mainWindow.on("close", () => saveWindowState(mainWindow));
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
 }
 
 app.whenReady().then(() => {
@@ -77,17 +92,9 @@ app.whenReady().then(() => {
 
   createWindow();
 
-  globalShortcut.register("CommandOrControl+R", () => mainWindow?.reload());
-  globalShortcut.register("CommandOrControl+W", () => mainWindow?.close());
-  globalShortcut.register("Escape", () => mainWindow?.close());
-
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-});
-
-app.on("will-quit", () => {
-  globalShortcut.unregisterAll();
 });
 
 app.on("window-all-closed", () => {
