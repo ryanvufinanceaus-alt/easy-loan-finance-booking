@@ -1452,6 +1452,11 @@ textarea:focus {
   color: #fff8ed;
 }
 
+html:has(.native-widget-mode),
+body:has(.native-widget-mode) {
+  background: transparent;
+}
+
 .widget-shell {
   width: min(420px, 100%);
   min-height: calc(100vh - 20px);
@@ -1544,15 +1549,34 @@ textarea:focus {
 }
 
 .native-widget-mode {
-  padding: 0;
+  padding: 8px;
+  background: transparent;
 }
 
 .native-widget-mode .widget-shell {
   width: 100%;
-  min-height: 100vh;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
+  min-height: calc(100vh - 16px);
+  border: 1px solid rgba(245, 223, 173, 0.22);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255, 248, 237, 0.10), rgba(255, 248, 237, 0.04)),
+    rgba(15, 23, 20, 0.82);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.30);
+  backdrop-filter: blur(14px) saturate(1.14);
+  -webkit-backdrop-filter: blur(14px) saturate(1.14);
+}
+
+.native-widget-mode .widget-header {
+  background: rgba(15, 25, 21, 0.62);
+}
+
+.native-widget-mode .widget-hero-booking,
+.native-widget-mode .widget-booking-row,
+.native-widget-mode .widget-mini-stats span,
+.native-widget-mode .widget-empty {
+  background: color-mix(in srgb, var(--broker-color, #b89044) 14%, rgba(255, 248, 237, 0.08));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .widget-controls {

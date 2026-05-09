@@ -77,7 +77,7 @@ The desktop widget app:
 
 1. Has no browser address bar.
 2. Has no normal browser frame.
-3. Behaves like a normal desktop widget, so other windows can cover it.
+3. Uses a light see-through glass style, but keeps text readable.
 4. Remembers its last size and position.
 5. Stays open until you click the `x` button in the widget.
 6. Use the refresh button in the widget header if you want to refresh manually.

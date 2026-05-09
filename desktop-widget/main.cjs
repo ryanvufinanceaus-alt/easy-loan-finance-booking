@@ -47,7 +47,8 @@ function createWindow() {
     alwaysOnTop,
     skipTaskbar: false,
     title: "ELF Booking Widget",
-    backgroundColor: "#121715",
+    transparent: true,
+    backgroundColor: "#00000000",
     icon: path.join(__dirname, "..", "public", "elf-logo.png"),
     webPreferences: {
       contextIsolation: true,
