@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { createHash, createHmac, createSign, timingSafeEqual } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import dns from "node:dns";
 import nodemailer from "nodemailer";
 
@@ -1409,13 +1409,12 @@ async function afterBookingSaved(booking, brokers, req, { sendEmail = true, sync
   return results;
 }
 
-export async function processBookingReminders(origin = "") {
-  if (!emailDeliveryReady()) return;
+async function processBookingReminders(origin = "") {
+  if (!smtpConfigured()) return;
   const [brokers, bookings] = await Promise.all([listBrokers(), listBookings()]);
   const brokerById = Object.fromEntries(brokers.map((broker) => [broker.id, broker]));
   const now = Date.now();
   const reminderWindowMs = REMINDER_MINUTES_BEFORE * 60 * 1000;
-  const sentKeys = await readReminderSendKeys();
 
   for (const booking of bookings) {
     if (booking.status !== "Confirmed") continue;
@@ -1423,29 +1422,15 @@ export async function processBookingReminders(origin = "") {
     if (!Number.isFinite(startMs)) continue;
     if (startMs <= now || startMs - now > reminderWindowMs) continue;
     const key = `${booking.id}:${booking.start}`;
-    if (reminderSendKeys.has(key) || sentKeys.has(key)) continue;
+    if (reminderSendKeys.has(key)) continue;
     reminderSendKeys.add(key);
     try {
       await sendBookingReminderEmails(booking, brokerById[booking.brokerId], origin);
-      sentKeys.add(key);
-      await writeReminderSendKeys(sentKeys);
     } catch (error) {
       reminderSendKeys.delete(key);
       console.warn(`Booking reminder failed: ${error.message}`);
     }
   }
-}
-
-async function readReminderSendKeys() {
-  const saved = await readAppSetting("reminder_send_keys", []);
-  return new Set(Array.isArray(saved) ? saved : []);
-}
-
-async function writeReminderSendKeys(keys) {
-  const activeBookings = await listBookings();
-  const activeKeys = new Set(activeBookings.map((booking) => `${booking.id}:${booking.start}`));
-  const next = [...keys].filter((key) => activeKeys.has(key)).slice(-500);
-  await writeAppSetting("reminder_send_keys", next);
 }
 
 function requestOrigin(req) {
@@ -1783,15 +1768,15 @@ async function handleStatic(req, res, url) {
   }
 }
 
-let dataReady;
+await ensureData();
 
-function ensureDataReady() {
-  dataReady ||= ensureData();
-  return dataReady;
-}
+setInterval(() => {
+  processBookingReminders(process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || "").catch((error) => {
+    console.warn(error.message);
+  });
+}, 60 * 1000);
 
-export async function handleNodeRequest(req, res) {
-  await ensureDataReady();
+createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", requestOrigin(req));
     processBookingReminders(requestOrigin(req)).catch((error) => console.warn(error.message));
@@ -1809,18 +1794,6 @@ export async function handleNodeRequest(req, res) {
   } catch (error) {
     sendJson(res, 500, { error: error.message || "Server error" });
   }
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await ensureDataReady();
-
-  setInterval(() => {
-    processBookingReminders(process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || "").catch((error) => {
-      console.warn(error.message);
-    });
-  }, 60 * 1000);
-
-  createServer(handleNodeRequest).listen(PORT, () => {
-    console.log(`Easy Loan Finance Booking is running on http://localhost:${PORT}`);
-  });
-}
+}).listen(PORT, () => {
+  console.log(`Easy Loan Finance Booking is running on http://localhost:${PORT}`);
+});
