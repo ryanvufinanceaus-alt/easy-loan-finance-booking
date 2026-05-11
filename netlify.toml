@@ -1,0 +1,25 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/server?path=/api/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/calendar/*"
+  to = "/.netlify/functions/server?path=/calendar/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[functions."reminders"]
+  schedule = "*/5 * * * *"

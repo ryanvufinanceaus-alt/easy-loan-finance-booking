@@ -3,7 +3,16 @@ const fs = require("fs");
 const path = require("path");
 
 const DEFAULT_WIDGET_URL = "https://easy-loan-finance-booking.onrender.com/widget?desktop=1";
-const widgetUrl = process.env.ELF_WIDGET_URL || DEFAULT_WIDGET_URL;
+function configuredWidgetUrl() {
+  if (process.env.ELF_WIDGET_URL) return process.env.ELF_WIDGET_URL;
+  try {
+    const saved = fs.readFileSync(path.join(__dirname, "widget-url.txt"), "utf8").trim();
+    if (saved) return saved;
+  } catch {}
+  return DEFAULT_WIDGET_URL;
+}
+
+const widgetUrl = configuredWidgetUrl();
 const alwaysOnTop = process.env.ELF_WIDGET_ALWAYS_ON_TOP === "true";
 
 let mainWindow;
