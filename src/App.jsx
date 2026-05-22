@@ -40,6 +40,7 @@ const BOOKING_TIME_ZONE = "Australia/Adelaide";
 const EAST_COAST_TIME_ZONE = "Australia/Sydney";
 const BOOKING_TIME_LABEL = "Adelaide time";
 const EAST_COAST_TIME_LABEL = "Sydney/Melbourne time is 30 minutes later";
+const BOOKING_DAY_ROLLOVER = "17:30";
 const NOTIFICATION_SNAPSHOT_KEY = "elfBookingNotificationSnapshot";
 const NOTIFICATION_ITEMS_KEY = "elfBookingNotifications";
 const DISMISSED_FOLLOWUPS_KEY = "elfDismissedFollowups";
@@ -147,11 +148,47 @@ function toLocalTimeInput(value = new Date()) {
   return new Date(date.getTime() - offset * 60000).toISOString().slice(11, 16);
 }
 
-function nextBusinessDateInput(from = new Date()) {
-  const date = startOfDay(from);
-  if (date.getDay() === 6) date.setDate(date.getDate() + 2);
-  else if (date.getDay() === 0) date.setDate(date.getDate() + 1);
+function minutesFromTimeInput(time = "00:00") {
+  const [hours, minutes] = String(time).split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function zonedDateInput(value = new Date(), timeZone = BOOKING_TIME_ZONE) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(value);
+  const get = (type) => parts.find((part) => part.type === type)?.value || "00";
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    minutes: Number(get("hour")) * 60 + Number(get("minute"))
+  };
+}
+
+function businessDateInputFrom(dateInput) {
+  const date = new Date(`${dateInput}T12:00:00`);
+  while (date.getDay() === 0 || date.getDay() === 6) {
+    date.setDate(date.getDate() + 1);
+  }
   return toLocalDateInput(date);
+}
+
+function nextBusinessDateInput(from = new Date(), { rollAfterCutoff = false } = {}) {
+  const zoned = zonedDateInput(from);
+  let date = new Date(`${zoned.date}T12:00:00`);
+  if (rollAfterCutoff && zoned.minutes >= minutesFromTimeInput(BOOKING_DAY_ROLLOVER)) {
+    date.setDate(date.getDate() + 1);
+  }
+  return businessDateInputFrom(toLocalDateInput(date));
+}
+
+function nextPublicBookingDateInput(from = new Date()) {
+  return nextBusinessDateInput(from, { rollAfterCutoff: true });
 }
 
 function timeZoneOffsetMs(date, timeZone) {
@@ -1548,7 +1585,7 @@ function PublicBookingPage() {
           channel: "Phone call",
           service: "Home loan consultation",
           duration: PUBLIC_BOOKING_DURATION,
-          startDate: nextBusinessDateInput(),
+          startDate: nextPublicBookingDateInput(),
           startTime: "09:30"
         }));
       })

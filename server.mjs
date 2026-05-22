@@ -716,6 +716,10 @@ function validatePublicBookingWindow(candidate) {
   if (!isBusinessDay(localStart.date) || localStart.date !== localEnd.date) {
     return "Bookings are available Monday to Friday only.";
   }
+  const nowLocal = bookingLocalDateTime(new Date());
+  if (localStart.date === nowLocal.date && localStart.minutes <= nowLocal.minutes) {
+    return "Please choose a future time.";
+  }
   const startMinutes = minutesFromTime(BUSINESS_START);
   const endMinutes = minutesFromTime(BUSINESS_END);
   if (localStart.minutes < startMinutes || localEnd.minutes > endMinutes) {
@@ -751,16 +755,18 @@ function availabilityFor({ brokerId, date, duration }, brokers, bookings) {
       return { date: start.date, start: start.minutes, end: end.minutes };
     })
     .filter((booking) => booking.date === date);
+  const nowLocal = bookingLocalDateTime(new Date());
 
   const slots = [];
   for (let minute = startMinutes; minute + slotDuration <= endMinutes; minute += 30) {
     const end = minute + slotDuration;
     const booked = brokerBookings.some((booking) => overlaps(minute, end, booking.start, booking.end));
+    const past = date === nowLocal.date && minute <= nowLocal.minutes;
     const time = timeFromMinutes(minute);
     slots.push({
       time,
       label: slotLabel(time),
-      available: !booked
+      available: !booked && !past
     });
   }
 
