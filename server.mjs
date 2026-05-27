@@ -1789,10 +1789,8 @@ createServer(async (req, res) => {
     const url = new URL(req.url || "/", requestOrigin(req));
     processBookingReminders(requestOrigin(req)).catch((error) => console.warn(error.message));
     if (url.pathname === INFINITY_AOL_BASE || url.pathname.startsWith(`${INFINITY_AOL_BASE}/`)) {
-      const originalUrl = req.url;
       req.url = `${url.pathname.slice(INFINITY_AOL_BASE.length) || "/"}${url.search}`;
       infinityAolApp(req, res);
-      req.url = originalUrl;
       return;
     }
     if (url.pathname.startsWith("/api/")) return await handleApi(req, res, url);
