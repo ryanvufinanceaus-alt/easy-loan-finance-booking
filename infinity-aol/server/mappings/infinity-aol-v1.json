@@ -1,0 +1,354 @@
+{
+  "platform": "Infinity AOL",
+  "version": "2026.05.26-infinity-aol-template",
+  "sections": [
+    {
+      "id": "clientDetails",
+      "label": "Client Details",
+      "aliases": ["Client Account", "Applicant Details"],
+      "fields": [
+        { "payloadPath": "infinity.clientDetails.entityType", "label": "Entity Type", "labelContains": ["Entity Type"] },
+        { "payloadPath": "infinity.clientDetails.primaryApplicant", "label": "Primary Applicant", "labelContains": ["Primary Applicant"] },
+        { "payloadPath": "infinity.clientDetails.applicantType", "label": "Applicant Type", "labelContains": ["Applicant Type"] },
+        { "payloadPath": "infinity.clientDetails.title", "label": "Title", "labelContains": ["Title"], "optional": true },
+        { "payloadPath": "infinity.clientDetails.firstName", "label": "First Name", "labelContains": ["First Name"] },
+        { "payloadPath": "infinity.clientDetails.middleName", "label": "Middle Name", "labelContains": ["Middle Name"], "optional": true },
+        { "payloadPath": "infinity.clientDetails.surname", "label": "Surname", "labelContains": ["Surname"] },
+        { "payloadPath": "infinity.clientDetails.dateOfBirth", "label": "Date of Birth", "labelContains": ["Date of Birth"] },
+        { "payloadPath": "infinity.clientDetails.gender", "label": "Gender", "labelContains": ["Gender"], "optional": true },
+        { "payloadPath": "infinity.clientDetails.maritalStatus", "label": "Marital Status", "labelContains": ["Marital Status"] },
+        { "payloadPath": "infinity.clientDetails.currentHousingSituation", "label": "Current Housing Situation", "labelContains": ["Current Housing Situation"], "optional": true },
+        { "payloadPath": "infinity.clientDetails.permanentInAustralia", "label": "Permanent in Australia", "labelContains": ["Permanent in Australia"], "optional": true },
+        { "payloadPath": "infinity.clientDetails.mobile", "label": "Mobile", "labelContains": ["Mobile"] },
+        { "payloadPath": "infinity.clientDetails.email", "label": "Email", "labelContains": ["Email"] },
+        { "payloadPath": "infinity.clientDetails.currentAddress", "label": "Current Address", "labelContains": ["Current Address"] },
+        { "payloadPath": "infinity.clientDetails.numberOfDependants", "label": "Number of Dependents", "labelContains": ["Number of Dependents", "Number of Dependants"] },
+        { "payloadPath": "infinity.clientDetails.driversLicenceNo", "label": "Driver's Licence No.", "labelContains": ["Driver's Licence No.", "Licence No"], "optional": true },
+        { "payloadPath": "infinity.clientDetails.licenceExpiryDate", "label": "Licence Expiry Date", "labelContains": ["Licence Expiry Date"], "optional": true },
+        { "payloadPath": "infinity.clientDetails.licenceState", "label": "Licence State", "labelContains": ["Licence State"], "optional": true },
+        { "payloadPath": "infinity.clientDetails.licenceClass", "label": "Licence Class", "labelContains": ["Licence Class"], "optional": true }
+      ]
+    },
+    {
+      "id": "financialsIncome",
+      "label": "Add/Edit Income",
+      "aliases": ["Financials", "Annual Incomes"],
+      "fields": [
+        { "payloadPath": "infinity.financials.incomes.0.type", "label": "Income Type", "labelContains": ["Income Type"] },
+        { "payloadPath": "infinity.financials.incomes.0.amount", "label": "Amount", "labelContains": ["Amount"] },
+        { "payloadPath": "infinity.financials.incomes.0.frequency", "label": "Frequency", "labelContains": ["Frequency"] },
+        { "payloadPath": "infinity.financials.incomes.0.ownership", "label": "Ownership", "labelContains": ["Ownership"] }
+      ]
+    },
+    {
+      "id": "financialsExpense",
+      "label": "Add/Edit Expense",
+      "aliases": ["Monthly Expenses"],
+      "fields": [
+        { "payloadPath": "serviceability.hemMonthly", "label": "Expense Amount", "labelContains": ["Expense Amount", "HEM monthly", "Monthly Expenses"] },
+        { "payloadPath": "expenses.totalMonthly", "label": "Total Monthly Expenses", "labelContains": ["Total Monthly Expenses"], "optional": true },
+        { "payloadPath": "expenses.livingMonthly", "label": "Living Expenses", "labelContains": ["Living expenses"], "optional": true }
+      ]
+    },
+    {
+      "id": "financialsAsset",
+      "label": "Add/Edit Assets",
+      "aliases": ["Assets"],
+      "fields": [
+        { "payloadPath": "infinity.financials.assets.0.type", "label": "Asset Type", "labelContains": ["Asset Type"] },
+        { "payloadPath": "infinity.financials.assets.0.value", "label": "Asset Value", "labelContains": ["Asset Value", "Value"] },
+        { "payloadPath": "infinity.financials.assets.0.description", "label": "Description", "labelContains": ["Description"], "optional": true }
+      ]
+    },
+    {
+      "id": "financialsLiability",
+      "label": "Add/Edit Liabilities",
+      "aliases": ["Liabilities"],
+      "fields": [
+        { "payloadPath": "infinity.financials.liabilities.0.type", "label": "Liability Type", "labelContains": ["Liability Type"] },
+        { "payloadPath": "infinity.financials.liabilities.0.lender", "label": "Financial Institution", "labelContains": ["Financial Institution", "Lender"], "optional": true },
+        { "payloadPath": "infinity.financials.liabilities.0.description", "label": "Production Description", "labelContains": ["Production Description", "Description"], "optional": true },
+        { "payloadPath": "infinity.financials.liabilities.0.balance", "label": "Amount Owing", "labelContains": ["Amount Owing", "Balance"] },
+        { "payloadPath": "infinity.financials.liabilities.0.limit", "label": "Limit Amount", "labelContains": ["Limit Amount", "Limit"] },
+        { "payloadPath": "infinity.financials.liabilities.0.repaymentMonthly", "label": "Monthly Repayment", "labelContains": ["Monthly Repayment"], "optional": true },
+        { "payloadPath": "infinity.financials.liabilities.0.interestRate", "label": "Interest Rate", "labelContains": ["Interest Rate"], "optional": true }
+      ]
+    },
+    {
+      "id": "needsAnalysis",
+      "label": "Needs Analysis",
+      "aliases": ["Fact Find"],
+      "fields": [
+        { "payloadPath": "infinity.needsAnalysis.dateCreditGuideProvided", "label": "Date Credit Guide was Provided to Client", "labelContains": ["Date Credit Guide was Provided to Client"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.dateInterviewConducted", "label": "Date Interview was Conducted", "labelContains": ["Date Interview was Conducted"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.methodClientInterview", "label": "Method of Client Interview", "labelContains": ["Method of Client Interview"] },
+        { "payloadPath": "infinity.needsAnalysis.methodDocumentIdentification", "label": "Method of Document Identification", "labelContains": ["Method of Document Identification"] },
+        { "payloadPath": "infinity.needsAnalysis.facilityAmount", "label": "Facility Amount", "labelContains": ["Facility Amount"] },
+        { "payloadPath": "infinity.needsAnalysis.estimatedSettlementDate", "label": "Estimated Settlement Date", "labelContains": ["Estimated Settlement Date"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.objectives.bridging", "label": "Bridging", "labelContains": ["Bridging"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.objectives.constructRenovateOwnerOccupiedDwelling", "label": "Construct / Renovate Owner Occupied Dwelling", "labelContains": ["Construct / Renovate Owner Occupied Dwelling"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.objectives.constructRenovateInvestmentProperty", "label": "Construct/Renovate Investment Property", "labelContains": ["Construct/Renovate Investment Property", "Construct / Renovate Investment Property"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.objectives.debtConsolidation", "label": "Debt Consolidation", "labelContains": ["Debt Consolidation"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.objectives.purchaseInvestmentProperty", "label": "Purchase Investment Property", "labelContains": ["Purchase Investment Property"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.objectives.purchaseOwnerOccupiedDwelling", "label": "Purchase Owner Occupied Dwelling", "labelContains": ["Purchase Owner Occupied Dwelling"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.objectives.purchaseVacantLand", "label": "Purchase Vacant Land", "labelContains": ["Purchase Vacant Land"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.objectives.refinance", "label": "Refinance", "labelContains": ["Refinance"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.objectives.reverseMortgage", "label": "Reverse Mortgage", "labelContains": ["Reverse Mortgage"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.objectives.otherPurpose", "label": "Other Purpose", "labelContains": ["Other Purpose"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.objectives.consumerConstruction", "label": "Construction", "labelContains": ["Construction"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.objectives.leisurePurchase", "label": "Leisure Purchase", "labelContains": ["Leisure Purchase"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.objectives.medicalPurchase", "label": "Medical Purchase", "labelContains": ["Medical Purchase"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.objectives.vehiclePurchase", "label": "Vehicle Purchase", "labelContains": ["Vehicle Purchase"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.objectives.consumerOtherPurpose", "label": "Other Purpose", "labelContains": ["Other Purpose"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.bridgingFinance", "label": "Bridging Finance", "labelContains": ["Bridging Finance"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.extraRepayments", "label": "Extra Repayments", "labelContains": ["Extra Repayments"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.lineOfCredit", "label": "Line of Credit", "labelContains": ["Line of Credit"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.nonConformingLoan", "label": "Non-conforming Loan", "labelContains": ["Non-conforming Loan"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.offset", "label": "Offset", "labelContains": ["Offset"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.rateLock", "label": "Rate Lock", "labelContains": ["Rate Lock"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.redraw", "label": "Redraw", "labelContains": ["Redraw"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.reverseMortgage", "label": "Reverse Mortgage", "labelContains": ["Reverse Mortgage"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.otherRequirements", "label": "Other Requirements", "labelContains": ["Other Requirements"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.noEarlyRepaymentPenalty", "label": "No Early Repayment Penalty", "labelContains": ["No Early Repayment Penalty"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.fixedRate", "label": "Fixed Rate", "labelContains": ["Fixed Rate"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.variableRate", "label": "Variable Rate", "labelContains": ["Variable Rate"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.fixedVariableRate", "label": "Fixed & Variable Rate", "labelContains": ["Fixed & Variable Rate"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.interestOnly", "label": "Interest Only", "labelContains": ["Interest Only"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.balloonRepayments", "label": "Balloon Repayments", "labelContains": ["Balloon Repayments"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.principalAndInterest", "label": "P & I Repayments", "labelContains": ["P & I Repayments"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.weeklyRepayments", "label": "Weekly Repayments", "labelContains": ["Weekly Repayments"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.fortnightlyRepayments", "label": "Fortnightly Repayments", "labelContains": ["Fortnightly Repayments"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.requirements.monthlyRepayments", "label": "Monthly Repayments", "labelContains": ["Monthly Repayments"], "optional": true },
+        { "payloadPath": "infinity.needsAnalysis.loanObjectiveExplanation", "label": "Loan Objective Explanation", "labelContains": ["Loan Objective Explanation"] }
+      ]
+    },
+    {
+      "id": "loansSecuritiesCommentary",
+      "label": "Loans, Securities & Commentary",
+      "aliases": ["Loans & Securities", "Loan Objective Explanation"],
+      "fields": [
+        { "payloadPath": "infinity.loansSecuritiesCommentary.loanPurpose", "label": "Loan Purpose", "labelContains": ["Loan Purpose"] },
+        { "payloadPath": "infinity.loansSecuritiesCommentary.facilityAmount", "label": "Facility Amount", "labelContains": ["Facility Amount"] },
+        { "payloadPath": "infinity.loansSecuritiesCommentary.preApprovalLoan", "label": "Pre-Approval Loan", "labelContains": ["Pre-Approval Loan"], "optional": true },
+        { "payloadPath": "infinity.loansSecuritiesCommentary.capitaliseLmi", "label": "Capitalise LMI", "labelContains": ["Capitalise LMI"], "optional": true },
+        { "payloadPath": "infinity.loansSecuritiesCommentary.opportunity", "label": "Opportunity", "labelContains": ["Opportunity"] },
+        { "payloadPath": "infinity.loansSecuritiesCommentary.opportunityName", "label": "Name", "labelContains": ["Name"] },
+        { "payloadPath": "infinity.loansSecuritiesCommentary.circumstancesObjectivesPriorities", "label": "Circumstances, Objectives and Priorities", "labelContains": ["Circumstances, Objectives and Priorities"] },
+        { "payloadPath": "infinity.loansSecuritiesCommentary.anySignificantChangesAnticipated", "label": "Any Significant Changes to Circumstances Anticipated?", "labelContains": ["Any Significant Changes to Circumstances Anticipated"] },
+        { "payloadPath": "infinity.loansSecuritiesCommentary.otherItemsDiscussed", "label": "Other Items Discussed", "labelContains": ["Other Items Discussed"], "optional": true },
+        { "payloadPath": "infinity.loansSecuritiesCommentary.financialAwarenessPractices", "label": "Financial Awareness & Practices", "labelContains": ["Financial Awareness & Practices"] }
+      ]
+    },
+    {
+      "id": "preferredLoanFeatures",
+      "label": "Preferred Loan Features/Scenarios",
+      "aliases": ["Prioritised Loan Features", "Loan Scenario Comparison"],
+      "fields": [
+        { "payloadPath": "infinity.preferredLoanFeatures.0.feature", "label": "Priority 1 Loan Feature", "labelContains": ["Priority 1 Loan Feature"] },
+        { "payloadPath": "infinity.preferredLoanFeatures.0.reason", "label": "Priority 1 Reason", "labelContains": ["Reasons for selecting this type"], "occurrence": 0 },
+        { "payloadPath": "infinity.preferredLoanFeatures.1.feature", "label": "Priority 2 Loan Feature", "labelContains": ["Priority 2 Loan Feature"] },
+        { "payloadPath": "infinity.preferredLoanFeatures.1.reason", "label": "Priority 2 Reason", "labelContains": ["Reasons for selecting this type"], "occurrence": 1 },
+        { "payloadPath": "infinity.preferredLoanFeatures.2.feature", "label": "Priority 3 Loan Feature", "labelContains": ["Priority 3 Loan Feature"] },
+        { "payloadPath": "infinity.preferredLoanFeatures.2.reason", "label": "Priority 3 Reason", "labelContains": ["Reasons for selecting this type"], "occurrence": 2 },
+        { "payloadPath": "infinity.preferredLoanFeatures.3.feature", "label": "Priority 4 Loan Feature", "labelContains": ["Priority 4 Loan Feature"] },
+        { "payloadPath": "infinity.preferredLoanFeatures.3.reason", "label": "Priority 4 Reason", "labelContains": ["Reasons for selecting this type"], "occurrence": 3 },
+        { "payloadPath": "infinity.preferredLoanFeatures.4.feature", "label": "Priority 5 Loan Feature", "labelContains": ["Priority 5 Loan Feature"] },
+        { "payloadPath": "infinity.preferredLoanFeatures.4.reason", "label": "Priority 5 Reason", "labelContains": ["Reasons for selecting this type"], "occurrence": 4 },
+        { "payloadPath": "infinity.otherLoanFeatureRequests", "label": "Other Loan Feature Requests", "labelContains": ["Other Loan Feature Requests"], "optional": true }
+      ]
+    },
+    {
+      "id": "recommendation",
+      "label": "Recommendation",
+      "aliases": ["Recommendations"],
+      "fields": [
+        { "payloadPath": "infinity.recommendation.lender", "label": "Lender", "labelContains": ["Lender"] },
+        { "payloadPath": "infinity.recommendation.loanAmount", "label": "Loan Amount", "labelContains": ["Loan Amount"] },
+        { "payloadPath": "infinity.recommendation.interestRate", "label": "Interest Rate", "labelContains": ["Interest Rate"] },
+        { "payloadPath": "infinity.recommendation.loanStructure", "label": "Loan Structure", "labelContains": ["Loan Structure"] },
+        { "payloadPath": "infinity.recommendation.goalsObjectives", "label": "Goals & Objectives", "labelContains": ["Goals & Objectives"] },
+        { "payloadPath": "infinity.recommendation.loanFeatures", "label": "Loan Features", "labelContains": ["Loan Features"] }
+      ]
+    },
+    {
+      "id": "commissionsConflict",
+      "label": "Commissions/Conflict of Interest",
+      "aliases": ["Commissions", "Conflict of Interest"],
+      "fields": [
+        { "payloadPath": "infinity.commissionsConflict.comments", "label": "Comments on Commissions/Conflicts of Interest", "labelContains": ["Comments on Commissions/Conflicts of Interest"] },
+        { "payloadPath": "infinity.commissionsConflict.referrerType", "label": "Referrer Type", "labelContains": ["Referrer Type"] },
+        { "payloadPath": "infinity.commissionsConflict.referrerGroup", "label": "Referrer Group", "labelContains": ["Referrer Group"] },
+        { "payloadPath": "infinity.commissionsConflict.referrer", "label": "Referrer", "labelContains": ["Referrer"] },
+        { "payloadPath": "infinity.commissionsConflict.otherUpfrontFeesInclGst", "label": "Other Upfront Fees (incl. GST)", "labelContains": ["Other Upfront Fees"] },
+        { "payloadPath": "infinity.commissionsConflict.otherFeeNotes", "label": "Other Fee Notes", "labelContains": ["Other Fee Notes"], "optional": true }
+      ]
+    },
+    {
+      "id": "aolApplication",
+      "label": "AOL Application",
+      "aliases": ["Application", "Loan writer", "Legal representation", "Loan documents", "Originator comments"],
+      "fields": [
+        { "payloadPath": "aol.application.lenderLoanType", "label": "Lender Loan Type", "labelContains": ["Lender Loan Type"], "optional": true },
+        { "payloadPath": "aol.application.brokerNumber", "label": "Broker number", "labelContains": ["Broker number"], "optional": true },
+        { "payloadPath": "aol.application.companyName", "label": "Company Name", "labelContains": ["Company Name"], "optional": true },
+        { "payloadPath": "aol.application.companyAbn", "label": "Company ABN", "labelContains": ["Company ABN"], "optional": true },
+        { "payloadPath": "aol.application.brokerFirstName", "label": "First name", "labelContains": ["First name"], "optional": true },
+        { "payloadPath": "aol.application.brokerLastName", "label": "Last name", "labelContains": ["Last name"], "optional": true },
+        { "payloadPath": "aol.application.brokerMobile", "label": "Mobile number", "labelContains": ["Mobile number"], "optional": true },
+        { "payloadPath": "aol.application.brokerEmail", "label": "Email", "labelContains": ["Email"], "optional": true },
+        { "payloadPath": "aol.application.brokerAddress", "label": "Address", "labelContains": ["Address"], "optional": true },
+        { "payloadPath": "aol.application.legalRepresentation", "label": "Will the applicant(s) be representing themselves?", "labelContains": ["representing themselves"], "optional": true },
+        { "payloadPath": "aol.application.loanDocumentsRecipient", "label": "Receive loan offer documentation", "labelContains": ["Receive loan offer documentation"], "optional": true },
+        { "payloadPath": "aol.application.originatorComments", "label": "Originator comments", "labelContains": ["Originator comments", "Comments"], "optional": true }
+      ]
+    },
+    {
+      "id": "aolApplicants",
+      "label": "AOL Applicants",
+      "aliases": ["Applicants", "Type of applicant", "Personal details", "Contact details", "Addresses", "Employment details"],
+      "fields": [
+        { "payloadPath": "aol.applicants.applicantType", "label": "Applicant type", "labelContains": ["Applicant type"] },
+        { "payloadPath": "aol.applicants.applicantRole", "label": "Applicant role", "labelContains": ["Applicant role"] },
+        { "payloadPath": "aol.applicants.title", "label": "Title", "labelContains": ["Title"], "optional": true },
+        { "payloadPath": "aol.applicants.firstName", "label": "First name", "labelContains": ["First name"] },
+        { "payloadPath": "aol.applicants.middleName", "label": "Middle name", "labelContains": ["Middle name"], "optional": true },
+        { "payloadPath": "aol.applicants.familyName", "label": "Family name", "labelContains": ["Family name"] },
+        { "payloadPath": "aol.applicants.dateOfBirth", "label": "Date of birth", "labelContains": ["Date of birth"] },
+        { "payloadPath": "aol.applicants.gender", "label": "Gender", "labelContains": ["Gender"], "optional": true },
+        { "payloadPath": "aol.applicants.maritalStatus", "label": "Marital status", "labelContains": ["Marital status"] },
+        { "payloadPath": "aol.applicants.hasDependants", "label": "Does the applicant have dependants?", "labelContains": ["have dependants"], "optional": true },
+        { "payloadPath": "aol.applicants.permanentResident", "label": "Is permanent Australian resident?", "labelContains": ["permanent Australian resident"], "optional": true },
+        { "payloadPath": "aol.applicants.firstHomeBuyer", "label": "First home buyer", "labelContains": ["First home buyer"], "optional": true },
+        { "payloadPath": "aol.applicants.mobilePhone", "label": "Mobile phone", "labelContains": ["Mobile phone", "Mobile"] },
+        { "payloadPath": "aol.applicants.email", "label": "Email", "labelContains": ["Email"] },
+        { "payloadPath": "aol.applicants.currentResidentialAddress", "label": "Current residential address", "labelContains": ["Current residential address"] },
+        { "payloadPath": "aol.applicants.currentHousingSituation", "label": "Current housing situation", "labelContains": ["Current housing situation"], "optional": true },
+        { "payloadPath": "aol.applicants.addressSince", "label": "Address since", "labelContains": ["Address since"], "optional": true },
+        { "payloadPath": "aol.applicants.employmentName", "label": "Employment details", "labelContains": ["Employment details"], "optional": true },
+        { "payloadPath": "aol.applicants.incomeYearOne", "label": "Financial year 1 income", "labelContains": ["Company Profit Before Tax", "Income"], "optional": true }
+      ]
+    },
+    {
+      "id": "aolLoans",
+      "label": "AOL Loans",
+      "aliases": ["Loans", "Deposits and contributions", "Loan splits"],
+      "fields": [
+        { "payloadPath": "aol.loans.cashDeposit", "label": "Cash", "labelContains": ["Cash"], "optional": true },
+        { "payloadPath": "aol.loans.savingsContribution", "label": "Savings", "labelContains": ["Savings"], "optional": true },
+        { "payloadPath": "aol.loans.primaryPurpose", "label": "Primary purpose", "labelContains": ["Primary purpose"] },
+        { "payloadPath": "aol.loans.absPurpose", "label": "ABS purpose", "labelContains": ["ABS purpose"], "optional": true },
+        { "payloadPath": "aol.loans.estimatedSettlementDate", "label": "Estimated settlement date", "labelContains": ["Estimated settlement date"], "optional": true },
+        { "payloadPath": "aol.loans.baseAmount", "label": "Base amount", "labelContains": ["Base amount"] },
+        { "payloadPath": "aol.loans.productSelector", "label": "Product Selector", "labelContains": ["Product Selector"], "optional": true },
+        { "payloadPath": "aol.loans.offsetSubAccount", "label": "Offset Sub-account", "labelContains": ["Offset Sub-account"], "optional": true },
+        { "payloadPath": "aol.loans.redraw", "label": "Redraw", "labelContains": ["Redraw"], "optional": true },
+        { "payloadPath": "aol.loans.interestRatePa", "label": "Interest rate (pa)", "labelContains": ["Interest rate (pa)"], "optional": true },
+        { "payloadPath": "aol.loans.totalLoanTerm", "label": "Total loan term", "labelContains": ["Total loan term"] },
+        { "payloadPath": "aol.loans.repaymentType", "label": "Repayment type", "labelContains": ["Repayment type"] },
+        { "payloadPath": "aol.loans.repaymentFrequency", "label": "Repayment frequency", "labelContains": ["Repayment frequency"] },
+        { "payloadPath": "aol.loans.repaymentMethod", "label": "Repayment method", "labelContains": ["Repayment method"], "optional": true },
+        { "payloadPath": "aol.loans.nominatedBorrowers", "label": "Nominated borrowers", "labelContains": ["Nominated borrowers"], "optional": true }
+      ]
+    },
+    {
+      "id": "aolSecurities",
+      "label": "AOL Securities",
+      "aliases": ["Securities", "Type of security", "Location", "Property details", "Property value", "Title details"],
+      "fields": [
+        { "payloadPath": "aol.securities.type", "label": "Type", "labelContains": ["Type"] },
+        { "payloadPath": "aol.securities.transactionType", "label": "Transaction type", "labelContains": ["Transaction type"] },
+        { "payloadPath": "aol.securities.isPrimarySecurity", "label": "Is primary security?", "labelContains": ["Is primary security"], "optional": true },
+        { "payloadPath": "aol.securities.address", "label": "Address", "labelContains": ["Address"] },
+        { "payloadPath": "aol.securities.status", "label": "Status", "labelContains": ["Status"], "optional": true },
+        { "payloadPath": "aol.securities.propertyPrimaryPurpose", "label": "Property primary purpose", "labelContains": ["Property primary purpose"], "optional": true },
+        { "payloadPath": "aol.securities.propertyType", "label": "Property type", "labelContains": ["Property type"], "optional": true },
+        { "payloadPath": "aol.securities.rentalIncomeGross", "label": "Rental income (gross)", "labelContains": ["Rental income"], "optional": true },
+        { "payloadPath": "aol.securities.rentalIncomePeriod", "label": "Period", "labelContains": ["Period"], "optional": true },
+        { "payloadPath": "aol.securities.estimatedValue", "label": "Estimated value", "labelContains": ["Estimated value"] },
+        { "payloadPath": "aol.securities.basisOfEstimate", "label": "Basis of estimate", "labelContains": ["Basis of estimate"], "optional": true },
+        { "payloadPath": "aol.securities.titleType", "label": "Title type", "labelContains": ["Title type"], "optional": true },
+        { "payloadPath": "aol.securities.title", "label": "Title", "labelContains": ["Title"], "optional": true },
+        { "payloadPath": "aol.securities.contactForAccess", "label": "Contact", "labelContains": ["Contact"], "optional": true }
+      ]
+    },
+    {
+      "id": "aolFinancials",
+      "label": "AOL Financials",
+      "aliases": ["Financials", "Real estate assets", "Other assets", "Income", "Liabilities", "Expenses"],
+      "fields": [
+        { "payloadPath": "aol.financials.totalAssets", "label": "Total Assets", "labelContains": ["Total Assets"], "optional": true },
+        { "payloadPath": "aol.financials.totalLiabilities", "label": "Total Liabilities", "labelContains": ["Total Liabilities"], "optional": true },
+        { "payloadPath": "aol.financials.totalIncomeMonthly", "label": "Total Income", "labelContains": ["Total Income"], "optional": true },
+        { "payloadPath": "aol.financials.totalExpensesMonthly", "label": "Total Expenses", "labelContains": ["Total Expenses", "Expenses"], "optional": true },
+        { "payloadPath": "aol.financials.incomeConfirmed", "label": "Have the applicants confirmed that there are no incomes for this application?", "labelContains": ["no incomes for this application"], "optional": true },
+        { "payloadPath": "aol.financials.expensesReviewed", "label": "Has unique expense categories have been reviewed", "labelContains": ["expense categories have been reviewed"], "optional": true }
+      ]
+    },
+    {
+      "id": "aolCompliance",
+      "label": "AOL Compliance",
+      "aliases": ["Compliance", "Requirements & objectives", "Rate type", "Repayment type", "Product features", "Product selection"],
+      "fields": [
+        { "payloadPath": "aol.compliance.anticipatedChanges", "label": "Does the applicant plan or anticipate changes", "labelContains": ["anticipate changes"], "optional": true },
+        { "payloadPath": "aol.compliance.retirementAge", "label": "At what age is the applicant planning to retire?", "labelContains": ["planning to retire"], "optional": true },
+        { "payloadPath": "aol.compliance.reachRetirementDuringLoan", "label": "reach their planned retirement age during the term", "labelContains": ["reach their planned retirement age"], "optional": true },
+        { "payloadPath": "aol.compliance.ageReach67DuringLoan", "label": "age reach 67 during the term", "labelContains": ["age reach 67"], "optional": true },
+        { "payloadPath": "aol.compliance.repayPriorToRetirement", "label": "Repayment of loan prior to retirement", "labelContains": ["Repayment of loan prior to retirement"], "optional": true },
+        { "payloadPath": "aol.compliance.repayPriorToRetirementDetails", "label": "Repayment of loan prior to retirement Details", "labelContains": ["Repayment of loan prior to retirement", "Details"], "optional": true },
+        { "payloadPath": "aol.compliance.saleOfAssets", "label": "Sale of assets", "labelContains": ["Sale of assets"], "optional": true },
+        { "payloadPath": "aol.compliance.saleOfAssetsDetails", "label": "Sale of assets Details", "labelContains": ["Sale of assets", "Details"], "optional": true },
+        { "payloadPath": "aol.compliance.applicantDeclaredPurposeAccepted", "label": "The applicant(s) appeared to understand and wants to proceed", "labelContains": ["appeared to understand and wants to proceed"], "optional": true },
+        { "payloadPath": "aol.compliance.refinanceDebtConsolidation", "label": "Applicant(s) are refinancing and/or consolidating debts?", "labelContains": ["refinancing and/or consolidating"], "optional": true },
+        { "payloadPath": "aol.compliance.rateType", "label": "Which product rate type is most important", "labelContains": ["product rate type"], "optional": true },
+        { "payloadPath": "aol.compliance.variableRateImportant", "label": "How important is variable rate", "labelContains": ["variable rate important"], "optional": true },
+        { "payloadPath": "aol.compliance.variableRateReasonFlexible", "label": "Flexibility with respect to repayment, redraw and/or early repayment of loan", "labelContains": ["Flexibility with respect to repayment", "redraw", "early repayment"], "optional": true },
+        { "payloadPath": "aol.compliance.variableRateRiskAcknowledged", "label": "I have ensured that each applicant has understood the risks outlined above", "labelContains": ["understood the risks outlined above"], "optional": true },
+        { "payloadPath": "aol.compliance.repaymentImportance", "label": "How important is principal and interest", "labelContains": ["principal and interest"], "optional": true },
+        { "payloadPath": "aol.compliance.repaymentFrequency", "label": "Preferred repayment frequency?", "labelContains": ["Preferred repayment frequency"], "optional": true },
+        { "payloadPath": "aol.compliance.principalAndInterestMinimiseInterest", "label": "Minimise interest paid over life of loan", "labelContains": ["Minimise interest paid over life of loan"], "optional": true },
+        { "payloadPath": "aol.compliance.principalAndInterestBuildEquity", "label": "Build up equity from the start", "labelContains": ["Build up equity from the start"], "optional": true },
+        { "payloadPath": "aol.compliance.principalAndInterestRiskAcknowledged", "label": "I have ensured each applicant has understood the risks outlined above", "labelContains": ["understood the risks outlined above"], "optional": true, "occurrence": 1 },
+        { "payloadPath": "aol.compliance.interestOnlyImportance", "label": "How important is interest only to the applicant(s)?", "labelContains": ["interest only to the applicant"], "optional": true },
+        { "payloadPath": "aol.compliance.offsetImportance", "label": "How important is having an offset account", "labelContains": ["offset account"], "optional": true },
+        { "payloadPath": "aol.compliance.offsetReasonReduceInterest", "label": "Allows paying off loan sooner", "labelContains": ["Allows paying off loan sooner"], "optional": true },
+        { "payloadPath": "aol.compliance.redrawImportance", "label": "How important is having a redraw account", "labelContains": ["redraw account"], "optional": true },
+        { "payloadPath": "aol.compliance.offsetReasonAccessFunds", "label": "Allows access to funds", "labelContains": ["Allows access to funds"], "optional": true },
+        { "payloadPath": "aol.compliance.offsetRiskAcknowledged", "label": "I have ensured each applicant has understood the risks outlined above", "labelContains": ["understood the risks outlined above"], "optional": true, "occurrence": 2 },
+        { "payloadPath": "aol.compliance.redrawReasonFlexibility", "label": "Flexibility to access prepaid funds if needed", "labelContains": ["Flexibility to access prepaid funds"], "optional": true },
+        { "payloadPath": "aol.compliance.redrawRiskAcknowledged", "label": "I have ensured each applicant has understood the risks outlined above", "labelContains": ["understood the risks outlined above"], "optional": true, "occurrence": 3 },
+        { "payloadPath": "aol.compliance.otherRequirements", "label": "any other requirements and objectives", "labelContains": ["any other requirements"], "optional": true },
+        { "payloadPath": "aol.compliance.conflicts", "label": "Are there any conflicts", "labelContains": ["Are there any conflicts"], "optional": true },
+        { "payloadPath": "aol.compliance.productSelection", "label": "Product selection", "labelContains": ["Product selection"] }
+      ]
+    },
+    {
+      "id": "aolSummary",
+      "label": "AOL Summary",
+      "aliases": ["Summary"],
+      "fields": [
+        { "payloadPath": "aol.summary.totalLoanParties", "label": "Total loan parties", "labelContains": ["Total loan parties"], "optional": true },
+        { "payloadPath": "aol.summary.totalDependants", "label": "Total dependants", "labelContains": ["Total dependants"], "optional": true },
+        { "payloadPath": "aol.summary.baseAmount", "label": "Total Base Amount", "labelContains": ["Total Base Amount", "Base Amount"], "optional": true },
+        { "payloadPath": "aol.summary.totalLoanAmount", "label": "Total Amount", "labelContains": ["Total Amount"], "optional": true },
+        { "payloadPath": "aol.summary.totalSecurities", "label": "Total Value", "labelContains": ["Total Value"], "optional": true },
+        { "payloadPath": "aol.summary.residentialAddress", "label": "Residential Address", "labelContains": ["Residential Address"], "optional": true },
+        { "payloadPath": "aol.summary.contactInfo", "label": "Contact Info.", "labelContains": ["Contact Info"], "optional": true },
+        { "payloadPath": "aol.summary.primaryPurpose", "label": "Primary Purpose", "labelContains": ["Primary Purpose"], "optional": true },
+        { "payloadPath": "aol.summary.repaymentType", "label": "Repayment Type", "labelContains": ["Repayment Type"], "optional": true },
+        { "payloadPath": "aol.summary.totalLoanTerm", "label": "Total Loan Term", "labelContains": ["Total Loan Term"], "optional": true }
+      ]
+    },
+    {
+      "id": "aolDocuments",
+      "label": "AOL Documents",
+      "aliases": ["Documents", "Checklists", "Lender Checklists", "Submission"],
+      "fields": [
+        { "payloadPath": "aol.documents.expected.0", "label": "Privacy Consent Form", "labelContains": ["Privacy Consent Form"], "optional": true },
+        { "payloadPath": "aol.documents.expected.1", "label": "Self Employed Declaration", "labelContains": ["Self Employed Declaration"], "optional": true },
+        { "payloadPath": "aol.documents.expected.2", "label": "Responsible Lending Form", "labelContains": ["Responsible Lending Form"], "optional": true },
+        { "payloadPath": "aol.documents.expected.3", "label": "Serviceability Calculator", "labelContains": ["Serviceability Calculator"], "optional": true },
+        { "payloadPath": "aol.documents.expected.4", "label": "Verification of Identity", "labelContains": ["Verification of Identity", "VOI"], "optional": true }
+      ]
+    }
+  ]
+}

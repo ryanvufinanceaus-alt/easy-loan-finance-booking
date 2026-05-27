@@ -1,6 +1,10 @@
 node_modules/
 dist/
-data/
+/data/
+infinity-aol/server/data/caseHistory.json
+infinity-aol/server/data/comparisonSnapshots.json
+infinity-aol/server/data/preparedPayloads.json
+infinity-aol/server/data/userTemplates.json
 .env
 .DS_Store
 npm-debug.log*

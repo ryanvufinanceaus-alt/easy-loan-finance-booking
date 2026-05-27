@@ -1,0 +1,83 @@
+import mapping from "../mappings/infinity-aol-v1.json" with { type: "json" };
+import { buildInfinityTemplate } from "./infinityTemplate.mjs";
+import { buildAolTemplate } from "./aolTemplate.mjs";
+
+const money = (value) => Number(value || 0);
+
+function applicantByRole(caseData, role) {
+  return caseData.applicants.find((applicant) => applicant.role === role) || null;
+}
+
+function compactApplicant(applicant) {
+  if (!applicant) return null;
+
+  return {
+    firstName: applicant.firstName || "",
+    middleName: applicant.middleName || "",
+    lastName: applicant.lastName || "",
+    dateOfBirth: applicant.dateOfBirth || "",
+    maritalStatus: applicant.maritalStatus || "",
+    residencyStatus: applicant.residencyStatus || "",
+    dependants: applicant.dependants ?? 0,
+    email: applicant.email || "",
+    mobile: applicant.mobile || "",
+    address: applicant.address || {},
+    employment: applicant.employment || {},
+    income: applicant.income || {}
+  };
+}
+
+export function buildInfinityPayload(caseData) {
+  const primary = compactApplicant(applicantByRole(caseData, "primary"));
+  const secondary = compactApplicant(applicantByRole(caseData, "secondary"));
+  const expenses = caseData.expenses || {};
+  const totalMonthly =
+    money(expenses.livingMonthly) +
+    money(expenses.rentMonthly) +
+    money(expenses.educationMonthly) +
+    money(expenses.insuranceMonthly) +
+    money(expenses.transportMonthly) +
+    money(expenses.otherMonthly);
+  const infinity = buildInfinityTemplate(caseData);
+  const serviceability = {
+    hemMonthly: caseData.documentIntake?.assumptions?.hemMonthly || expenses.livingMonthly || 0,
+    financialAssetBuffer: caseData.documentIntake?.assumptions?.financialAssetBuffer || 0,
+    documentIncomeSource: caseData.documentIntake?.assumptions?.incomeSource || "crm"
+  };
+
+  return {
+    meta: {
+      caseId: caseData.id,
+      brokerUser: caseData.brokerUser,
+      preparedAt: new Date().toISOString(),
+      source: "Broker CRM",
+      targetPlatform: mapping.platform,
+      mappingVersion: mapping.version,
+      template: caseData.documentIntake?.template || caseData.selectedTemplate?.id || null,
+      explicitBrokerReviewRequired: true,
+      autoSubmitAllowed: false
+    },
+    applicants: {
+      primary,
+      secondary
+    },
+    expenses: {
+      ...expenses,
+      totalMonthly
+    },
+    assets: caseData.assets || [],
+    liabilities: caseData.liabilities || [],
+    property: caseData.property || {},
+    loan: caseData.loan || {},
+    brokerNotes: caseData.brokerNotes || "",
+    documentChecklist: caseData.documentChecklist || [],
+    documentIntake: caseData.documentIntake || null,
+    serviceability,
+    infinity,
+    aol: buildAolTemplate({ ...caseData, serviceability }, infinity)
+  };
+}
+
+export function getMapping() {
+  return mapping;
+}

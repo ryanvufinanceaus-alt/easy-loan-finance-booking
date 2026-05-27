@@ -5,11 +5,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dns from "node:dns";
 import nodemailer from "nodemailer";
+import { app as infinityAolApp } from "./infinity-aol/server/index.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
 const DATA_DIR = path.join(__dirname, "data");
 const DIST_DIR = path.join(__dirname, "dist");
+const INFINITY_AOL_BASE = "/infinity-aol";
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
 const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
@@ -1786,6 +1788,13 @@ createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", requestOrigin(req));
     processBookingReminders(requestOrigin(req)).catch((error) => console.warn(error.message));
+    if (url.pathname === INFINITY_AOL_BASE || url.pathname.startsWith(`${INFINITY_AOL_BASE}/`)) {
+      const originalUrl = req.url;
+      req.url = `${url.pathname.slice(INFINITY_AOL_BASE.length) || "/"}${url.search}`;
+      infinityAolApp(req, res);
+      req.url = originalUrl;
+      return;
+    }
     if (url.pathname.startsWith("/api/")) return await handleApi(req, res, url);
     if (url.pathname === "/calendar/team.ics" || url.pathname.startsWith("/calendar/broker/")) {
       return await handleCalendar(req, res, url);

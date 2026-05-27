@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+*.err.log
+.env
+.env.*
+server/data/caseHistory.json
+server/data/comparisonSnapshots.json
+server/data/preparedPayloads.json
+server/data/userTemplates.json

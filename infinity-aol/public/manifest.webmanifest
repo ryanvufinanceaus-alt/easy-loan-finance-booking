@@ -1,0 +1,20 @@
+{
+  "name": "Infinity AOL AutoFill Assistant",
+  "short_name": "Infinity AOL",
+  "description": "Broker-controlled document intake, Infinity payload preparation, and AOL autofill review.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f3",
+  "theme_color": "#13201a",
+  "orientation": "any",
+  "categories": ["business", "productivity", "finance"],
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

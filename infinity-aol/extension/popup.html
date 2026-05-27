@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Infinity AOL AutoFill</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <span>Broker CRM</span>
+        <h1>Infinity AOL AutoFill</h1>
+      </header>
+
+      <label>
+        Case ID
+        <input id="caseToken" placeholder="ELF-2026-0148 or token" />
+      </label>
+
+      <button id="startAutofill" class="primary-action" type="button">Start AutoFill</button>
+
+      <details class="advanced">
+        <summary>Advanced tools</summary>
+        <label>
+          CRM API
+          <input id="apiBase" value="https://easy-loan-finance-booking.onrender.com/infinity-aol" />
+        </label>
+        <div class="button-row">
+          <button id="fillSection" type="button" disabled>Fill Current Popup</button>
+          <button id="comparePage" type="button" disabled>Check Current Page</button>
+          <button id="compareCase" type="button" disabled>Compare Case</button>
+        </div>
+      </details>
+
+      <section id="status" class="status muted">Open the Infinity or AOL case page, enter the Case ID, then start.</section>
+
+      <section class="review">
+        <h2>Broker Review</h2>
+        <div id="reviewRows"></div>
+        <p class="safety">The extension fills fields only. It does not store passwords, bypass MFA, or submit AOL.</p>
+      </section>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

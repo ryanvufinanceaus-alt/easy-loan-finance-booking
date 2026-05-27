@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Infinity AOL AutoFill Assistant",
+  "version": "0.1.0",
+  "description": "Section-by-section AOL autofill from Broker CRM prepared payloads.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "http://127.0.0.1:8797/*",
+    "http://localhost:8797/*",
+    "http://127.0.0.1:3000/*",
+    "http://localhost:3000/*",
+    "https://*.onrender.com/*"
+  ],
+  "action": {
+    "default_title": "Infinity AOL AutoFill",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["contentScript.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["mapping/infinity-aol-v1.json"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
