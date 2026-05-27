@@ -9,10 +9,16 @@ import {
   UploadCloud,
   Play,
   RefreshCw,
-  ShieldCheck
+  Search,
+  ShieldCheck,
+  Trash2
 } from "lucide-react";
 
-const apiBase = "http://127.0.0.1:8797";
+const apiBase = location.pathname.startsWith("/infinity-aol")
+  ? `${location.origin}/infinity-aol`
+  : ["localhost", "127.0.0.1"].includes(location.hostname)
+    ? "http://127.0.0.1:8797"
+    : `${location.origin}/infinity-aol`;
 
 function currency(value) {
   return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(value || 0);
@@ -193,7 +199,8 @@ function MockInfinity() {
 
 export default function App() {
   const [cases, setCases] = useState([]);
-  const [selectedCaseId, setSelectedCaseId] = useState("ELF-2026-0148");
+  const [caseSearch, setCaseSearch] = useState("");
+  const [selectedCaseId, setSelectedCaseId] = useState("");
   const [caseData, setCaseData] = useState(null);
   const [prepared, setPrepared] = useState(null);
   const [auditLog, setAuditLog] = useState([]);
@@ -234,6 +241,24 @@ export default function App() {
       .catch(() => {});
   }, [selectedCaseId, showMock]);
 
+  const filteredCases = useMemo(() => {
+    const terms = caseSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (caseSearch.trim().length < 2 || !terms.length) return [];
+    return cases
+      .filter((caseItem) => {
+        const haystack = [
+          caseItem.id,
+          caseItem.status,
+          caseItem.brokerUser,
+          caseItem.applicantNames,
+          caseItem.propertyAddress,
+          String(caseItem.loanAmount || "")
+        ].join(" ").toLowerCase();
+        return terms.every((term) => haystack.includes(term));
+      })
+      .slice(0, 12);
+  }, [caseSearch, cases]);
+
   const selectedSummary = useMemo(() => cases.find((item) => item.id === selectedCaseId), [cases, selectedCaseId]);
   const selectedTemplate = useMemo(
     () => templates.find((template) => template.id === selectedTemplateId) || null,
@@ -254,6 +279,10 @@ export default function App() {
   }
 
   async function prepareInfinity() {
+    if (!selectedCaseId) {
+      setError("Search and select a case first.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -278,6 +307,10 @@ export default function App() {
   }
 
   async function uploadDocuments({ prepare = false } = {}) {
+    if (!selectedCaseId) {
+      setError("Search and select a case first.");
+      return;
+    }
     if (!documents.length) {
       setError("Choose at least one customer document first.");
       return;
@@ -333,6 +366,10 @@ export default function App() {
   }
 
   async function previewTemplateText() {
+    if (!selectedCaseId) {
+      setError("Search and select a case first.");
+      return;
+    }
     setError("");
     try {
       const result = await api(`/api/cases/${selectedCaseId}/template-preview`, {
@@ -361,6 +398,36 @@ export default function App() {
     }
   }
 
+  async function deleteLocalCaseData() {
+    if (!selectedCaseId) {
+      setError("Search and select a case first.");
+      return;
+    }
+
+    const expected = `DELETE ${selectedCaseId}`;
+    const typed = window.prompt(`This only deletes assistant payload/history/intake data, not the CRM case.\n\nType ${expected} to confirm.`);
+    if (typed !== expected) {
+      if (typed !== null) setError(`Delete cancelled. You must type exactly: ${expected}`);
+      return;
+    }
+
+    setError("");
+    try {
+      await api(`/api/cases/${selectedCaseId}/local-data`, {
+        method: "DELETE",
+        body: JSON.stringify({ confirm: expected, brokerUser: caseData?.brokerUser || "unknown" })
+      });
+      setPrepared(null);
+      setDocumentDraft(null);
+      setTemplatePreview(null);
+      setCaseHistory([]);
+      setDocuments([]);
+      setAuditLog(await api("/api/audit-log"));
+    } catch (err) {
+      setError(`Could not delete local case data: ${err.message}`);
+    }
+  }
+
   if (showMock) return <MockInfinity />;
 
   return (
@@ -373,19 +440,44 @@ export default function App() {
             <strong>Infinity AOL Assistant</strong>
           </div>
         </div>
+        <div className="case-search">
+          <label>
+            Search case
+            <div className="search-input">
+              <Search size={16} />
+              <input
+                value={caseSearch}
+                onChange={(event) => setCaseSearch(event.target.value)}
+                placeholder="Name, case ID, second applicant, address"
+                autoComplete="off"
+              />
+            </div>
+          </label>
+          <small>
+            {caseSearch.trim().length >= 2
+              ? `${filteredCases.length} result${filteredCases.length === 1 ? "" : "s"}`
+              : "Type at least 2 letters. No cases are shown by default."}
+          </small>
+        </div>
         <div className="case-list">
-          {cases.map((caseItem) => (
-            <button
-              className={caseItem.id === selectedCaseId ? "active" : ""}
-              key={caseItem.id}
-              type="button"
-              onClick={() => setSelectedCaseId(caseItem.id)}
-            >
-              <span>{caseItem.id}</span>
-              <strong>{caseItem.applicantNames}</strong>
-              <small>{currency(caseItem.loanAmount)}</small>
-            </button>
-          ))}
+          {caseSearch.trim().length < 2 ? (
+            <div className="case-search-empty">Search by one applicant, two applicants, case ID, or property address.</div>
+          ) : filteredCases.length ? (
+            filteredCases.map((caseItem) => (
+              <button
+                className={caseItem.id === selectedCaseId ? "active" : ""}
+                key={caseItem.id}
+                type="button"
+                onClick={() => setSelectedCaseId(caseItem.id)}
+              >
+                <span>{caseItem.id}</span>
+                <strong>{caseItem.applicantNames}</strong>
+                <small>{currency(caseItem.loanAmount)}</small>
+              </button>
+            ))
+          ) : (
+            <div className="case-search-empty">No matching case found.</div>
+          )}
         </div>
       </aside>
 
@@ -393,14 +485,14 @@ export default function App() {
         <header className="topbar">
           <div>
             <span>{selectedSummary?.status || "Case view"}</span>
-            <h1>{selectedCaseId}</h1>
+            <h1>{selectedCaseId || "Search and select a case"}</h1>
           </div>
           <div className="actions">
             <a className="ghost-button" href="/mock-infinity-aol" target="_blank" rel="noreferrer">
               <ExternalLink size={16} />
               Mock AOL
             </a>
-            <button className="primary-button" type="button" disabled={loading || !caseData} onClick={prepareInfinity}>
+            <button className="primary-button" type="button" disabled={loading || !caseData || !selectedCaseId} onClick={prepareInfinity}>
               {loading ? <RefreshCw size={17} className="spin" /> : <Play size={17} />}
               Prepare Infinity AOL
             </button>
@@ -510,42 +602,57 @@ export default function App() {
                 </div>
               </div>
 
-              <button className="primary-button intake-button" type="button" disabled={uploading || !documents.length} onClick={() => uploadDocuments()}>
+              <button className="primary-button intake-button" type="button" disabled={uploading || !documents.length || !selectedCaseId} onClick={() => uploadDocuments()}>
                 {uploading ? <RefreshCw size={17} className="spin" /> : <UploadCloud size={17} />}
                 Prepare From Files
               </button>
-              <button className="primary-button intake-button" type="button" disabled={uploading || !documents.length} onClick={() => uploadDocuments({ prepare: true })}>
+              <button className="primary-button intake-button" type="button" disabled={uploading || !documents.length || !selectedCaseId} onClick={() => uploadDocuments({ prepare: true })}>
                 {uploading ? <RefreshCw size={17} className="spin" /> : <Play size={17} />}
                 One-Click Intake + Payload
               </button>
 
               {documentDraft ? (
-                <div className="draft-summary">
-                  <div>
-                    <span>Template</span>
-                    <strong>{documentDraft.template?.name || "Custom"}</strong>
+                <>
+                  <div className="draft-summary">
+                    <div>
+                      <span>Template</span>
+                      <strong>{documentDraft.template?.name || "Custom"}</strong>
+                    </div>
+                    <div>
+                      <span>HEM</span>
+                      <strong>{currency(documentDraft.assumptions.hemMonthly)}</strong>
+                    </div>
+                    <div>
+                      <span>Financial asset</span>
+                      <strong>{currency(documentDraft.assumptions.financialAssetBuffer)}</strong>
+                    </div>
+                    <div>
+                      <span>Income source</span>
+                      <strong>{documentDraft.assumptions.incomeSource}</strong>
+                    </div>
+                    <div>
+                      <span>Warnings</span>
+                      <strong>{documentDraft.warnings.length}</strong>
+                    </div>
+                    <div>
+                      <span>Field suggestions</span>
+                      <strong>{documentDraft.extracted?.fieldSuggestions?.length || 0}</strong>
+                    </div>
                   </div>
-                  <div>
-                    <span>HEM</span>
-                    <strong>{currency(documentDraft.assumptions.hemMonthly)}</strong>
-                  </div>
-                  <div>
-                    <span>Financial asset</span>
-                    <strong>{currency(documentDraft.assumptions.financialAssetBuffer)}</strong>
-                  </div>
-                  <div>
-                    <span>Income source</span>
-                    <strong>{documentDraft.assumptions.incomeSource}</strong>
-                  </div>
-                  <div>
-                    <span>Warnings</span>
-                    <strong>{documentDraft.warnings.length}</strong>
-                  </div>
-                  <div>
-                    <span>Field suggestions</span>
-                    <strong>{documentDraft.extracted?.fieldSuggestions?.length || 0}</strong>
-                  </div>
-                </div>
+                  {documentDraft.documents?.length ? (
+                    <div className="document-detections">
+                      {documentDraft.documents.map((doc) => (
+                        <div key={`${doc.fileName}-${doc.size}`} className={doc.warnings?.length ? "needs-review" : ""}>
+                          <strong>{doc.fileName}</strong>
+                          <span>
+                            {doc.type} | {Math.round((doc.confidence || 0) * 100)}% confidence | {doc.suggestions?.length || 0} fields
+                          </span>
+                          {doc.warnings?.map((warning) => <small key={warning}>{warning}</small>)}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
               ) : (
                 <div className="empty-state">Upload files or use presets before preparing AOL.</div>
               )}
@@ -578,9 +685,15 @@ export default function App() {
         </div>
 
         <section className="panel history-panel">
-          <div className="panel-title">
-            <History size={18} />
-            <h2>Case Fill History</h2>
+          <div className="panel-title split-title">
+            <div>
+              <History size={18} />
+              <h2>Case Fill History</h2>
+            </div>
+            <button className="danger-button" type="button" disabled={!selectedCaseId} onClick={deleteLocalCaseData}>
+              <Trash2 size={16} />
+              Delete local data
+            </button>
           </div>
           {caseHistory.length ? (
             <div className="history-list">

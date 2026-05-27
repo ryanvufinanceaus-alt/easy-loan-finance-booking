@@ -62,6 +62,33 @@ function persistPrepared(prepared) {
   writeJson(preparedArchivePath, archived.slice(0, 100));
 }
 
+function deleteLocalCaseData(caseId) {
+  const archivedPrepared = readJson(preparedArchivePath, []);
+  const remainingPrepared = archivedPrepared.filter((item) => item.caseId !== caseId);
+  const removedTokens = archivedPrepared.filter((item) => item.caseId === caseId).map((item) => item.token);
+  for (const [key, prepared] of [...preparedCases.entries()]) {
+    if (key === caseId || prepared?.caseId === caseId) preparedCases.delete(key);
+  }
+
+  const historyRemoved = caseHistory.get(caseId)?.length || 0;
+  const snapshotsRemoved = comparisonSnapshots.get(caseId)?.length || 0;
+  const hadDocumentDraft = documentDrafts.delete(caseId);
+  caseHistory.delete(caseId);
+  comparisonSnapshots.delete(caseId);
+
+  writeJson(preparedArchivePath, remainingPrepared.slice(0, 100));
+  persistHistory();
+  persistComparisonSnapshots();
+
+  return {
+    preparedPayloadsRemoved: archivedPrepared.length - remainingPrepared.length,
+    memoryTokensRemoved: removedTokens.length,
+    historyEventsRemoved: historyRemoved,
+    comparisonSnapshotsRemoved: snapshotsRemoved,
+    documentDraftRemoved: hadDocumentDraft
+  };
+}
+
 function hydrateLocalHistory() {
   const loadedHistory = readJson(historyPath, {});
   for (const [caseId, events] of Object.entries(loadedHistory)) {
@@ -278,6 +305,24 @@ app.get("/api/cases/:caseId", (request, response) => {
   const caseData = findCase(request.params.caseId);
   if (!caseData) return response.status(404).json({ error: "Case not found" });
   response.json(caseData);
+});
+
+app.delete("/api/cases/:caseId/local-data", (request, response) => {
+  const caseId = request.params.caseId;
+  const expected = `DELETE ${caseId}`;
+  if (request.body?.confirm !== expected) {
+    return response.status(400).json({ error: `Type ${expected} to confirm local data deletion.` });
+  }
+
+  const result = deleteLocalCaseData(caseId);
+  auditLog.push({
+    type: "delete-local-case-data",
+    timestamp: new Date().toISOString(),
+    brokerUser: request.body?.brokerUser || "unknown",
+    caseId,
+    ...result
+  });
+  response.json({ ok: true, caseId, ...result });
 });
 
 app.post("/api/cases/:caseId/prepare-infinity-aol", (request, response) => {
