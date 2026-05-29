@@ -241,12 +241,13 @@ function summarizePrepared(prepared, type) {
 }
 
 function prepareCase(caseData, source = "prepare", options = {}) {
-  if (options.templateId || options.templateOverrides || options.hemMonthly || options.financialAssetBuffer) {
+  if (options.templateId || options.templateOverrides || options.hemMonthly || options.financialAssetBuffer || options.manualIntake) {
     const draft = buildDocumentDraft([], {
       templateId: options.templateId,
       templateOverrides: options.templateOverrides,
       hemMonthly: options.hemMonthly,
-      financialAssetBuffer: options.financialAssetBuffer
+      financialAssetBuffer: options.financialAssetBuffer,
+      manualIntake: options.manualIntake
     });
     documentDrafts.set(caseData.id, draft);
   }
@@ -340,7 +341,8 @@ app.post("/api/cases/:caseId/template-preview", (request, response) => {
     templateId: request.body?.templateId,
     templateOverrides: request.body?.templateOverrides,
     hemMonthly: request.body?.hemMonthly,
-    financialAssetBuffer: request.body?.financialAssetBuffer
+    financialAssetBuffer: request.body?.financialAssetBuffer,
+    manualIntake: request.body?.manualIntake
   });
   const mergedCase = mergeDocumentDraft(caseData, draft);
   response.json({
@@ -378,7 +380,8 @@ app.post("/api/cases/:caseId/document-intake", upload.array("documents"), (reque
     hemMonthly: request.body.hemMonthly,
     financialAssetBuffer: request.body.financialAssetBuffer,
     templateId: request.body.templateId,
-    templateOverrides: request.body.templateOverrides
+    templateOverrides: request.body.templateOverrides,
+    manualIntake: request.body.manualIntake
   });
 
   documentDrafts.set(caseData.id, draft);
@@ -408,12 +411,13 @@ app.post("/api/cases/:caseId/intake-and-prepare", upload.array("documents"), (re
   if (!caseData) return response.status(404).json({ error: "Case not found" });
 
   let draft = documentDrafts.get(caseData.id) || null;
-  if (request.files?.length || request.body.templateId || request.body.templateOverrides || request.body.hemMonthly || request.body.financialAssetBuffer) {
+  if (request.files?.length || request.body.templateId || request.body.templateOverrides || request.body.hemMonthly || request.body.financialAssetBuffer || request.body.manualIntake) {
     draft = buildDocumentDraft(request.files, {
       hemMonthly: request.body.hemMonthly,
       financialAssetBuffer: request.body.financialAssetBuffer,
       templateId: request.body.templateId,
-      templateOverrides: request.body.templateOverrides
+      templateOverrides: request.body.templateOverrides,
+      manualIntake: request.body.manualIntake
     });
     documentDrafts.set(caseData.id, draft);
     auditLog.push({

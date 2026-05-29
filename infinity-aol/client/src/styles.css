@@ -99,6 +99,10 @@ textarea {
   padding-left: 0;
 }
 
+.case-select {
+  width: 100%;
+}
+
 .case-search-empty {
   border: 1px dashed rgba(255, 255, 255, 0.16);
   border-radius: 8px;
@@ -141,6 +145,41 @@ textarea {
 .case-list strong {
   display: block;
   margin: 4px 0;
+}
+
+.side-info-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+}
+
+.side-info-card > strong {
+  font-size: 14px;
+}
+
+.side-info-card div {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding-top: 7px;
+}
+
+.side-info-card span,
+.side-info-card small {
+  color: #a9b7ad;
+  font-size: 12px;
+}
+
+.side-info-card small {
+  color: #f8fbf8;
+  max-width: 130px;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .workspace {
@@ -205,6 +244,11 @@ h2 {
   background: #fff;
   border-color: #d8ded9;
   color: #1f2c25;
+}
+
+.mini-button {
+  min-height: 34px;
+  padding: 0 12px;
 }
 
 .facts-grid {
@@ -338,6 +382,13 @@ h2 {
   padding: 16px;
 }
 
+.quick-input-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 16px;
+}
+
 .template-box {
   background: #f6f8f6;
   border: 1px solid #dce5df;
@@ -424,6 +475,12 @@ h2 {
   text-align: center;
 }
 
+.dropzone.dragging {
+  background: #e8f6ed;
+  border-color: #166a42;
+  box-shadow: inset 0 0 0 2px rgba(22, 106, 66, 0.2);
+}
+
 .dropzone input {
   display: none;
 }
@@ -441,6 +498,38 @@ h2 {
 .preset-grid {
   display: grid;
   gap: 12px;
+}
+
+.queued-files {
+  display: grid;
+  gap: 8px;
+}
+
+.queued-files div {
+  background: #f6f8f6;
+  border: 1px solid #dce5df;
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+}
+
+.queued-files strong,
+.queued-files span {
+  display: block;
+}
+
+.queued-files span {
+  color: #65706a;
+  font-size: 12px;
+}
+
+.income-format-box textarea {
+  border: 1px solid #cfd8d2;
+  border-radius: 8px;
+  min-height: 170px;
+  padding: 10px;
+  resize: vertical;
 }
 
 .segmented {
@@ -755,6 +844,7 @@ select {
 
   .facts-grid,
   .form-grid,
+  .quick-input-grid,
   .check-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -789,6 +879,7 @@ select {
   .facts-grid,
   .payload-meta,
   .form-grid,
+  .quick-input-grid,
   .check-grid,
   .priority-row,
   .log-row {

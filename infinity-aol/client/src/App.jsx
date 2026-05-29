@@ -24,6 +24,73 @@ function currency(value) {
   return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(value || 0);
 }
 
+function parseMoneyInput(value) {
+  const number = Number(String(value || "").replace(/[$,\s]/g, ""));
+  return Number.isFinite(number) && number > 0 ? number : "";
+}
+
+function storageGet(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function storageSet(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Local storage can be blocked in hardened browser profiles.
+  }
+}
+
+function caseStorageKey(caseId) {
+  return `infinity-aol-case-inputs:${caseId}`;
+}
+
+function fileSizeLabel(bytes) {
+  if (!bytes) return "0 KB";
+  if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function classifyQueuedFile(file) {
+  const name = file.name.toLowerCase();
+  if (/driver|licen[cs]e|passport|medicare|id|voi/.test(name)) return "identity";
+  if (/pay|income|salary|financial|accountant|bas|tax/.test(name)) return "income";
+  if (/bank|statement|saving|deposit/.test(name)) return "bank statement";
+  if (/contract|sale|purchase/.test(name)) return "contract";
+  if (/ocr-/.test(name)) return "ocr text";
+  return "supporting";
+}
+
+function recommendedHem(caseData) {
+  const applicantCount = caseData?.applicants?.length || 1;
+  const dependants = Math.max(...(caseData?.applicants || []).map((applicant) => Number(applicant.dependants || 0)), 0);
+  const base = applicantCount > 1 ? 4300 : 3200;
+  const withDependants = base + dependants * 500;
+  return Math.round(withDependants / 100) * 100;
+}
+
+function initialManualIntake(caseData) {
+  if (!caseData) return {};
+  const primary = caseData.applicants.find((applicant) => applicant.role === "primary") || {};
+  const secondary = caseData.applicants.find((applicant) => applicant.role === "secondary") || {};
+  return {
+    loanAmount: caseData.loan?.loanAmount || "",
+    primaryAnnualIncome: primary.income?.baseAnnual || "",
+    secondaryAnnualIncome: secondary.income?.baseAnnual || "",
+    primaryDriversLicenceNo: primary.id?.driversLicenceNo || "",
+    primaryLicenceExpiryDate: primary.id?.licenceExpiryDate || "",
+    primaryLicenceCardNumber: primary.id?.licenceCardNumber || "",
+    secondaryDriversLicenceNo: secondary.id?.driversLicenceNo || "",
+    secondaryLicenceExpiryDate: secondary.id?.licenceExpiryDate || "",
+    secondaryLicenceCardNumber: secondary.id?.licenceCardNumber || ""
+  };
+}
+
 async function api(path, options) {
   const response = await fetch(`${apiBase}${path}`, {
     headers: { "content-type": "application/json" },
@@ -205,17 +272,23 @@ export default function App() {
   const [prepared, setPrepared] = useState(null);
   const [auditLog, setAuditLog] = useState([]);
   const [caseHistory, setCaseHistory] = useState([]);
+  const [recentCaseIds, setRecentCaseIds] = useState(() => storageGet("infinity-aol-recent-cases", []));
   const [templates, setTemplates] = useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("single-investor-preapproval");
   const [templateJson, setTemplateJson] = useState("");
   const [templateMessage, setTemplateMessage] = useState("");
   const [templatePreview, setTemplatePreview] = useState(null);
   const [documents, setDocuments] = useState([]);
+  const [ocrTextFiles, setOcrTextFiles] = useState([]);
+  const [manualIntake, setManualIntake] = useState({});
+  const [incomeFormatText, setIncomeFormatText] = useState("");
   const [hemMonthly, setHemMonthly] = useState(4000);
   const [financialAssetBuffer, setFinancialAssetBuffer] = useState(30000);
   const [documentDraft, setDocumentDraft] = useState(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [ocrRunning, setOcrRunning] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState("");
 
   const showMock = location.pathname === "/mock-infinity-aol";
@@ -234,12 +307,23 @@ export default function App() {
     setTemplatePreview(null);
     setCaseHistory([]);
     setDocuments([]);
+    setOcrTextFiles([]);
+    setIncomeFormatText("");
     api(`/api/cases/${selectedCaseId}`).then(setCaseData).catch((err) => setError(err.message));
     api(`/api/cases/${selectedCaseId}/history`).then(setCaseHistory).catch(() => {});
     api(`/api/cases/${selectedCaseId}/document-intake`)
       .then((result) => setDocumentDraft(result.draft))
       .catch(() => {});
   }, [selectedCaseId, showMock]);
+
+  useEffect(() => {
+    if (!caseData) return;
+    const saved = storageGet(caseStorageKey(caseData.id), {});
+    const intake = { ...initialManualIntake(caseData), ...saved };
+    setManualIntake(intake);
+    setHemMonthly(Number(saved.hemMonthly || caseData.expenses?.livingMonthly || recommendedHem(caseData)));
+    setFinancialAssetBuffer(Number(saved.financialAssetBuffer || 30000));
+  }, [caseData]);
 
   const filteredCases = useMemo(() => {
     const terms = caseSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -258,6 +342,19 @@ export default function App() {
       })
       .slice(0, 12);
   }, [caseSearch, cases]);
+
+  const sortedCases = useMemo(
+    () => [...cases].sort((a, b) => a.applicantNames.localeCompare(b.applicantNames)),
+    [cases]
+  );
+  const recentCases = useMemo(() => {
+    const recent = recentCaseIds
+      .map((caseId) => cases.find((caseItem) => caseItem.id === caseId))
+      .filter(Boolean)
+      .sort((a, b) => a.applicantNames.localeCompare(b.applicantNames));
+    return recent.slice(0, 6);
+  }, [cases, recentCaseIds]);
+  const visibleCases = caseSearch.trim().length < 2 ? recentCases : filteredCases;
 
   const selectedSummary = useMemo(() => cases.find((item) => item.id === selectedCaseId), [cases, selectedCaseId]);
   const selectedTemplate = useMemo(
@@ -278,6 +375,69 @@ export default function App() {
     return JSON.parse(templateJson);
   }
 
+  function currentManualIntake() {
+    return {
+      ...manualIntake,
+      loanAmount: parseMoneyInput(manualIntake.loanAmount),
+      primaryAnnualIncome: parseMoneyInput(manualIntake.primaryAnnualIncome),
+      secondaryAnnualIncome: parseMoneyInput(manualIntake.secondaryAnnualIncome),
+      hemMonthly,
+      financialAssetBuffer
+    };
+  }
+
+  function selectCase(caseId) {
+    if (!caseId) return;
+    setSelectedCaseId(caseId);
+    setRecentCaseIds((items) => {
+      const next = [caseId, ...items.filter((item) => item !== caseId)].slice(0, 10);
+      storageSet("infinity-aol-recent-cases", next);
+      return next;
+    });
+  }
+
+  function saveManualIntake() {
+    if (!selectedCaseId) return;
+    const payload = currentManualIntake();
+    storageSet(caseStorageKey(selectedCaseId), payload);
+    setTemplateMessage("Case inputs saved locally. Prepare will use these numbers.");
+  }
+
+  function handleFiles(fileList) {
+    const incoming = [...fileList];
+    if (!incoming.length) return;
+    setDocuments((items) => {
+      const seen = new Set(items.map((file) => `${file.name}-${file.size}-${file.lastModified}`));
+      const next = [...items];
+      for (const file of incoming) {
+        const key = `${file.name}-${file.size}-${file.lastModified}`;
+        if (!seen.has(key)) next.push(file);
+      }
+      return next;
+    });
+  }
+
+  async function runOcrForImages(files) {
+    const imageFiles = files.filter((file) => /^image\//i.test(file.type));
+    if (!imageFiles.length) return [];
+    setOcrRunning(true);
+    try {
+      const Tesseract = await import("tesseract.js");
+      const output = [];
+      for (const file of imageFiles.slice(0, 6)) {
+        const result = await Tesseract.recognize(file, "eng");
+        const text = result?.data?.text || "";
+        if (text.trim()) {
+          output.push(new File([`OCR SOURCE: ${file.name}\n${text}`], `ocr-${file.name}.txt`, { type: "text/plain" }));
+        }
+      }
+      setOcrTextFiles(output);
+      return output;
+    } finally {
+      setOcrRunning(false);
+    }
+  }
+
   async function prepareInfinity() {
     if (!selectedCaseId) {
       setError("Search and select a case first.");
@@ -291,6 +451,7 @@ export default function App() {
         body: JSON.stringify({
           templateId: selectedTemplateId,
           templateOverrides: currentTemplatePayload(),
+          manualIntake: currentManualIntake(),
           hemMonthly,
           financialAssetBuffer
         })
@@ -311,20 +472,26 @@ export default function App() {
       setError("Search and select a case first.");
       return;
     }
-    if (!documents.length) {
-      setError("Choose at least one customer document first.");
+    if (!documents.length && !incomeFormatText.trim()) {
+      setError("Choose at least one customer document or paste the broker intake format first.");
       return;
     }
 
     setUploading(true);
     setError("");
     try {
+      const ocrFiles = await runOcrForImages(documents);
       const formData = new FormData();
       for (const file of documents) formData.append("documents", file);
+      for (const file of ocrFiles) formData.append("documents", file);
+      if (incomeFormatText.trim()) {
+        formData.append("documents", new File([incomeFormatText], "broker-intake-format.txt", { type: "text/plain" }));
+      }
       formData.append("hemMonthly", String(hemMonthly));
       formData.append("financialAssetBuffer", String(financialAssetBuffer));
       formData.append("templateId", selectedTemplateId);
       formData.append("templateOverrides", JSON.stringify(currentTemplatePayload()));
+      formData.append("manualIntake", JSON.stringify(currentManualIntake()));
 
       const endpoint = prepare ? "intake-and-prepare" : "document-intake";
       const response = await fetch(`${apiBase}/api/cases/${selectedCaseId}/${endpoint}`, {
@@ -377,6 +544,7 @@ export default function App() {
         body: JSON.stringify({
           templateId: selectedTemplateId,
           templateOverrides: currentTemplatePayload(),
+          manualIntake: currentManualIntake(),
           hemMonthly,
           financialAssetBuffer
         })
@@ -428,6 +596,19 @@ export default function App() {
     }
   }
 
+  const queuedFiles = [...documents, ...ocrTextFiles];
+  const extractedRows = [
+    ["Loan amount", manualIntake.loanAmount ? currency(parseMoneyInput(manualIntake.loanAmount)) : prepared?.payload?.loan?.loanAmount ? currency(prepared.payload.loan.loanAmount) : "Not set"],
+    ["Primary income", manualIntake.primaryAnnualIncome ? currency(parseMoneyInput(manualIntake.primaryAnnualIncome)) : "CRM/file"],
+    ["Secondary income", manualIntake.secondaryAnnualIncome ? currency(parseMoneyInput(manualIntake.secondaryAnnualIncome)) : caseData?.applicants?.length > 1 ? "CRM/file" : "N/A"],
+    ["HEM / living", currency(hemMonthly)],
+    ["Financial asset", currency(financialAssetBuffer)],
+    ["Files queued", String(queuedFiles.length)],
+    ["Fields found", String(documentDraft?.extracted?.fieldSuggestions?.length || 0)],
+    ["Warnings", String(documentDraft?.warnings?.length || 0)],
+    ["Last payload", prepared?.token ? prepared.token.slice(0, 10) : "Not prepared"]
+  ];
+
   if (showMock) return <MockInfinity />;
 
   return (
@@ -453,22 +634,30 @@ export default function App() {
               />
             </div>
           </label>
+          <select className="case-select" value={selectedCaseId} onChange={(event) => selectCase(event.target.value)}>
+            <option value="">Dropdown by client name</option>
+            {sortedCases.map((caseItem) => (
+              <option key={caseItem.id} value={caseItem.id}>
+                {caseItem.applicantNames} - {caseItem.id}
+              </option>
+            ))}
+          </select>
           <small>
             {caseSearch.trim().length >= 2
               ? `${filteredCases.length} result${filteredCases.length === 1 ? "" : "s"}`
-              : "Type at least 2 letters. No cases are shown by default."}
+              : recentCases.length
+                ? "Recent searched cases, sorted by client name."
+                : "Type at least 2 letters or use the dropdown."}
           </small>
         </div>
         <div className="case-list">
-          {caseSearch.trim().length < 2 ? (
-            <div className="case-search-empty">Search by one applicant, two applicants, case ID, or property address.</div>
-          ) : filteredCases.length ? (
-            filteredCases.map((caseItem) => (
+          {visibleCases.length ? (
+            visibleCases.map((caseItem) => (
               <button
                 className={caseItem.id === selectedCaseId ? "active" : ""}
                 key={caseItem.id}
                 type="button"
-                onClick={() => setSelectedCaseId(caseItem.id)}
+                onClick={() => selectCase(caseItem.id)}
               >
                 <span>{caseItem.id}</span>
                 <strong>{caseItem.applicantNames}</strong>
@@ -476,8 +665,19 @@ export default function App() {
               </button>
             ))
           ) : (
-            <div className="case-search-empty">No matching case found.</div>
+            <div className="case-search-empty">
+              {caseSearch.trim().length < 2 ? "Recent cases will appear here after you search/select them." : "No matching case found."}
+            </div>
           )}
+        </div>
+        <div className="side-info-card">
+          <strong>Case Intake Snapshot</strong>
+          {extractedRows.map(([label, value]) => (
+            <div key={label}>
+              <span>{label}</span>
+              <small>{value}</small>
+            </div>
+          ))}
         </div>
       </aside>
 
@@ -504,6 +704,92 @@ export default function App() {
         <CaseFacts caseData={caseData} />
 
         <div className="main-grid">
+          <section className="panel">
+            <div className="panel-title split-title">
+              <div>
+                <ClipboardList size={18} />
+                <h2>Quick Review Inputs</h2>
+              </div>
+              <button className="ghost-button mini-button" type="button" disabled={!selectedCaseId} onClick={saveManualIntake}>
+                Save
+              </button>
+            </div>
+            <div className="quick-input-grid">
+              <label>
+                Loan amount
+                <input
+                  value={manualIntake.loanAmount || ""}
+                  onChange={(event) => setManualIntake((value) => ({ ...value, loanAmount: event.target.value }))}
+                  placeholder="$390,000"
+                />
+              </label>
+              <label>
+                Primary annual income
+                <input
+                  value={manualIntake.primaryAnnualIncome || ""}
+                  onChange={(event) => setManualIntake((value) => ({ ...value, primaryAnnualIncome: event.target.value }))}
+                  placeholder="$130,600"
+                />
+              </label>
+              <label>
+                Secondary annual income
+                <input
+                  value={manualIntake.secondaryAnnualIncome || ""}
+                  onChange={(event) => setManualIntake((value) => ({ ...value, secondaryAnnualIncome: event.target.value }))}
+                  placeholder="Leave blank for single applicant"
+                />
+              </label>
+              <label>
+                Primary licence no.
+                <input
+                  value={manualIntake.primaryDriversLicenceNo || ""}
+                  onChange={(event) => setManualIntake((value) => ({ ...value, primaryDriversLicenceNo: event.target.value }))}
+                />
+              </label>
+              <label>
+                Primary card no.
+                <input
+                  value={manualIntake.primaryLicenceCardNumber || ""}
+                  onChange={(event) => setManualIntake((value) => ({ ...value, primaryLicenceCardNumber: event.target.value }))}
+                />
+              </label>
+              <label>
+                Primary expiry
+                <input
+                  value={manualIntake.primaryLicenceExpiryDate || ""}
+                  onChange={(event) => setManualIntake((value) => ({ ...value, primaryLicenceExpiryDate: event.target.value }))}
+                  placeholder="YYYY-MM-DD"
+                />
+              </label>
+              {caseData?.applicants?.length > 1 && (
+                <>
+                  <label>
+                    Secondary licence no.
+                    <input
+                      value={manualIntake.secondaryDriversLicenceNo || ""}
+                      onChange={(event) => setManualIntake((value) => ({ ...value, secondaryDriversLicenceNo: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Secondary card no.
+                    <input
+                      value={manualIntake.secondaryLicenceCardNumber || ""}
+                      onChange={(event) => setManualIntake((value) => ({ ...value, secondaryLicenceCardNumber: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Secondary expiry
+                    <input
+                      value={manualIntake.secondaryLicenceExpiryDate || ""}
+                      onChange={(event) => setManualIntake((value) => ({ ...value, secondaryLicenceExpiryDate: event.target.value }))}
+                      placeholder="YYYY-MM-DD"
+                    />
+                  </label>
+                </>
+              )}
+            </div>
+          </section>
+
           <section className="panel">
             <div className="panel-title">
               <ClipboardList size={18} />
@@ -567,18 +853,62 @@ export default function App() {
                 </div>
               )}
 
-              <label className="dropzone">
+              <label
+                className={`dropzone ${isDragging ? "dragging" : ""}`}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setIsDragging(false);
+                  handleFiles(event.dataTransfer.files);
+                }}
+              >
                 <UploadCloud size={22} />
                 <strong>{documents.length ? `${documents.length} file(s) selected` : "Drop customer files"}</strong>
-                <span>Income, ID, bank statements, contract</span>
-                <input multiple type="file" onChange={(event) => setDocuments([...event.target.files])} />
+                <span>Driver licence front/back, income, bank statements, contract</span>
+                <input multiple type="file" onChange={(event) => handleFiles(event.target.files)} />
+              </label>
+
+              {queuedFiles.length ? (
+                <div className="queued-files">
+                  {queuedFiles.map((file) => (
+                    <div key={`${file.name}-${file.size}-${file.lastModified || 0}`}>
+                      <strong>{file.name}</strong>
+                      <span>{classifyQueuedFile(file)} | {fileSizeLabel(file.size)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <label className="income-format-box">
+                Broker intake text format
+                <textarea
+                  value={incomeFormatText}
+                  onChange={(event) => setIncomeFormatText(event.target.value)}
+                  placeholder={`Applicant 1:
+Annual income: 130600
+Rental income: 26000
+Driver licence no: EA2889
+Licence expiry: 20/08/2034
+Card number: 123456789
+
+Applicant 2:
+Annual income: 95000
+
+Loan amount: 390000
+HEM: 3000
+Financial asset: 30000`}
+                />
               </label>
 
               <div className="preset-grid">
                 <div>
                   <span>HEM monthly</span>
                   <div className="segmented">
-                    {[3000, 4000, 5000].map((value) => (
+                    {[recommendedHem(caseData), 3000, 4000, 5000].filter((value, index, arr) => arr.indexOf(value) === index).map((value) => (
                       <button className={hemMonthly === value ? "selected" : ""} type="button" key={value} onClick={() => setHemMonthly(value)}>
                         {currency(value)}
                       </button>
@@ -602,14 +932,15 @@ export default function App() {
                 </div>
               </div>
 
-              <button className="primary-button intake-button" type="button" disabled={uploading || !documents.length || !selectedCaseId} onClick={() => uploadDocuments()}>
-                {uploading ? <RefreshCw size={17} className="spin" /> : <UploadCloud size={17} />}
+              <button className="primary-button intake-button" type="button" disabled={uploading || ocrRunning || (!documents.length && !incomeFormatText.trim()) || !selectedCaseId} onClick={() => uploadDocuments()}>
+                {uploading || ocrRunning ? <RefreshCw size={17} className="spin" /> : <UploadCloud size={17} />}
                 Prepare From Files
               </button>
-              <button className="primary-button intake-button" type="button" disabled={uploading || !documents.length || !selectedCaseId} onClick={() => uploadDocuments({ prepare: true })}>
-                {uploading ? <RefreshCw size={17} className="spin" /> : <Play size={17} />}
+              <button className="primary-button intake-button" type="button" disabled={uploading || ocrRunning || (!documents.length && !incomeFormatText.trim()) || !selectedCaseId} onClick={() => uploadDocuments({ prepare: true })}>
+                {uploading || ocrRunning ? <RefreshCw size={17} className="spin" /> : <Play size={17} />}
                 One-Click Intake + Payload
               </button>
+              {ocrRunning && <small className="template-message">Running free browser OCR on image files...</small>}
 
               {documentDraft ? (
                 <>
