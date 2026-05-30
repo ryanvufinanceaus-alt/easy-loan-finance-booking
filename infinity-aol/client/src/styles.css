@@ -23,21 +23,21 @@ textarea {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: 260px minmax(0, 1fr);
   min-height: 100vh;
 }
 
 .case-sidebar {
   background: #13201a;
   color: #f8fbf8;
-  padding: 24px 18px;
+  padding: 16px 12px;
 }
 
 .brand-block {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 28px;
+  margin-bottom: 14px;
 }
 
 .brand-block span,
@@ -58,7 +58,7 @@ textarea {
 
 .brand-block strong {
   display: block;
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .case-search {
@@ -67,8 +67,8 @@ textarea {
   border-radius: 8px;
   display: grid;
   gap: 8px;
-  margin-bottom: 14px;
-  padding: 12px;
+  margin-bottom: 10px;
+  padding: 10px;
 }
 
 .case-search label {
@@ -111,7 +111,7 @@ textarea {
 
 .case-list {
   display: grid;
-  gap: 10px;
+  gap: 7px;
 }
 
 .case-list button {
@@ -120,7 +120,7 @@ textarea {
   border-radius: 8px;
   color: inherit;
   cursor: pointer;
-  padding: 14px;
+  padding: 10px;
   text-align: left;
 }
 
@@ -152,9 +152,9 @@ textarea {
   border: 1px solid rgba(255, 255, 255, 0.11);
   border-radius: 8px;
   display: grid;
-  gap: 8px;
-  margin-top: 16px;
-  padding: 12px;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px;
 }
 
 .side-info-card > strong {
@@ -166,7 +166,7 @@ textarea {
   display: flex;
   gap: 8px;
   justify-content: space-between;
-  padding-top: 7px;
+  padding-top: 5px;
 }
 
 .side-info-card span,
@@ -183,7 +183,7 @@ textarea {
 }
 
 .workspace {
-  padding: 26px;
+  padding: 16px;
 }
 
 .topbar,
@@ -192,7 +192,7 @@ textarea {
   display: flex;
   justify-content: space-between;
   gap: 18px;
-  margin-bottom: 22px;
+  margin-bottom: 12px;
 }
 
 h1,
@@ -201,11 +201,11 @@ h2 {
 }
 
 h1 {
-  font-size: 30px;
+  font-size: 22px;
 }
 
 h2 {
-  font-size: 17px;
+  font-size: 15px;
 }
 
 .actions {
@@ -224,8 +224,8 @@ h2 {
   display: inline-flex;
   font-weight: 800;
   gap: 8px;
-  min-height: 42px;
-  padding: 0 14px;
+  min-height: 36px;
+  padding: 0 12px;
   text-decoration: none;
 }
 
@@ -253,9 +253,9 @@ h2 {
 
 .facts-grid {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .facts-grid div,
@@ -266,21 +266,21 @@ h2 {
 }
 
 .facts-grid div {
-  min-height: 98px;
-  padding: 16px;
+  min-height: 72px;
+  padding: 12px;
 }
 
 .facts-grid strong {
   display: block;
-  font-size: 18px;
-  margin-top: 8px;
+  font-size: 15px;
+  margin-top: 5px;
 }
 
 .main-grid {
   display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(280px, 0.85fr) minmax(320px, 1.15fr);
-  margin-bottom: 18px;
+  gap: 12px;
+  grid-template-columns: minmax(320px, 0.85fr) minmax(360px, 1.15fr);
+  margin-bottom: 12px;
 }
 
 .payload-panel {
@@ -296,7 +296,7 @@ h2 {
   border-bottom: 1px solid #e2e7e3;
   display: flex;
   gap: 9px;
-  padding: 14px 16px;
+  padding: 10px 12px;
 }
 
 .split-title {
@@ -331,8 +331,8 @@ h2 {
 
 .issue-list {
   display: grid;
-  gap: 10px;
-  padding: 16px;
+  gap: 8px;
+  padding: 12px;
 }
 
 .issue {
@@ -369,7 +369,7 @@ h2 {
   color: #66746c;
   display: flex;
   gap: 8px;
-  padding: 16px;
+  padding: 12px;
 }
 
 .empty-state.success {
@@ -378,15 +378,15 @@ h2 {
 
 .document-panel {
   display: grid;
-  gap: 14px;
-  padding: 16px;
+  gap: 10px;
+  padding: 12px;
 }
 
 .quick-input-grid {
   display: grid;
-  gap: 12px;
+  gap: 8px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: 16px;
+  padding: 12px;
 }
 
 .template-box {
@@ -394,13 +394,13 @@ h2 {
   border: 1px solid #dce5df;
   border-radius: 8px;
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 10px;
 }
 
 .template-box p {
   color: #536058;
-  font-size: 13px;
+  font-size: 12px;
   margin: 0;
 }
 
@@ -411,9 +411,27 @@ h2 {
   color: #e8f6ed;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 12px;
-  min-height: 220px;
+  min-height: 180px;
   padding: 10px;
   resize: vertical;
+}
+
+.advanced-template {
+  display: grid;
+  gap: 8px;
+}
+
+.advanced-template summary {
+  color: #166a42;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.button-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .save-template {
@@ -470,8 +488,8 @@ h2 {
   cursor: pointer;
   display: grid;
   justify-items: center;
-  min-height: 138px;
-  padding: 18px;
+  min-height: 100px;
+  padding: 12px;
   text-align: center;
 }
 
@@ -502,7 +520,7 @@ h2 {
 
 .queued-files {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .queued-files div {
@@ -527,7 +545,7 @@ h2 {
 .income-format-box textarea {
   border: 1px solid #cfd8d2;
   border-radius: 8px;
-  min-height: 170px;
+  min-height: 118px;
   padding: 10px;
   resize: vertical;
 }
@@ -614,8 +632,8 @@ h2 {
 .payload-meta {
   display: grid;
   grid-template-columns: 1fr 160px;
-  gap: 12px;
-  padding: 16px;
+  gap: 10px;
+  padding: 12px;
 }
 
 .payload-meta strong {
@@ -629,9 +647,9 @@ pre {
   color: #e7f5ea;
   font-size: 12px;
   margin: 0;
-  max-height: 520px;
+  max-height: 360px;
   overflow: auto;
-  padding: 16px;
+  padding: 12px;
 }
 
 .log-table {
@@ -639,13 +657,13 @@ pre {
 }
 
 .history-panel {
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .history-list {
   display: grid;
-  gap: 10px;
-  padding: 16px;
+  gap: 8px;
+  padding: 12px;
 }
 
 .history-list button {
@@ -677,9 +695,9 @@ pre {
 
 .log-row {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   grid-template-columns: 210px 120px 140px 1fr;
-  padding: 12px 16px;
+  padding: 9px 12px;
 }
 
 .log-row + .log-row {
@@ -808,7 +826,7 @@ pre {
 label {
   color: #435047;
   display: grid;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   gap: 6px;
 }
@@ -816,7 +834,7 @@ label {
 input {
   border: 1px solid #cfd8d2;
   border-radius: 7px;
-  min-height: 40px;
+  min-height: 36px;
   padding: 8px 10px;
 }
 
@@ -824,7 +842,7 @@ select {
   background: #fff;
   border: 1px solid #cfd8d2;
   border-radius: 7px;
-  min-height: 40px;
+  min-height: 36px;
   padding: 8px 10px;
 }
 

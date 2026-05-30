@@ -19,6 +19,8 @@ const apiBase = location.pathname.startsWith("/infinity-aol")
   : ["localhost", "127.0.0.1"].includes(location.hostname)
     ? "http://127.0.0.1:8797"
     : `${location.origin}/infinity-aol`;
+const appBasePath = location.pathname.startsWith("/infinity-aol") ? "/infinity-aol" : "";
+const mockAolPath = `${appBasePath}/mock-infinity-aol`;
 
 function currency(value) {
   return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(value || 0);
@@ -291,7 +293,7 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState("");
 
-  const showMock = location.pathname === "/mock-infinity-aol";
+  const showMock = location.pathname === "/mock-infinity-aol" || location.pathname === "/infinity-aol/mock-infinity-aol";
 
   useEffect(() => {
     if (showMock) return;
@@ -618,24 +620,24 @@ export default function App() {
           <ShieldCheck size={24} />
           <div>
             <span>Broker CRM</span>
-            <strong>Infinity AOL Assistant</strong>
+            <strong>Infinity AOL</strong>
           </div>
         </div>
         <div className="case-search">
           <label>
-            Search case
+            Search
             <div className="search-input">
               <Search size={16} />
               <input
                 value={caseSearch}
                 onChange={(event) => setCaseSearch(event.target.value)}
-                placeholder="Name, case ID, second applicant, address"
+                placeholder="Name, case ID, address"
                 autoComplete="off"
               />
             </div>
           </label>
           <select className="case-select" value={selectedCaseId} onChange={(event) => selectCase(event.target.value)}>
-            <option value="">Dropdown by client name</option>
+            <option value="">All cases by name</option>
             {sortedCases.map((caseItem) => (
               <option key={caseItem.id} value={caseItem.id}>
                 {caseItem.applicantNames} - {caseItem.id}
@@ -646,7 +648,7 @@ export default function App() {
             {caseSearch.trim().length >= 2
               ? `${filteredCases.length} result${filteredCases.length === 1 ? "" : "s"}`
               : recentCases.length
-                ? "Recent searched cases, sorted by client name."
+                ? "Recent cases sorted by name."
                 : "Type at least 2 letters or use the dropdown."}
           </small>
         </div>
@@ -671,7 +673,7 @@ export default function App() {
           )}
         </div>
         <div className="side-info-card">
-          <strong>Case Intake Snapshot</strong>
+          <strong>Case Snapshot</strong>
           {extractedRows.map(([label, value]) => (
             <div key={label}>
               <span>{label}</span>
@@ -688,7 +690,7 @@ export default function App() {
             <h1>{selectedCaseId || "Search and select a case"}</h1>
           </div>
           <div className="actions">
-            <a className="ghost-button" href="/mock-infinity-aol" target="_blank" rel="noreferrer">
+            <a className="ghost-button" href={mockAolPath} target="_blank" rel="noreferrer">
               <ExternalLink size={16} />
               Mock AOL
             </a>
@@ -708,7 +710,7 @@ export default function App() {
             <div className="panel-title split-title">
               <div>
                 <ClipboardList size={18} />
-                <h2>Quick Review Inputs</h2>
+                <h2>Quick Inputs</h2>
               </div>
               <button className="ghost-button mini-button" type="button" disabled={!selectedCaseId} onClick={saveManualIntake}>
                 Save
@@ -816,20 +818,25 @@ export default function App() {
                   </select>
                 </label>
                 {selectedTemplate && <p>{selectedTemplate.description}</p>}
-                <textarea
-                  spellCheck="false"
-                  value={templateJson}
-                  onChange={(event) => {
-                    setTemplateJson(event.target.value);
-                    setTemplateMessage("Unsaved template edits will still be used for the next prepare.");
-                  }}
-                />
-                <button className="ghost-button save-template" type="button" onClick={saveTemplate}>
-                  Save Template
-                </button>
-                <button className="ghost-button save-template" type="button" onClick={previewTemplateText}>
-                  Preview Case Text
-                </button>
+                <details className="advanced-template">
+                  <summary>Edit template text</summary>
+                  <textarea
+                    spellCheck="false"
+                    value={templateJson}
+                    onChange={(event) => {
+                      setTemplateJson(event.target.value);
+                      setTemplateMessage("Unsaved template edits will still be used for the next prepare.");
+                    }}
+                  />
+                </details>
+                <div className="button-row">
+                  <button className="ghost-button save-template" type="button" onClick={saveTemplate}>
+                    Save Template
+                  </button>
+                  <button className="ghost-button save-template" type="button" onClick={previewTemplateText}>
+                    Preview Text
+                  </button>
+                </div>
                 {templateMessage && <small className="template-message">{templateMessage}</small>}
               </div>
 
@@ -868,7 +875,7 @@ export default function App() {
               >
                 <UploadCloud size={22} />
                 <strong>{documents.length ? `${documents.length} file(s) selected` : "Drop customer files"}</strong>
-                <span>Driver licence front/back, income, bank statements, contract</span>
+                <span>Licence front/back, income, bank, contract</span>
                 <input multiple type="file" onChange={(event) => handleFiles(event.target.files)} />
               </label>
 
@@ -884,7 +891,7 @@ export default function App() {
               ) : null}
 
               <label className="income-format-box">
-                Broker intake text format
+                Broker intake format
                 <textarea
                   value={incomeFormatText}
                   onChange={(event) => setIncomeFormatText(event.target.value)}
