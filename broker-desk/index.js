@@ -31,13 +31,13 @@ const path = require('path');
 const router = express.Router();
 
 const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL || '';
-// Match the desk by configured hosts, plus the old app host while DNS is being moved.
-const DESK_HOSTS = new Set(
-  (process.env.DESK_HOSTS || process.env.DESK_HOST || 'portal.easyloanfinance.com.au,app.easyloanfinance.com.au')
-    .split(',')
-    .map((host) => host.trim().toLowerCase())
-    .filter(Boolean)
-);
+// Match the desk by configured hosts, always including the new portal host and old app host.
+const DESK_HOSTS = new Set([
+  'portal.easyloanfinance.com.au',
+  'app.easyloanfinance.com.au',
+  ...(process.env.DESK_HOSTS || '').split(','),
+  process.env.DESK_HOST || ''
+].map((host) => host.trim().toLowerCase()).filter(Boolean));
 const LOCAL_DESK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 function isDeskHost(req) {
