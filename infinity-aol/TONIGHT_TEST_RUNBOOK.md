@@ -24,6 +24,36 @@ https://booking.easyloanfinance.com.au/infinity-aol/loan-form/<token>
 
 Render needs the custom domain `loan-form.easyloanfinance.com.au`, and Cloudflare needs a CNAME to the Render target.
 
+## Storage without Render Persistent Disk
+
+Do not add Render Persistent Disk for this module. Use the existing Supabase project instead, so Client Call, Loan Form submissions, prepared payloads, comparison snapshots, and history survive Render deploys/restarts without another Render disk.
+
+Create this table once in Supabase SQL Editor:
+
+```sql
+create table if not exists public.app_kv (
+  key text primary key,
+  value jsonb not null,
+  updated_at timestamptz not null default now()
+);
+```
+
+Render environment needs:
+
+```text
+SUPABASE_URL=<existing booking Supabase URL>
+SUPABASE_SERVICE_ROLE_KEY=<existing service role key>
+LOAN_FORM_BASE_URL=https://loan-form.easyloanfinance.com.au
+```
+
+Optional:
+
+```text
+INFINITY_AOL_STORE_PREFIX=infinity_aol
+```
+
+If Supabase is not configured, local JSON files are used only as a fallback.
+
 ## Local fallback
 
 1. Start the assistant:

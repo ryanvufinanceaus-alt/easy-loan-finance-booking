@@ -17,6 +17,10 @@ const port = Number(process.env.PORT || 8797);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distPath = path.resolve(__dirname, "../dist");
 const dataDir = process.env.INFINITY_AOL_DATA_DIR || path.resolve(__dirname, "data");
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
+const useSupabaseStore = Boolean(supabaseUrl && supabaseServiceRoleKey);
+const storePrefix = process.env.INFINITY_AOL_STORE_PREFIX || "infinity_aol";
 const historyPath = path.resolve(dataDir, "caseHistory.json");
 const preparedArchivePath = path.resolve(dataDir, "preparedPayloads.json");
 const comparisonSnapshotsPath = path.resolve(dataDir, "comparisonSnapshots.json");
@@ -31,6 +35,7 @@ const comparisonSnapshots = new Map();
 let callNotes = [];
 let localCases = [];
 let clientIntakes = [];
+let preparedArchive = [];
 const auditLog = [];
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 12 } });
 
@@ -52,7 +57,7 @@ function summarizeCase(caseData) {
   };
 }
 
-function readJson(filePath, fallback) {
+function readJsonFile(filePath, fallback) {
   try {
     if (!fs.existsSync(filePath)) return fallback;
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -61,29 +66,83 @@ function readJson(filePath, fallback) {
   }
 }
 
-function writeJson(filePath, value) {
+function writeJsonFile(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function storeKey(name) {
+  return `${storePrefix}_${name}`;
+}
+
+async function readSupabaseJson(name, fallback) {
+  if (!useSupabaseStore) return fallback;
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/app_kv?key=eq.${encodeURIComponent(storeKey(name))}&select=value`, {
+      headers: {
+        apikey: supabaseServiceRoleKey,
+        authorization: `Bearer ${supabaseServiceRoleKey}`
+      }
+    });
+    if (!response.ok) return fallback;
+    const rows = await response.json();
+    return rows?.[0]?.value ?? fallback;
+  } catch (error) {
+    console.warn(`Infinity AOL Supabase read failed for ${name}: ${error.message}`);
+    return fallback;
+  }
+}
+
+async function writeSupabaseJson(name, value) {
+  if (!useSupabaseStore) return;
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/app_kv`, {
+      method: "POST",
+      headers: {
+        apikey: supabaseServiceRoleKey,
+        authorization: `Bearer ${supabaseServiceRoleKey}`,
+        "content-type": "application/json",
+        prefer: "resolution=merge-duplicates,return=minimal"
+      },
+      body: JSON.stringify({ key: storeKey(name), value, updated_at: new Date().toISOString() })
+    });
+    if (!response.ok) {
+      console.warn(`Infinity AOL Supabase write failed for ${name}: ${response.status}`);
+    }
+  } catch (error) {
+    console.warn(`Infinity AOL Supabase write failed for ${name}: ${error.message}`);
+  }
+}
+
+async function readStoredJson(name, filePath, fallback) {
+  const fileValue = readJsonFile(filePath, fallback);
+  return readSupabaseJson(name, fileValue);
+}
+
+function writeStoredJson(name, filePath, value) {
+  writeJsonFile(filePath, value);
+  writeSupabaseJson(name, value);
+}
+
 function persistHistory() {
-  writeJson(historyPath, Object.fromEntries(caseHistory.entries()));
+  writeStoredJson("case_history", historyPath, Object.fromEntries(caseHistory.entries()));
 }
 
 function persistComparisonSnapshots() {
-  writeJson(comparisonSnapshotsPath, Object.fromEntries(comparisonSnapshots.entries()));
+  writeStoredJson("comparison_snapshots", comparisonSnapshotsPath, Object.fromEntries(comparisonSnapshots.entries()));
 }
 
 function persistPrepared(prepared) {
-  const archived = readJson(preparedArchivePath, []).filter((item) => item.token !== prepared.token);
-  archived.unshift(prepared);
-  writeJson(preparedArchivePath, archived.slice(0, 100));
+  preparedArchive = preparedArchive.filter((item) => item.token !== prepared.token);
+  preparedArchive.unshift(prepared);
+  preparedArchive = preparedArchive.slice(0, 100);
+  writeStoredJson("prepared_payloads", preparedArchivePath, preparedArchive);
 }
 
 function deleteLocalCaseData(caseId) {
-  const archivedPrepared = readJson(preparedArchivePath, []);
-  const remainingPrepared = archivedPrepared.filter((item) => item.caseId !== caseId);
-  const removedTokens = archivedPrepared.filter((item) => item.caseId === caseId).map((item) => item.token);
+  const beforePreparedCount = preparedArchive.length;
+  const removedTokens = preparedArchive.filter((item) => item.caseId === caseId).map((item) => item.token);
+  preparedArchive = preparedArchive.filter((item) => item.caseId !== caseId);
   for (const [key, prepared] of [...preparedCases.entries()]) {
     if (key === caseId || prepared?.caseId === caseId) preparedCases.delete(key);
   }
@@ -94,12 +153,12 @@ function deleteLocalCaseData(caseId) {
   caseHistory.delete(caseId);
   comparisonSnapshots.delete(caseId);
 
-  writeJson(preparedArchivePath, remainingPrepared.slice(0, 100));
+  writeStoredJson("prepared_payloads", preparedArchivePath, preparedArchive);
   persistHistory();
   persistComparisonSnapshots();
 
   return {
-    preparedPayloadsRemoved: archivedPrepared.length - remainingPrepared.length,
+    preparedPayloadsRemoved: beforePreparedCount - preparedArchive.length,
     memoryTokensRemoved: removedTokens.length,
     historyEventsRemoved: historyRemoved,
     comparisonSnapshotsRemoved: snapshotsRemoved,
@@ -107,39 +166,39 @@ function deleteLocalCaseData(caseId) {
   };
 }
 
-function hydrateLocalHistory() {
-  const loadedHistory = readJson(historyPath, {});
+async function hydrateStoredData() {
+  const loadedHistory = await readStoredJson("case_history", historyPath, {});
   for (const [caseId, events] of Object.entries(loadedHistory)) {
     if (Array.isArray(events)) caseHistory.set(caseId, events);
   }
 
-  const loadedSnapshots = readJson(comparisonSnapshotsPath, {});
+  const loadedSnapshots = await readStoredJson("comparison_snapshots", comparisonSnapshotsPath, {});
   for (const [caseId, snapshots] of Object.entries(loadedSnapshots)) {
     if (Array.isArray(snapshots)) comparisonSnapshots.set(caseId, snapshots);
   }
 
-  const archivedPrepared = readJson(preparedArchivePath, []);
-  for (const prepared of archivedPrepared) {
+  preparedArchive = await readStoredJson("prepared_payloads", preparedArchivePath, []);
+  for (const prepared of preparedArchive) {
     if (!prepared?.token || !prepared?.caseId) continue;
     preparedCases.set(prepared.token, prepared);
     if (!preparedCases.has(prepared.caseId)) preparedCases.set(prepared.caseId, prepared);
   }
 
-  callNotes = readJson(callNotesPath, []);
-  localCases = readJson(localCasesPath, []);
-  clientIntakes = readJson(clientIntakesPath, []);
+  callNotes = await readStoredJson("call_notes", callNotesPath, []);
+  localCases = await readStoredJson("local_cases", localCasesPath, []);
+  clientIntakes = await readStoredJson("client_intakes", clientIntakesPath, []);
 }
 
 function persistCallNotes() {
-  writeJson(callNotesPath, callNotes);
+  writeStoredJson("call_notes", callNotesPath, callNotes);
 }
 
 function persistLocalCases() {
-  writeJson(localCasesPath, localCases);
+  writeStoredJson("local_cases", localCasesPath, localCases);
 }
 
 function persistClientIntakes() {
-  writeJson(clientIntakesPath, clientIntakes);
+  writeStoredJson("client_intakes", clientIntakesPath, clientIntakes);
 }
 
 function publicBaseUrl(request) {
@@ -527,7 +586,7 @@ function prepareCase(caseData, source = "prepare", options = {}) {
   return prepared;
 }
 
-hydrateLocalHistory();
+await hydrateStoredData();
 
 app.get("/api/health", (_request, response) => {
   response.json({ ok: true, service: "Infinity AOL AutoFill Assistant" });
