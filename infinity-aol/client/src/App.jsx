@@ -15,14 +15,18 @@ import {
 } from "lucide-react";
 
 const isLoanFormHost = /^loan-form\./i.test(location.hostname);
+const isClientCallHost = /^client-call\./i.test(location.hostname);
+const isLoanOpsHost = /^(loanops|autofill)\./i.test(location.hostname);
 const apiBase = isLoanFormHost
+  ? location.origin
+  : isClientCallHost || isLoanOpsHost
   ? location.origin
   : location.pathname.startsWith("/infinity-aol")
   ? `${location.origin}/infinity-aol`
   : ["localhost", "127.0.0.1"].includes(location.hostname)
     ? "http://127.0.0.1:8797"
     : `${location.origin}/infinity-aol`;
-const appBasePath = !isLoanFormHost && location.pathname.startsWith("/infinity-aol") ? "/infinity-aol" : "";
+const appBasePath = !isLoanFormHost && !isClientCallHost && !isLoanOpsHost && location.pathname.startsWith("/infinity-aol") ? "/infinity-aol" : "";
 const mockAolPath = `${appBasePath}/mock-infinity-aol`;
 
 function currency(value) {
@@ -441,7 +445,7 @@ function CallNotesPage({ onOpenAutofill }) {
       if (convert) {
         const converted = await api(`/api/call-notes/${saved.id}/convert-to-case`, { method: "POST", body: "{}" });
         output = converted.note;
-        setMessage(`Draft case created: ${converted.case.id}. You can now prepare it in Infinity/AOL.`);
+        setMessage(`Draft case created: ${converted.case.id}. You can now prepare it in LoanOps AI.`);
       } else {
         setMessage(`Call note saved: ${saved.id}`);
       }
@@ -512,13 +516,13 @@ function CallNotesPage({ onOpenAutofill }) {
         <div className="brand-block">
           <ClipboardList size={24} />
           <div>
-            <span>BrokerDesk CRM</span>
-            <strong>Client Call</strong>
+          <span>Easy Loan Finance</span>
+          <strong>Client Call</strong>
           </div>
         </div>
         <button className="ghost-button sidebar-action" type="button" onClick={onOpenAutofill}>
           <ExternalLink size={16} />
-          Infinity/AOL
+          LoanOps AI
         </button>
         <label className="note-search">
           Search clients
@@ -889,7 +893,7 @@ function ClientIntakePage({ token }) {
 }
 
 export default function App() {
-  const [view, setView] = useState(() => (location.pathname.includes("call-notes") ? "notes" : "autofill"));
+  const [view, setView] = useState(() => (isClientCallHost || location.pathname.includes("call-notes") || location.pathname.includes("client-call") ? "notes" : "autofill"));
   const [cases, setCases] = useState([]);
   const [caseSearch, setCaseSearch] = useState("");
   const [selectedCaseId, setSelectedCaseId] = useState("");
@@ -1245,8 +1249,8 @@ export default function App() {
         <div className="brand-block">
           <ShieldCheck size={24} />
           <div>
-            <span>BrokerDesk CRM</span>
-            <strong>Infinity AOL</strong>
+            <span>Easy Loan Finance</span>
+            <strong>LoanOps AI</strong>
           </div>
         </div>
         <button className="ghost-button sidebar-action" type="button" onClick={() => setView("notes")}>
