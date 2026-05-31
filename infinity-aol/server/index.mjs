@@ -661,7 +661,9 @@ app.delete("/api/call-notes/:noteId", (request, response) => {
   const expected = `DELETE ${note.id}`;
   if (request.body?.confirm !== expected) return response.status(400).json({ error: `Type ${expected} to confirm.` });
   callNotes = callNotes.filter((item) => item.id !== note.id);
+  clientIntakes = clientIntakes.filter((item) => item.callNoteId !== note.id);
   persistCallNotes();
+  persistClientIntakes();
   auditLog.push({ type: "delete-call-note", timestamp: new Date().toISOString(), brokerUser: note.brokerUser, caseId: note.id });
   response.json({ ok: true, id: note.id });
 });
