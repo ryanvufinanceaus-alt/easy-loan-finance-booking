@@ -10,7 +10,7 @@
     <main>
       <header>
         <span>Broker CRM</span>
-        <h1>Infinity AOL AutoFill</h1>
+        <h1>AutoFill Worker</h1>
       </header>
 
       <label>
@@ -19,6 +19,7 @@
       </label>
 
       <button id="startAutofill" class="primary-action" type="button">Start AutoFill</button>
+      <button id="comparePage" class="secondary-action" type="button">Compare Current Page</button>
 
       <details class="advanced">
         <summary>Advanced tools</summary>
@@ -28,15 +29,14 @@
         </label>
         <div class="button-row">
           <button id="fillSection" type="button" disabled>Fill Current Popup</button>
-          <button id="comparePage" type="button" disabled>Check Current Page</button>
           <button id="compareCase" type="button" disabled>Compare Case</button>
         </div>
       </details>
 
-      <section id="status" class="status muted">Open the Infinity or AOL case page, enter the Case ID, then start.</section>
+      <section id="status" class="status muted">Prepare the case in the web app, open the real Infinity/AOL page, then start.</section>
 
       <section class="review">
-        <h2>Broker Review</h2>
+        <h2>Status</h2>
         <div id="reviewRows"></div>
         <p class="safety">The extension fills fields only. It does not store passwords, bypass MFA, or submit AOL.</p>
       </section>

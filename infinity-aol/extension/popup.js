@@ -27,7 +27,6 @@ function setStatus(message, type = "muted") {
 
 function enableAdvanced(enabled) {
   els.fillSection.disabled = !enabled;
-  els.comparePage.disabled = !enabled;
   els.compareCase.disabled = !enabled;
 }
 
@@ -134,7 +133,7 @@ async function startAutofill() {
     renderReview();
 
     const apiBase = els.apiBase.value.replace(/\/$/, "");
-    setStatus("AutoFill is running across the pages it can see. Do not use this tab until it finishes.", "muted");
+    setStatus("AutoFill is running on this Infinity/AOL tab. Review before Push AOL or Submit.", "muted");
     const result = await sendToContent({
       type: "INFINITY_AOL_RUN_ALL_PAGES",
       payload: state.prepared.payload,

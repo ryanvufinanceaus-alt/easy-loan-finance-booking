@@ -258,6 +258,44 @@ h2 {
   margin-bottom: 12px;
 }
 
+.workflow-guide {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.workflow-guide div {
+  align-items: flex-start;
+  background: #fff;
+  border: 1px solid #dbe2dc;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  padding: 10px;
+}
+
+.workflow-guide svg {
+  color: #9aa7a0;
+  margin-top: 1px;
+}
+
+.workflow-guide div.done svg {
+  color: #166a42;
+}
+
+.workflow-guide strong,
+.workflow-guide span {
+  display: block;
+}
+
+.workflow-guide span {
+  color: #617069;
+  font-size: 12px;
+  grid-column: 2;
+}
+
 .facts-grid div,
 .panel {
   background: #fff;
@@ -631,7 +669,7 @@ h2 {
 
 .payload-meta {
   display: grid;
-  grid-template-columns: 1fr 160px;
+  grid-template-columns: minmax(160px, 0.7fr) minmax(220px, 1fr) minmax(120px, 0.5fr);
   gap: 10px;
   padding: 12px;
 }
@@ -650,6 +688,38 @@ pre {
   max-height: 360px;
   overflow: auto;
   padding: 12px;
+}
+
+.handoff-note {
+  border-top: 1px solid #edf0ed;
+  color: #435047;
+  font-size: 13px;
+  padding: 0 12px 12px;
+}
+
+.payload-json {
+  border-top: 1px solid #edf0ed;
+  padding: 10px 12px 12px;
+}
+
+.payload-json summary,
+.developer-panel summary {
+  color: #166a42;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.developer-panel details {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.developer-panel p {
+  color: #617069;
+  font-size: 13px;
+  margin: 0;
 }
 
 .log-table {
@@ -861,6 +931,7 @@ select {
   }
 
   .facts-grid,
+  .workflow-guide,
   .form-grid,
   .quick-input-grid,
   .check-grid {
@@ -895,6 +966,7 @@ select {
 
   .case-list,
   .facts-grid,
+  .workflow-guide,
   .payload-meta,
   .form-grid,
   .quick-input-grid,

@@ -159,6 +159,42 @@ function CaseFacts({ caseData }) {
   );
 }
 
+function WorkflowGuide({ selectedCaseId, prepared, documentDraft }) {
+  const steps = [
+    {
+      title: "1. Select case",
+      body: selectedCaseId ? selectedCaseId : "Search or choose a case by client name.",
+      done: Boolean(selectedCaseId)
+    },
+    {
+      title: "2. Review data",
+      body: documentDraft
+        ? `${documentDraft.extracted?.fieldSuggestions?.length || 0} extracted field(s), ${documentDraft.warnings?.length || 0} warning(s).`
+        : "Drop files or use quick inputs, then review OCR warnings.",
+      done: Boolean(documentDraft)
+    },
+    {
+      title: "3. Use extension",
+      body: prepared
+        ? `Ready. Enter ${prepared.caseId} or token ${prepared.token.slice(0, 10)}... in the extension.`
+        : "Prepare payload, open Infinity/AOL, then click Start AutoFill in the extension.",
+      done: Boolean(prepared)
+    }
+  ];
+
+  return (
+    <section className="workflow-guide" aria-label="Autofill workflow">
+      {steps.map((step) => (
+        <div className={step.done ? "done" : ""} key={step.title}>
+          <CheckCircle2 size={16} />
+          <strong>{step.title}</strong>
+          <span>{step.body}</span>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function MockInfinity() {
   return (
     <main className="mock-shell">
@@ -690,13 +726,9 @@ export default function App() {
             <h1>{selectedCaseId || "Search and select a case"}</h1>
           </div>
           <div className="actions">
-            <a className="ghost-button" href={mockAolPath} target="_blank" rel="noreferrer">
-              <ExternalLink size={16} />
-              Mock AOL
-            </a>
             <button className="primary-button" type="button" disabled={loading || !caseData || !selectedCaseId} onClick={prepareInfinity}>
               {loading ? <RefreshCw size={17} className="spin" /> : <Play size={17} />}
-              Prepare Infinity AOL
+              Prepare for Extension
             </button>
           </div>
         </header>
@@ -704,6 +736,7 @@ export default function App() {
         {error && <div className="error-banner">{error}</div>}
 
         <CaseFacts caseData={caseData} />
+        <WorkflowGuide selectedCaseId={selectedCaseId} prepared={prepared} documentDraft={documentDraft} />
 
         <div className="main-grid">
           <section className="panel">
@@ -939,13 +972,16 @@ Financial asset: 30000`}
                 </div>
               </div>
 
-              <button className="primary-button intake-button" type="button" disabled={uploading || ocrRunning || (!documents.length && !incomeFormatText.trim()) || !selectedCaseId} onClick={() => uploadDocuments()}>
-                {uploading || ocrRunning ? <RefreshCw size={17} className="spin" /> : <UploadCloud size={17} />}
-                Prepare From Files
-              </button>
+              <details className="advanced-template">
+                <summary>Review files only</summary>
+                <button className="ghost-button intake-button" type="button" disabled={uploading || ocrRunning || (!documents.length && !incomeFormatText.trim()) || !selectedCaseId} onClick={() => uploadDocuments()}>
+                  {uploading || ocrRunning ? <RefreshCw size={17} className="spin" /> : <UploadCloud size={17} />}
+                  Run OCR without payload
+                </button>
+              </details>
               <button className="primary-button intake-button" type="button" disabled={uploading || ocrRunning || (!documents.length && !incomeFormatText.trim()) || !selectedCaseId} onClick={() => uploadDocuments({ prepare: true })}>
                 {uploading || ocrRunning ? <RefreshCw size={17} className="spin" /> : <Play size={17} />}
-                One-Click Intake + Payload
+                Prepare Files for Extension
               </button>
               {ocrRunning && <small className="template-message">Running free browser OCR on image files...</small>}
 
@@ -1000,13 +1036,17 @@ Financial asset: 30000`}
           <section className="panel payload-panel">
             <div className="panel-title">
               <FileJson size={18} />
-              <h2>Prepared Payload</h2>
+              <h2>Extension Handoff</h2>
             </div>
             {prepared ? (
               <>
                 <div className="payload-meta">
                   <div>
-                    <span>Payload token</span>
+                    <span>Use in extension</span>
+                    <strong>{prepared.caseId}</strong>
+                  </div>
+                  <div>
+                    <span>Backup token</span>
                     <strong>{prepared.token}</strong>
                   </div>
                   <div>
@@ -1014,10 +1054,16 @@ Financial asset: 30000`}
                     <strong>{prepared.mappingVersion}</strong>
                   </div>
                 </div>
-                <pre>{JSON.stringify(prepared.payload, null, 2)}</pre>
+                <div className="handoff-note">
+                  Open the real Infinity or AOL case tab, open the Chrome extension, enter the Case ID above, then click Start AutoFill. The extension fills only; broker still reviews and manually pushes/submits.
+                </div>
+                <details className="payload-json">
+                  <summary>Developer payload JSON</summary>
+                  <pre>{JSON.stringify(prepared.payload, null, 2)}</pre>
+                </details>
               </>
             ) : (
-              <div className="empty-state">Click Prepare Infinity AOL to build a lender-ready payload.</div>
+              <div className="empty-state">Click Prepare for Extension to build a lender-ready payload.</div>
             )}
           </section>
         </div>
@@ -1086,6 +1132,21 @@ Financial asset: 30000`}
               </div>
             ))}
           </div>
+        </section>
+
+        <section className="panel developer-panel">
+          <div className="panel-title">
+            <ExternalLink size={18} />
+            <h2>Developer Tools</h2>
+          </div>
+          <details>
+            <summary>Sandbox test page</summary>
+            <p>This is only for testing the extension. It is not real Infinity or AOL and should not be part of the broker workflow.</p>
+            <a className="ghost-button" href={mockAolPath} target="_blank" rel="noreferrer">
+              <ExternalLink size={16} />
+              Open Sandbox Test Page
+            </a>
+          </details>
         </section>
       </section>
     </main>
