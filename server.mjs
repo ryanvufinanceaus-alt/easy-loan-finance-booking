@@ -1584,6 +1584,11 @@ function requireLoanFormHostPublicOnly(res, url) {
     res.end();
     return false;
   }
+  if (url.pathname === "/loan-form") {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end("<!doctype html><title>Loan Form</title><main style=\"font-family:Arial,sans-serif;max-width:680px;margin:80px auto;padding:24px\"><h1>Loan Form link required</h1><p>Please open the secure Loan Form link sent by Easy Loan Finance. The link includes a private token for the client file.</p></main>");
+    return false;
+  }
   sendJson(res, 404, { error: "Loan Form link required" });
   return false;
 }
@@ -1941,9 +1946,6 @@ createServer(async (req, res) => {
       return;
     }
     if (CLIENT_CALL_HOST_RE.test(hostname) || EASYFLOW_AI_HOST_RE.test(hostname)) {
-      if (url.pathname === "/login") return await handleStatic(req, res, url);
-      if (url.pathname.startsWith("/api/auth/")) return await handleApi(req, res, url);
-      if (!requireInfinityAolLogin(req, res, url)) return;
       forwardToInfinityAolApp(req, res, url);
       return;
     }
@@ -1958,18 +1960,14 @@ createServer(async (req, res) => {
       return sendJson(res, 404, { error: "BrokerDesk CRM route not found" });
     }
     if (BOOKING_HOST_RE.test(hostname)) {
-      if (url.pathname === "/") {
-        res.writeHead(302, { location: "/book" });
-        res.end();
-        return;
-      }
       if (url.pathname.startsWith("/book") || url.pathname.startsWith("/widget")) return await handleStatic(req, res, url);
       if (url.pathname.startsWith("/api/") || url.pathname === "/calendar/team.ics" || url.pathname.startsWith("/calendar/broker/")) {
         if (url.pathname === "/calendar/team.ics" || url.pathname.startsWith("/calendar/broker/")) return await handleCalendar(req, res, url);
         return await handleApi(req, res, url);
       }
       if (isStaticAsset(url.pathname)) return await handleStatic(req, res, url);
-      return sendJson(res, 404, { error: "Booking route not found" });
+      if (!ADMIN_PASSWORD || adminSession(req) || url.pathname === "/" || url.pathname === "/login") return await handleStatic(req, res, url);
+      return await handleStatic(req, res, new URL("/login", requestOrigin(req)));
     }
     if (url.pathname === "/api/backup") return await handleApi(req, res, url);
     const brokerDeskHandled = await handleBrokerDesk(req, res);
