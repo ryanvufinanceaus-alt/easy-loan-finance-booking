@@ -6,7 +6,7 @@ Use this flow for the first editable Infinity/AOL case.
 
 - Chrome logged in to Infinity and AOL manually. Do not automate passwords or MFA.
 - Chrome extension loaded from `C:\Users\User\OneDrive\Documents\New project 2\infinity-aol\extension`.
-- Extension BrokerDesk API set to `https://booking.easyloanfinance.com.au/infinity-aol`.
+- Extension BrokerDesk API set to `https://booking.easyloanfinance.com.au/infinity-aol` until `portal.easyloanfinance.com.au` is moved to this Render service.
 - One editable test case in Infinity/AOL.
 - Optional customer files: driver licence front/back, income, accountant letter, bank statement.
 
@@ -60,7 +60,7 @@ http://127.0.0.1:8797/
 
 ## Live flow
 
-1. Open `https://booking.easyloanfinance.com.au/infinity-aol`.
+1. Open `https://booking.easyloanfinance.com.au/infinity-aol` tonight.
 2. Search/select a case by applicant name, second applicant name, case ID, or address.
 3. Check the left info panel: loan amount, income, HEM, financial asset, files queued, fields found, warnings.
 4. If starting from a phone call, open `Client Call`, save it, then copy the `Loan Form` link.
@@ -73,6 +73,16 @@ http://127.0.0.1:8797/
 11. Open AOL and click `Start AutoFill` again.
 12. Click `Compare Current Page` or `Compare Case` to see mismatches.
 13. Broker reviews and manually submits only when satisfied.
+
+## Recommended production domains
+
+- Internal broker portal: `https://portal.easyloanfinance.com.au`
+- Internal Infinity/AOL module: `https://portal.easyloanfinance.com.au/infinity-aol`
+- Public booking link: `https://portal.easyloanfinance.com.au/book`
+- Public loan form link: `https://loan-form.easyloanfinance.com.au/loan-form/<token>`
+- Current fallback while DNS is being moved: `https://booking.easyloanfinance.com.au`
+
+`app.easyloanfinance.com.au` is less clear than `portal.easyloanfinance.com.au`. Keep `portal` as the main staff entry point and either retire `app` later or redirect it to `portal`.
 
 ## Default tick logic
 
