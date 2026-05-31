@@ -1,9 +1,11 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Broker Desk — Easy Loan Finance</title>
+<link rel="icon" type="image/png" href="/elf-logo.png">
+<link rel="apple-touch-icon" href="/elf-logo.png">
+<title>Broker Desk - Easy Loan Finance</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script>
 // Global error catcher \u2014 installed BEFORE the main app script so it captures
@@ -58,7 +60,8 @@ body{font-family:'Outfit',-apple-system,sans-serif;background:#0D1117;color:#C9D
 #hdr{height:56px;background:#0A0D14;border-bottom:1px solid #1e2430;display:flex;align-items:center;justify-content:space-between;padding:0 22px;flex-shrink:0;}
 #content{flex:1;overflow-y:auto;padding:20px 22px;background:#0D1117;}
 
-.logo-area{padding:20px 18px 14px;border-bottom:1px solid #1e2430;}
+.logo-area{padding:18px;border-bottom:1px solid #1e2430;display:flex;align-items:center;gap:11px;}
+.logo-mark{width:38px;height:38px;border-radius:10px;object-fit:cover;box-shadow:0 0 0 1px #D4A84355,0 10px 26px rgba(0,0,0,.32);}
 .logo-tag{font-size:9px;color:#4a5568;letter-spacing:3px;text-transform:uppercase;margin-bottom:3px;}
 .logo-name{font-size:16px;font-weight:800;color:#D4A843;letter-spacing:-.5px;}
 #nav-items{flex:1;padding:6px 0;overflow-y:auto;}
@@ -98,10 +101,10 @@ body{font-family:'Outfit',-apple-system,sans-serif;background:#0D1117;color:#C9D
 .pc-body{flex:1;padding:7px;overflow-y:auto;}
 .pk{background:#0A0D14;border:1px solid #1e2430;border-radius:10px;padding:11px 12px;cursor:pointer;margin-bottom:6px;position:relative;transition:border-color .13s;}
 .pk:hover{border-color:var(--sc);}
-/* Risk indicators on pipeline cards — left border bar */
+/* Risk indicators on pipeline cards â€” left border bar */
 .pk-stuck{border-left:3px solid #DC2626 !important;}
 .pk-deadline{border-left:3px solid #FBBF24 !important;}
-/* Compact pipeline view — single vertical column with collapsible stage groups */
+/* Compact pipeline view â€” single vertical column with collapsible stage groups */
 .pc-grp{margin-bottom:12px;border:1px solid #1e2430;border-radius:10px;background:#111827;overflow:hidden;}
 .pc-grp-hd{padding:11px 14px;background:#0f1420;cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:1px solid transparent;transition:background .12s;}
 .pc-grp-hd:hover{background:#161b26;}
@@ -195,7 +198,7 @@ pre.em-body{font-family:inherit;font-size:13px;color:#c9d1d9;line-height:1.85;wh
 .lender-chip button{background:none;border:none;color:#4a5568;cursor:pointer;padding:0;display:flex;align-items:center;}
 .lender-chip button:hover{color:#ef4444;}
 
-/* ── Mobile responsive ───────────────────────────── */
+/* â”€â”€ Mobile responsive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: .65; }
@@ -218,14 +221,14 @@ pre.em-body{font-family:inherit;font-size:13px;color:#c9d1d9;line-height:1.85;wh
   .tbl th, .tbl td { padding: 7px 6px !important; }
   #bell-popover { width: calc(100vw - 24px) !important; right: 12px !important; }
 }
-/* iPad / small laptop — tighter pipeline so more columns fit */
+/* iPad / small laptop â€” tighter pipeline so more columns fit */
 @media (min-width: 881px) and (max-width: 1366px) {
   #pb .pc { min-width: 190px; max-width: 190px; }
   .pk { padding: 8px 9px; }
   /* Tighten font for amount/client */
   .pk .pk-amt { font-size: 14px !important; }
 }
-/* Very wide screens — slightly bigger columns */
+/* Very wide screens â€” slightly bigger columns */
 @media (min-width: 1700px) {
   #pb .pc { min-width: 240px; max-width: 240px; }
 }
@@ -233,7 +236,7 @@ pre.em-body{font-family:inherit;font-size:13px;color:#c9d1d9;line-height:1.85;wh
 </head>
 <body>
 
-<!-- ══════ LOGIN ══════ -->
+<!-- â•â•â•â•â•â• LOGIN â•â•â•â•â•â• -->
 <div id="login-wrap">
   <div style="width:380px;">
     <div style="text-align:center;margin-bottom:32px;">
@@ -260,16 +263,19 @@ pre.em-body{font-family:inherit;font-size:13px;color:#c9d1d9;line-height:1.85;wh
         <div id="forgot-msg" style="font-size:11.5px;text-align:center;margin-top:9px;color:#8b949e;line-height:1.5;"></div>
       </div>
     </div>
-    <div style="text-align:center;margin-top:12px;font-size:11px;color:#21262D;">Session: 6 hours · Easy Loan Finance</div>
+    <div style="text-align:center;margin-top:12px;font-size:11px;color:#21262D;">Session: 6 hours Â· Easy Loan Finance</div>
   </div>
 </div>
 
-<!-- ══════ APP ══════ -->
+<!-- â•â•â•â•â•â• APP â•â•â•â•â•â• -->
 <div id="app-wrap">
   <aside id="sb">
     <div class="logo-area">
-      <div class="logo-tag">Easy Loan Finance</div>
-      <div class="logo-name">BROKER DESK</div>
+      <img class="logo-mark" src="/elf-logo.png" alt="Easy Loan Finance">
+      <div>
+        <div class="logo-tag">Easy Loan Finance</div>
+        <div class="logo-name">BROKER DESK</div>
+      </div>
     </div>
     <div id="nav-items"></div>
     <div class="sb-foot" onclick="openModal('changePass')">
@@ -300,7 +306,7 @@ pre.em-body{font-family:inherit;font-size:13px;color:#c9d1d9;line-height:1.85;wh
         </div>
 
         <div style="display:flex;align-items:center;gap:0;background:#161b26;border:1px solid #2d3748;border-radius:8px;overflow:hidden;" title="Font size">
-          <button class="btn-ghost" style="padding:6px 9px;color:#c9d1d9;border-right:1px solid #2d3748;" onclick="changeZoom(-0.1)" title="Smaller">A−</button>
+          <button class="btn-ghost" style="padding:6px 9px;color:#c9d1d9;border-right:1px solid #2d3748;" onclick="changeZoom(-0.1)" title="Smaller">Aâˆ’</button>
           <button class="btn-ghost" style="padding:6px 8px;color:#c9d1d9;border-right:1px solid #2d3748;font-size:10px;min-width:38px;" onclick="resetZoom()" title="Reset to 100%"><span id="zoom-pct">100%</span></button>
           <button class="btn-ghost" style="padding:6px 9px;color:#c9d1d9;" onclick="changeZoom(0.1)" title="Bigger">A+</button>
         </div>
