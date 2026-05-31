@@ -16,17 +16,17 @@ import {
 
 const isLoanFormHost = /^loan-form\./i.test(location.hostname);
 const isClientCallHost = /^client-call\./i.test(location.hostname);
-const isLoanOpsHost = /^(loanops|autofill)\./i.test(location.hostname);
+const isEasyFlowAiHost = /^(easyflow-ai|loanops|autofill)\./i.test(location.hostname);
 const apiBase = isLoanFormHost
   ? location.origin
-  : isClientCallHost || isLoanOpsHost
+  : isClientCallHost || isEasyFlowAiHost
   ? location.origin
   : location.pathname.startsWith("/infinity-aol")
   ? `${location.origin}/infinity-aol`
   : ["localhost", "127.0.0.1"].includes(location.hostname)
     ? "http://127.0.0.1:8797"
     : `${location.origin}/infinity-aol`;
-const appBasePath = !isLoanFormHost && !isClientCallHost && !isLoanOpsHost && location.pathname.startsWith("/infinity-aol") ? "/infinity-aol" : "";
+const appBasePath = !isLoanFormHost && !isClientCallHost && !isEasyFlowAiHost && location.pathname.startsWith("/infinity-aol") ? "/infinity-aol" : "";
 const mockAolPath = `${appBasePath}/mock-infinity-aol`;
 
 function currency(value) {
@@ -445,7 +445,7 @@ function CallNotesPage({ onOpenAutofill }) {
       if (convert) {
         const converted = await api(`/api/call-notes/${saved.id}/convert-to-case`, { method: "POST", body: "{}" });
         output = converted.note;
-        setMessage(`Draft case created: ${converted.case.id}. You can now prepare it in LoanOps AI.`);
+        setMessage(`Draft case created: ${converted.case.id}. You can now prepare it in EasyFlow AI.`);
       } else {
         setMessage(`Call note saved: ${saved.id}`);
       }
@@ -522,7 +522,7 @@ function CallNotesPage({ onOpenAutofill }) {
         </div>
         <button className="ghost-button sidebar-action" type="button" onClick={onOpenAutofill}>
           <ExternalLink size={16} />
-          LoanOps AI
+          EasyFlow AI
         </button>
         <label className="note-search">
           Search clients
@@ -1250,7 +1250,7 @@ export default function App() {
           <ShieldCheck size={24} />
           <div>
             <span>Easy Loan Finance</span>
-            <strong>LoanOps AI</strong>
+            <strong>EasyFlow AI</strong>
           </div>
         </div>
         <button className="ghost-button sidebar-action" type="button" onClick={() => setView("notes")}>

@@ -6,7 +6,7 @@ Use this flow for the first editable Infinity/AOL case.
 
 - Chrome logged in to Infinity and AOL manually. Do not automate passwords or MFA.
 - Chrome extension loaded from `C:\Users\User\OneDrive\Documents\New project 2\infinity-aol\extension`.
-- Extension API set to `https://loanops.easyloanfinance.com.au` after the new domain is verified. Until then use `https://booking.easyloanfinance.com.au/infinity-aol`.
+- Extension API set to `https://easyflow-ai.easyloanfinance.com.au` after the new domain is verified. Until then use `https://booking.easyloanfinance.com.au/infinity-aol`.
 - One editable test case in Infinity/AOL.
 - Optional customer files: driver licence front/back, income, accountant letter, bank statement.
 
@@ -28,10 +28,10 @@ Add separate custom domains to the same paid Render service. This keeps one Rend
 booking.easyloanfinance.com.au      Booking System
 client-call.easyloanfinance.com.au  Simple staff/call-centre quick notes
 loan-form.easyloanfinance.com.au    Public client Loan Form only
-loanops.easyloanfinance.com.au      LoanOps AI for Infinity/AOL preparation
+easyflow-ai.easyloanfinance.com.au  EasyFlow AI for Infinity/AOL automation
 ```
 
-Use `client-call.easyloanfinance.com.au` for quick phone intake, `loan-form.easyloanfinance.com.au` for client submissions, and `loanops.easyloanfinance.com.au` for broker review, payload preparation, Infinity/AOL autofill, comparison, and backup. All domains point to the same Render service and share the same backend data.
+Use `client-call.easyloanfinance.com.au` for quick phone intake, `loan-form.easyloanfinance.com.au` for client submissions, and `easyflow-ai.easyloanfinance.com.au` for broker review, payload preparation, Infinity/AOL autofill, comparison, and backup. All domains point to the same Render service and share the same backend data.
 
 ## Storage without Render Persistent Disk
 
@@ -66,10 +66,10 @@ If Supabase is not configured, local JSON files are used only as a fallback.
 Manual admin backup downloads:
 
 ```text
-https://loanops.easyloanfinance.com.au/api/backup
+https://easyflow-ai.easyloanfinance.com.au/api/backup
 ```
 
-Backup requires broker/admin access. Keep a downloaded JSON backup weekly or before large changes. If the new LoanOps AI domain is not ready yet, use `https://booking.easyloanfinance.com.au/infinity-aol/api/backup`.
+Backup requires broker/admin access. Keep a downloaded JSON backup weekly or before large changes. If the new EasyFlow AI domain is not ready yet, use `https://booking.easyloanfinance.com.au/infinity-aol/api/backup`.
 
 ## Local fallback
 
@@ -124,12 +124,12 @@ http://127.0.0.1:8797/
 ## Recommended production domains
 
 - Client Call quick intake: `https://client-call.easyloanfinance.com.au`
-- LoanOps AI broker workspace: `https://loanops.easyloanfinance.com.au`
+- EasyFlow AI broker workspace: `https://easyflow-ai.easyloanfinance.com.au`
 - Public booking link: `https://booking.easyloanfinance.com.au/book`
 - Public loan form link: `https://loan-form.easyloanfinance.com.au/loan-form/<token>`
 - Current fallback while DNS is being moved: `https://booking.easyloanfinance.com.au`
 
-`app.easyloanfinance.com.au` is less clear than workflow-specific domains. Retire or redirect `app` after `client-call`, `loan-form`, and `loanops` are verified.
+`app.easyloanfinance.com.au` is less clear than workflow-specific domains. Retire or redirect `app` after `client-call`, `loan-form`, and `easyflow-ai` are verified.
 
 ## Default tick logic
 

@@ -17,7 +17,7 @@ const DIST_DIR = path.join(__dirname, "dist");
 const INFINITY_AOL_BASE = "/infinity-aol";
 const CLIENT_CALL_HOST_RE = /^client-call\./i;
 const LOAN_FORM_HOST_RE = /^loan-form\./i;
-const LOANOPS_AI_HOST_RE = /^(loanops|autofill)\./i;
+const EASYFLOW_AI_HOST_RE = /^(easyflow-ai|loanops|autofill)\./i;
 const LOAN_FORM_PUBLIC_PATH_RE = /^\/(?:loan-form|client-info|apply)\/[^/]+\/?$/;
 const LOAN_FORM_PUBLIC_API_RE = /^\/api\/client-intake\/[^/]+\/?$/;
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -1911,7 +1911,7 @@ createServer(async (req, res) => {
       infinityAolApp(req, res);
       return;
     }
-    if (CLIENT_CALL_HOST_RE.test(hostname) || LOANOPS_AI_HOST_RE.test(hostname)) {
+    if (CLIENT_CALL_HOST_RE.test(hostname) || EASYFLOW_AI_HOST_RE.test(hostname)) {
       if (!requireInfinityAolLogin(req, res, url)) return;
       req.headers["x-forwarded-prefix"] = "";
       req.url = `${url.pathname}${url.search}`;
