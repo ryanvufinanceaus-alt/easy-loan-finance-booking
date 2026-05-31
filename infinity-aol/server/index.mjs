@@ -641,7 +641,7 @@ app.post("/api/call-notes/:noteId/intake-link", (request, response) => {
   if (index === -1) return response.status(404).json({ error: "Call note not found" });
 
   const existing = clientIntakes.find((item) => item.callNoteId === request.params.noteId && item.status !== "expired");
-  if (existing) return response.json({ ...existing, url: `${publicBaseUrl(request)}/apply/${existing.token}` });
+  if (existing) return response.json({ ...existing, url: `${publicBaseUrl(request)}/client-info/${existing.token}` });
 
   const intake = {
     id: `INTAKE-${Date.now().toString(36).toUpperCase()}`,
@@ -657,7 +657,7 @@ app.post("/api/call-notes/:noteId/intake-link", (request, response) => {
   persistClientIntakes();
   callNotes[index] = { ...callNotes[index], intakeToken: intake.token, intakeStatus: "sent", updatedAt: new Date().toISOString() };
   persistCallNotes();
-  response.status(201).json({ ...intake, url: `${publicBaseUrl(request)}/apply/${intake.token}` });
+  response.status(201).json({ ...intake, url: `${publicBaseUrl(request)}/client-info/${intake.token}` });
 });
 
 app.get("/api/client-intake/:token", (request, response) => {

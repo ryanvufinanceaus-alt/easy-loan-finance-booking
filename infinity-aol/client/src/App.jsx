@@ -785,7 +785,7 @@ export default function App() {
   const [error, setError] = useState("");
 
   const showMock = location.pathname === "/mock-infinity-aol" || location.pathname === "/infinity-aol/mock-infinity-aol";
-  const intakeToken = location.pathname.match(/^\/(?:infinity-aol\/)?apply\/([^/]+)/)?.[1] || "";
+  const intakeToken = location.pathname.match(/^\/(?:infinity-aol\/)?(?:client-info|loan-form|apply)\/([^/]+)/)?.[1] || "";
 
   useEffect(() => {
     if (showMock) return;
