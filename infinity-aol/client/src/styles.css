@@ -970,24 +970,27 @@ pre {
 }
 
 .client-intake-shell {
-  background: #f4f6f3;
+  background:
+    linear-gradient(180deg, #eef4f0 0, #f8faf8 260px),
+    #f8faf8;
   min-height: 100vh;
-  padding: 18px;
+  padding: 24px;
 }
 
 .client-intake-card {
   background: #fff;
-  border: 1px solid #dbe2dc;
+  border: 1px solid #d8e1dc;
   border-radius: 8px;
+  box-shadow: 0 18px 60px rgba(18, 32, 26, 0.12);
   margin: 0 auto;
   max-width: 1120px;
   overflow: hidden;
 }
 
 .client-intake-card header {
-  background: #13201a;
+  background: #10231b;
   color: #fff;
-  padding: 18px;
+  padding: 26px 28px;
 }
 
 .client-intake-card header span {
@@ -999,25 +1002,32 @@ pre {
 }
 
 .client-intake-card header p {
-  color: #dce7df;
+  color: #d9e5de;
   margin: 6px 0 0;
   max-width: 780px;
 }
 
 .client-intake-card section {
   border-top: 1px solid #edf0ed;
-  padding: 14px;
+  padding: 18px 20px 20px;
+}
+
+.client-intake-card section h2 {
+  color: #13201a;
+  font-size: 18px;
+  letter-spacing: 0;
+  margin-bottom: 2px;
 }
 
 .client-intake-grid {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 10px;
+  margin-top: 14px;
 }
 
 .client-wide-field {
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
 .client-wide-field textarea {
@@ -1030,8 +1040,9 @@ pre {
 
 .client-submit {
   justify-content: center;
-  margin: 14px;
-  width: calc(100% - 28px);
+  margin: 18px 20px 20px;
+  min-height: 46px;
+  width: calc(100% - 40px);
 }
 
 .spin {

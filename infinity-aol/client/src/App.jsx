@@ -351,6 +351,27 @@ const redFlagOptions = [
   "Urgent settlement"
 ];
 
+const maritalStatusOptions = ["Single", "Married", "Divorced", "Widowed"];
+const residentialStatusOptions = ["Own home", "Own home with mortgage", "Renting", "Boarding"];
+const residencyOptions = ["Australian Citizen", "Australian PR", "Australian TR", "NZ Citizen"];
+const employmentTypeOptions = ["PAYG", "Self - employed", "Unemployed", "Retired"];
+const employmentBasisOptions = ["Full-time", "Part-time", "Contract", "Temporary", "Internship"];
+const yesNoOptions = ["Yes", "No"];
+const yesNoAdviseOptions = ["Yes", "No", "Please advise"];
+const insurancePolicyOptions = ["Yes", "No", "I would like to know more"];
+
+function SelectField({ label, value, onChange, options }) {
+  return (
+    <label>
+      {label}
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">Please Select</option>
+        {options.map((option) => <option key={option}>{option}</option>)}
+      </select>
+    </label>
+  );
+}
+
 function CallNotesPage({ onOpenAutofill }) {
   const [form, setForm] = useState(emptyCallNote);
   const [notes, setNotes] = useState([]);
@@ -631,17 +652,63 @@ function ClientIntakePage({ token }) {
     timeline: "",
     dateOfBirth: "",
     address: "",
-    residencyStatus: "Australian citizen",
+    residencyStatus: "Australian Citizen",
     maritalStatus: "Single",
     dependants: "0",
+    dependant1Dob: "",
+    dependant2Dob: "",
+    dependant3Dob: "",
+    dependant4Dob: "",
+    currentSuburb: "",
+    currentState: "",
+    currentAddressFromDate: "",
+    currentResidentialStatus: "",
+    previousAddress: "",
+    previousSuburb: "",
+    previousState: "",
+    previousPostcode: "",
+    previousResidentialStatus: "",
     employmentType: "PAYG",
     employerName: "",
+    businessAddress: "",
     occupation: "",
+    employmentBasis: "",
+    employmentFromDate: "",
+    employmentContactName: "",
+    employmentContactNumber: "",
+    previousEmploymentType: "",
+    previousBusinessName: "",
+    previousBusinessAddress: "",
+    previousJobTitle: "",
+    previousEmploymentBasis: "",
+    previousEmploymentFromDate: "",
+    previousEmploymentToDate: "",
     annualIncome: "",
     secondAnnualIncome: "",
     rentalIncomeAnnual: "",
+    generalExpenses: "",
+    applicant1Expenses: "",
+    applicant2Expenses: "",
+    applicant1PrivateHealth: "",
+    applicant1PrivateHealthAmount: "",
+    applicant2PrivateHealth: "",
+    applicant2PrivateHealthAmount: "",
+    insurancePolicies: "",
+    realEstateAssetAddress: "",
+    realEstateAssetValue: "",
+    cashSavingsAmount: "",
+    cashSavingsBank: "",
+    motorVehicleModelYear: "",
+    motorVehicleValue: "",
+    homeContentsItem: "",
+    homeContentsValue: "",
     existingDebtsSummary: "",
     creditIssue: "No",
+    propertyType: "",
+    firstHomeBuyer: "",
+    fixedRatePreference: "",
+    variableRatePreference: "",
+    splitLoanPreference: "",
     loanTermYears: "30",
     repaymentType: "Principal and interest",
     ratePreference: "Variable",
@@ -701,47 +768,109 @@ function ClientIntakePage({ token }) {
         {meta?.status === "submitted" && !message ? <div className="success-banner">This form has already been submitted. You can submit again if you need to update details.</div> : null}
 
         <section>
-          <h2>Applicants</h2>
+          <h2>Personal Details</h2>
           <div className="client-intake-grid">
-            <label>Main applicant<input required value={form.clientName} onChange={(event) => updateField("clientName", event.target.value)} /></label>
+            <label>Full Name<input required value={form.clientName} onChange={(event) => updateField("clientName", event.target.value)} /></label>
             <label>Second applicant<input value={form.secondApplicantName} onChange={(event) => updateField("secondApplicantName", event.target.value)} /></label>
-            <label>Mobile<input required value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
-            <label>Email<input value={form.email} onChange={(event) => updateField("email", event.target.value)} /></label>
             <label>Date of birth<input value={form.dateOfBirth} onChange={(event) => updateField("dateOfBirth", event.target.value)} placeholder="DD/MM/YYYY" /></label>
-            <label>Current address<input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
-            <label>Residency<select value={form.residencyStatus} onChange={(event) => updateField("residencyStatus", event.target.value)}><option>Australian citizen</option><option>Permanent resident</option><option>Temporary visa</option><option>Other</option></select></label>
-            <label>Marital status<select value={form.maritalStatus} onChange={(event) => updateField("maritalStatus", event.target.value)}><option>Single</option><option>Married</option><option>Defacto</option><option>Separated</option></select></label>
-            <label>Dependants<input value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)} /></label>
+            <label>Email<input required value={form.email} onChange={(event) => updateField("email", event.target.value)} placeholder="example@example.com" /></label>
+            <label>Mobile<input required value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
+            <SelectField label="Marital Status" value={form.maritalStatus} onChange={(value) => updateField("maritalStatus", value)} options={maritalStatusOptions} />
+            <SelectField label="Residential Status" value={form.residencyStatus} onChange={(value) => updateField("residencyStatus", value)} options={residencyOptions} />
+            <label>Visa Sub-class<input value={form.visaSubclass || ""} onChange={(event) => updateField("visaSubclass", event.target.value)} /></label>
+            <label>Number of Dependents<input value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)} /></label>
+            <label>DOB of Dependent 1<input value={form.dependant1Dob} onChange={(event) => updateField("dependant1Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+            <label>DOB of Dependent 2<input value={form.dependant2Dob} onChange={(event) => updateField("dependant2Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+            <label>DOB of Dependent 3<input value={form.dependant3Dob} onChange={(event) => updateField("dependant3Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+            <label>DOB of Dependent 4<input value={form.dependant4Dob} onChange={(event) => updateField("dependant4Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
           </div>
         </section>
 
         <section>
-          <h2>Loan & Property</h2>
+          <h2>Residential History Within The Last 3 Years</h2>
           <div className="client-intake-grid">
-            <label>Loan type<select value={form.loanType} onChange={(event) => updateField("loanType", event.target.value)}><option>Purchase</option><option>Refinance</option><option>Pre-approval</option><option>Construction</option></select></label>
-            <label>Loan purpose<input value={form.loanPurpose} onChange={(event) => updateField("loanPurpose", event.target.value)} /></label>
-            <label>Loan amount<input value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>
-            <label>Property value<input value={form.propertyValue} onChange={(event) => updateField("propertyValue", event.target.value)} /></label>
-            <label>Deposit/equity<input value={form.depositEquity} onChange={(event) => updateField("depositEquity", event.target.value)} /></label>
-            <label>Property address/suburb<input value={form.propertyLocation} onChange={(event) => updateField("propertyLocation", event.target.value)} /></label>
-            <label>Timeline<input value={form.timeline} onChange={(event) => updateField("timeline", event.target.value)} placeholder="ASAP, 3 months, pre-approval" /></label>
-            <label>Loan term<select value={form.loanTermYears} onChange={(event) => updateField("loanTermYears", event.target.value)}><option>30</option><option>25</option><option>40</option></select></label>
-            <label>Repayment<select value={form.repaymentType} onChange={(event) => updateField("repaymentType", event.target.value)}><option>Principal and interest</option><option>Interest only</option></select></label>
+            <label>Current residential address<input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
+            <label>Suburb<input value={form.currentSuburb} onChange={(event) => updateField("currentSuburb", event.target.value)} /></label>
+            <label>State<input value={form.currentState} onChange={(event) => updateField("currentState", event.target.value)} /></label>
+            <label>From Date<input value={form.currentAddressFromDate} onChange={(event) => updateField("currentAddressFromDate", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+            <SelectField label="Residential Status" value={form.currentResidentialStatus} onChange={(value) => updateField("currentResidentialStatus", value)} options={residentialStatusOptions} />
+            <label>Previous residential address<input value={form.previousAddress} onChange={(event) => updateField("previousAddress", event.target.value)} /></label>
+            <label>Previous suburb<input value={form.previousSuburb} onChange={(event) => updateField("previousSuburb", event.target.value)} /></label>
+            <label>Previous state<input value={form.previousState} onChange={(event) => updateField("previousState", event.target.value)} /></label>
+            <label>Previous postal code<input value={form.previousPostcode} onChange={(event) => updateField("previousPostcode", event.target.value)} /></label>
+            <SelectField label="Previous Residential Status" value={form.previousResidentialStatus} onChange={(value) => updateField("previousResidentialStatus", value)} options={residentialStatusOptions} />
           </div>
         </section>
 
         <section>
-          <h2>Income & Expenses</h2>
+          <h2>Employment History Within The Last 3 Years</h2>
           <div className="client-intake-grid">
-            <label>Employment<select value={form.employmentType} onChange={(event) => updateField("employmentType", event.target.value)}><option>PAYG</option><option>Self-employed</option><option>Casual</option><option>Contractor</option><option>Other</option></select></label>
-            <label>Employer/business<input value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
-            <label>Occupation<input value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
+            <SelectField label="Employment Type" value={form.employmentType} onChange={(value) => updateField("employmentType", value)} options={employmentTypeOptions} />
+            <label>Business Name<input value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
+            <label>Business Address<input value={form.businessAddress} onChange={(event) => updateField("businessAddress", event.target.value)} /></label>
+            <label>Job Title<input value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
+            <SelectField label="Employment Basis" value={form.employmentBasis} onChange={(value) => updateField("employmentBasis", value)} options={employmentBasisOptions} />
+            <label>From Date<input value={form.employmentFromDate} onChange={(event) => updateField("employmentFromDate", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+            <label>Contact Name<input value={form.employmentContactName} onChange={(event) => updateField("employmentContactName", event.target.value)} /></label>
+            <label>Contact Number<input value={form.employmentContactNumber} onChange={(event) => updateField("employmentContactNumber", event.target.value)} /></label>
             <label>Main income p.a.<input value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} /></label>
             <label>Second income p.a.<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
             <label>Rental income p.a.<input value={form.rentalIncomeAnnual} onChange={(event) => updateField("rentalIncomeAnnual", event.target.value)} /></label>
-            <label>Monthly living expense<input value={form.hemMonthly} onChange={(event) => updateField("hemMonthly", event.target.value)} placeholder="Leave blank if unsure" /></label>
-            <label>Savings/assets<input value={form.financialAssetBuffer} onChange={(event) => updateField("financialAssetBuffer", event.target.value)} /></label>
-            <label>Credit issue<select value={form.creditIssue} onChange={(event) => updateField("creditIssue", event.target.value)}><option>No</option><option>Unsure</option><option>Yes</option></select></label>
+            <SelectField label="Previous Employment Type" value={form.previousEmploymentType} onChange={(value) => updateField("previousEmploymentType", value)} options={employmentBasisOptions} />
+            <label>Previous Business Name<input value={form.previousBusinessName} onChange={(event) => updateField("previousBusinessName", event.target.value)} /></label>
+            <label>Previous Job Title<input value={form.previousJobTitle} onChange={(event) => updateField("previousJobTitle", event.target.value)} /></label>
+            <SelectField label="Previous Employment Basis" value={form.previousEmploymentBasis} onChange={(value) => updateField("previousEmploymentBasis", value)} options={employmentBasisOptions} />
+            <label>Previous From Date<input value={form.previousEmploymentFromDate} onChange={(event) => updateField("previousEmploymentFromDate", event.target.value)} /></label>
+            <label>Previous To Date<input value={form.previousEmploymentToDate} onChange={(event) => updateField("previousEmploymentToDate", event.target.value)} /></label>
+          </div>
+        </section>
+
+        <section>
+          <h2>Living Expenses</h2>
+          <div className="client-intake-grid">
+            <label>Expenses<input value={form.generalExpenses} onChange={(event) => updateField("generalExpenses", event.target.value)} /></label>
+            <label>AP 1 - Amount ($)<input value={form.applicant1Expenses} onChange={(event) => updateField("applicant1Expenses", event.target.value)} /></label>
+            <label>AP 2 - Amount ($)<input value={form.applicant2Expenses} onChange={(event) => updateField("applicant2Expenses", event.target.value)} /></label>
+            <SelectField label="Private Health Insurance - Applicant 1" value={form.applicant1PrivateHealth} onChange={(value) => updateField("applicant1PrivateHealth", value)} options={yesNoOptions} />
+            <label>Applicant 1 Amount ($)/month<input value={form.applicant1PrivateHealthAmount} onChange={(event) => updateField("applicant1PrivateHealthAmount", event.target.value)} /></label>
+            <SelectField label="Private Health Insurance - Applicant 2" value={form.applicant2PrivateHealth} onChange={(value) => updateField("applicant2PrivateHealth", value)} options={yesNoOptions} />
+            <label>Applicant 2 Amount ($)/month<input value={form.applicant2PrivateHealthAmount} onChange={(event) => updateField("applicant2PrivateHealthAmount", event.target.value)} /></label>
+            <SelectField label="Income protection or life insurance policies" value={form.insurancePolicies} onChange={(value) => updateField("insurancePolicies", value)} options={insurancePolicyOptions} />
+            <label>Monthly living expense total<input value={form.hemMonthly} onChange={(event) => updateField("hemMonthly", event.target.value)} placeholder="Leave blank if unsure" /></label>
+          </div>
+        </section>
+
+        <section>
+          <h2>Your Assets</h2>
+          <div className="client-intake-grid">
+            <label>Real Estate Address<input value={form.realEstateAssetAddress} onChange={(event) => updateField("realEstateAssetAddress", event.target.value)} /></label>
+            <label>Real Estate Value ($)<input value={form.realEstateAssetValue} onChange={(event) => updateField("realEstateAssetValue", event.target.value)} /></label>
+            <label>Cash/Savings Amount ($)<input value={form.cashSavingsAmount} onChange={(event) => updateField("cashSavingsAmount", event.target.value)} /></label>
+            <label>Banking with<input value={form.cashSavingsBank} onChange={(event) => updateField("cashSavingsBank", event.target.value)} /></label>
+            <label>Car/Motor Vehicle Model/year<input value={form.motorVehicleModelYear} onChange={(event) => updateField("motorVehicleModelYear", event.target.value)} /></label>
+            <label>Motor Vehicle Estimated value ($)<input value={form.motorVehicleValue} onChange={(event) => updateField("motorVehicleValue", event.target.value)} /></label>
+            <label>Home contents item<input value={form.homeContentsItem} onChange={(event) => updateField("homeContentsItem", event.target.value)} /></label>
+            <label>Home contents estimated value ($)<input value={form.homeContentsValue} onChange={(event) => updateField("homeContentsValue", event.target.value)} /></label>
+            <label>Savings/assets total<input value={form.financialAssetBuffer} onChange={(event) => updateField("financialAssetBuffer", event.target.value)} /></label>
+          </div>
+        </section>
+
+        <section>
+          <h2>Loan Details</h2>
+          <div className="client-intake-grid">
+            <label>Your loan purpose<input value={form.loanPurpose} onChange={(event) => updateField("loanPurpose", event.target.value)} /></label>
+            <label>Type of property<input value={form.propertyType} onChange={(event) => updateField("propertyType", event.target.value)} /></label>
+            <label>How much would you like to borrow ($)<input value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>
+            <label>Location (intended postcode OR address)<input value={form.propertyLocation} onChange={(event) => updateField("propertyLocation", event.target.value)} /></label>
+            <label>Estimated property value ($)<input value={form.propertyValue} onChange={(event) => updateField("propertyValue", event.target.value)} /></label>
+            <label>Deposit/equity<input value={form.depositEquity} onChange={(event) => updateField("depositEquity", event.target.value)} /></label>
+            <SelectField label="Are you first home buyer?" value={form.firstHomeBuyer} onChange={(value) => updateField("firstHomeBuyer", value)} options={yesNoOptions} />
+            <SelectField label="Would you like fixed interest rate for a certain period?" value={form.fixedRatePreference} onChange={(value) => updateField("fixedRatePreference", value)} options={yesNoAdviseOptions} />
+            <SelectField label="Would you like interest rate to be variable?" value={form.variableRatePreference} onChange={(value) => updateField("variableRatePreference", value)} options={yesNoAdviseOptions} />
+            <SelectField label="Would you like to consider a split home loan?" value={form.splitLoanPreference} onChange={(value) => updateField("splitLoanPreference", value)} options={yesNoAdviseOptions} />
+            <label>Loan term<select value={form.loanTermYears} onChange={(event) => updateField("loanTermYears", event.target.value)}><option>30</option><option>25</option><option>40</option></select></label>
+            <label>Timeline<input value={form.timeline} onChange={(event) => updateField("timeline", event.target.value)} placeholder="ASAP, 3 months, pre-approval" /></label>
+            <SelectField label="Credit issue" value={form.creditIssue} onChange={(value) => updateField("creditIssue", value)} options={["No", "Unsure", "Yes"]} />
           </div>
           <label className="client-wide-field">Existing debts / comments<textarea value={form.existingDebtsSummary} onChange={(event) => updateField("existingDebtsSummary", event.target.value)} /></label>
           <label className="client-wide-field">Anything else for your broker<textarea value={form.clientNotes} onChange={(event) => updateField("clientNotes", event.target.value)} /></label>

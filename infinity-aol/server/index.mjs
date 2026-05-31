@@ -165,16 +165,63 @@ function applyClientIntakeToNote(note, intake) {
     "dateOfBirth",
     "address",
     "residencyStatus",
+    "visaSubclass",
     "maritalStatus",
     "dependants",
+    "dependant1Dob",
+    "dependant2Dob",
+    "dependant3Dob",
+    "dependant4Dob",
+    "currentSuburb",
+    "currentState",
+    "currentAddressFromDate",
+    "currentResidentialStatus",
+    "previousAddress",
+    "previousSuburb",
+    "previousState",
+    "previousPostcode",
+    "previousResidentialStatus",
     "employmentType",
     "employerName",
+    "businessAddress",
     "occupation",
+    "employmentBasis",
+    "employmentFromDate",
+    "employmentContactName",
+    "employmentContactNumber",
+    "previousEmploymentType",
+    "previousBusinessName",
+    "previousBusinessAddress",
+    "previousJobTitle",
+    "previousEmploymentBasis",
+    "previousEmploymentFromDate",
+    "previousEmploymentToDate",
     "annualIncome",
     "secondAnnualIncome",
     "rentalIncomeAnnual",
+    "generalExpenses",
+    "applicant1Expenses",
+    "applicant2Expenses",
+    "applicant1PrivateHealth",
+    "applicant1PrivateHealthAmount",
+    "applicant2PrivateHealth",
+    "applicant2PrivateHealthAmount",
+    "insurancePolicies",
+    "realEstateAssetAddress",
+    "realEstateAssetValue",
+    "cashSavingsAmount",
+    "cashSavingsBank",
+    "motorVehicleModelYear",
+    "motorVehicleValue",
+    "homeContentsItem",
+    "homeContentsValue",
     "existingDebtsSummary",
     "creditIssue",
+    "propertyType",
+    "firstHomeBuyer",
+    "fixedRatePreference",
+    "variableRatePreference",
+    "splitLoanPreference",
     "loanTermYears",
     "repaymentType",
     "ratePreference",
@@ -242,6 +289,19 @@ function buildLocalCaseFromCallNote(note) {
     });
   }
 
+  const assets = [
+    { type: "Cash", description: note.cashSavingsBank || "Savings / deposit", value: Number(note.cashSavingsAmount || note.financialAssetBuffer || note.depositEquity || 0) }
+  ];
+  if (note.realEstateAssetAddress || note.realEstateAssetValue) {
+    assets.push({ type: "Real Estate", description: note.realEstateAssetAddress || "Real estate asset", value: Number(note.realEstateAssetValue || 0) });
+  }
+  if (note.motorVehicleModelYear || note.motorVehicleValue) {
+    assets.push({ type: "Motor Vehicle", description: note.motorVehicleModelYear || "Motor vehicle", value: Number(note.motorVehicleValue || 0) });
+  }
+  if (note.homeContentsItem || note.homeContentsValue) {
+    assets.push({ type: "Home Contents", description: note.homeContentsItem || "Home contents", value: Number(note.homeContentsValue || 0) });
+  }
+
   return {
     id: `ELF-DRAFT-${Date.now().toString(36).toUpperCase()}`,
     status: "Draft from call note",
@@ -249,21 +309,21 @@ function buildLocalCaseFromCallNote(note) {
     sourceCallNoteId: note.id,
     applicants,
     expenses: {
-      livingMonthly: Number(note.hemMonthly || (applicants.length > 1 ? 4300 : 3200)),
+      livingMonthly: Number(note.hemMonthly || note.generalExpenses || note.applicant1Expenses || (applicants.length > 1 ? 4300 : 3200)),
       rentMonthly: 0,
       educationMonthly: 0,
       insuranceMonthly: 0,
       transportMonthly: 0,
       otherMonthly: 0
     },
-    assets: [{ type: "Cash", description: "Savings / deposit", value: Number(note.financialAssetBuffer || note.depositEquity || 0) }],
+    assets,
     liabilities: note.existingDebtsSummary ? [{ type: "Other", lender: "", limit: 0, balance: 0, repaymentMonthly: 0, description: note.existingDebtsSummary }] : [],
     property: {
       purpose: note.loanPurpose || note.loanType || "",
       address: note.propertyLocation || "",
       purchasePrice: Number(note.propertyValue || 0),
       estimatedValue: Number(note.propertyValue || 0),
-      propertyType: "",
+      propertyType: note.propertyType || "",
       titleType: "",
       bedrooms: 0
     },
@@ -695,6 +755,15 @@ app.post("/api/client-intake/:token", (request, response) => {
     annualIncome: Number(request.body?.annualIncome || 0),
     secondAnnualIncome: Number(request.body?.secondAnnualIncome || 0),
     rentalIncomeAnnual: Number(request.body?.rentalIncomeAnnual || 0),
+    generalExpenses: Number(request.body?.generalExpenses || 0),
+    applicant1Expenses: Number(request.body?.applicant1Expenses || 0),
+    applicant2Expenses: Number(request.body?.applicant2Expenses || 0),
+    applicant1PrivateHealthAmount: Number(request.body?.applicant1PrivateHealthAmount || 0),
+    applicant2PrivateHealthAmount: Number(request.body?.applicant2PrivateHealthAmount || 0),
+    realEstateAssetValue: Number(request.body?.realEstateAssetValue || 0),
+    cashSavingsAmount: Number(request.body?.cashSavingsAmount || 0),
+    motorVehicleValue: Number(request.body?.motorVehicleValue || 0),
+    homeContentsValue: Number(request.body?.homeContentsValue || 0),
     loanTermYears: Number(request.body?.loanTermYears || 30),
     hemMonthly: Number(request.body?.hemMonthly || 0),
     financialAssetBuffer: Number(request.body?.financialAssetBuffer || 0),
