@@ -105,8 +105,8 @@ async function loadPayload() {
 
   chrome.storage.local.set({ apiBase, caseToken });
   const [preparedResponse, mappingResponse] = await Promise.all([
-    fetch(`${apiBase}/api/infinity/payload/${encodeURIComponent(caseToken)}`),
-    fetch(`${apiBase}/api/infinity/mappings/current`)
+    fetch(`${apiBase}/api/infinity/payload/${encodeURIComponent(caseToken)}`, { credentials: "include" }),
+    fetch(`${apiBase}/api/infinity/mappings/current`, { credentials: "include" })
   ]);
 
   if (!preparedResponse.ok) throw new Error((await preparedResponse.json()).error || "Payload not found");
@@ -124,7 +124,7 @@ async function loadPayload() {
 
 async function fetchComparisonReport() {
   const apiBase = els.apiBase.value.replace(/\/$/, "");
-  const response = await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/comparison-report`);
+  const response = await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/comparison-report`, { credentials: "include" });
   if (!response.ok) return null;
   return response.json();
 }
@@ -188,6 +188,7 @@ async function checkCurrentPage() {
   const apiBase = els.apiBase.value.replace(/\/$/, "");
   await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/comparison-snapshot`, {
     method: "POST",
+    credentials: "include",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(result)
   });

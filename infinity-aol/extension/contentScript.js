@@ -412,6 +412,7 @@ async function logAutofill(apiBase, payload, result) {
   try {
     await fetch(`${apiBase}/api/infinity/autofill-log`, {
       method: "POST",
+      credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         brokerUser: payload.meta?.brokerUser,
@@ -431,6 +432,7 @@ async function logComparisonSnapshot(apiBase, payload, result) {
   try {
     await fetch(`${apiBase}/api/cases/${encodeURIComponent(payload.meta?.caseId || "unknown")}/comparison-snapshot`, {
       method: "POST",
+      credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(result)
     });

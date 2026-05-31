@@ -16,6 +16,8 @@ const DATA_DIR = path.join(__dirname, "data");
 const DIST_DIR = path.join(__dirname, "dist");
 const INFINITY_AOL_BASE = "/infinity-aol";
 const LOAN_FORM_HOST_RE = /^loan-form\./i;
+const LOAN_FORM_PUBLIC_PATH_RE = /^\/(?:loan-form|client-info|apply)\/[^/]+\/?$/;
+const LOAN_FORM_PUBLIC_API_RE = /^\/api\/client-intake\/[^/]+\/?$/;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
 const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
@@ -1476,6 +1478,44 @@ function isStaticAsset(pathname) {
     || /\.(css|js|mjs|map|png|jpg|jpeg|svg|gif|webp|ico|woff2?|ttf)$/i.test(pathname);
 }
 
+function infinityAolPath(url) {
+  if (url.pathname === INFINITY_AOL_BASE) return "/";
+  if (url.pathname.startsWith(`${INFINITY_AOL_BASE}/`)) return url.pathname.slice(INFINITY_AOL_BASE.length) || "/";
+  return url.pathname;
+}
+
+function isPublicInfinityAolRequest(url) {
+  const pathname = infinityAolPath(url);
+  return pathname === "/api/health"
+    || LOAN_FORM_PUBLIC_PATH_RE.test(pathname)
+    || LOAN_FORM_PUBLIC_API_RE.test(pathname)
+    || isStaticAsset(pathname);
+}
+
+function requireInfinityAolLogin(req, res, url) {
+  if (!ADMIN_PASSWORD) return true;
+  if (isPublicInfinityAolRequest(url)) return true;
+  if (adminSession(req)) return true;
+  if (infinityAolPath(url).startsWith("/api/")) {
+    sendJson(res, 401, { error: "BrokerDesk CRM login required" });
+  } else {
+    res.writeHead(302, { location: "/login" });
+    res.end();
+  }
+  return false;
+}
+
+function requireLoanFormHostPublicOnly(res, url) {
+  if (isPublicInfinityAolRequest(url)) return true;
+  if (url.pathname === "/") {
+    res.writeHead(302, { location: "/loan-form" });
+    res.end();
+    return false;
+  }
+  sendJson(res, 404, { error: "Loan Form link required" });
+  return false;
+}
+
 async function handleApi(req, res, url) {
   const brokers = await listBrokers();
   const session = sessionForRequest(req);
@@ -1813,12 +1853,14 @@ createServer(async (req, res) => {
     const hostname = String(req.headers.host || "").split(":")[0];
     processBookingReminders(requestOrigin(req)).catch((error) => console.warn(error.message));
     if (LOAN_FORM_HOST_RE.test(hostname)) {
+      if (!requireLoanFormHostPublicOnly(res, url)) return;
       req.headers["x-forwarded-prefix"] = "";
       req.url = `${url.pathname}${url.search}`;
       infinityAolApp(req, res);
       return;
     }
     if (url.pathname === INFINITY_AOL_BASE || url.pathname.startsWith(`${INFINITY_AOL_BASE}/`)) {
+      if (!requireInfinityAolLogin(req, res, url)) return;
       req.headers["x-forwarded-prefix"] = INFINITY_AOL_BASE;
       req.url = `${url.pathname.slice(INFINITY_AOL_BASE.length) || "/"}${url.search}`;
       infinityAolApp(req, res);
