@@ -578,14 +578,23 @@ function verifySession(token = "") {
   }
 }
 
-function setSessionCookie(res, token) {
+function sessionCookieDomain(req) {
+  const configured = process.env.COOKIE_DOMAIN || process.env.SESSION_COOKIE_DOMAIN;
+  if (configured) return configured.startsWith(".") ? configured : `.${configured}`;
+  const hostname = String(req?.headers?.host || "").split(":")[0].toLowerCase();
+  return hostname.endsWith(".easyloanfinance.com.au") ? ".easyloanfinance.com.au" : "";
+}
+
+function setSessionCookie(req, res, token) {
+  const domain = sessionCookieDomain(req);
   res.setHeader("set-cookie", [
-    `elf_admin=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}`,
+    `elf_admin=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}${domain ? `; Domain=${domain}` : ""}`,
   ]);
 }
 
-function clearSessionCookie(res) {
-  res.setHeader("set-cookie", "elf_admin=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
+function clearSessionCookie(req, res) {
+  const domain = sessionCookieDomain(req);
+  res.setHeader("set-cookie", `elf_admin=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${domain ? `; Domain=${domain}` : ""}`);
 }
 
 function isPublicRequest(req, url) {
@@ -1540,7 +1549,8 @@ function requireInfinityAolLogin(req, res, url) {
   if (infinityAolPath(url).startsWith("/api/")) {
     sendJson(res, 401, { error: "BrokerDesk CRM login required" });
   } else {
-    res.writeHead(302, { location: "/login" });
+    const returnTo = `${url.pathname}${url.search}`;
+    res.writeHead(302, { location: `/login?returnTo=${encodeURIComponent(returnTo)}` });
     res.end();
   }
   return false;
@@ -1594,7 +1604,7 @@ async function handleApi(req, res, url) {
         name: broker.name,
         exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000
       });
-      setSessionCookie(res, token);
+      setSessionCookie(req, res, token);
       return sendJson(res, 200, { ok: true, role: "broker", brokerId: broker.id, email: broker.email });
     }
     const adminEmail = isAdminEmail(loginEmail) ? loginEmail : ADMIN_EMAIL;
@@ -1603,12 +1613,12 @@ async function handleApi(req, res, url) {
       email: adminEmail,
       exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000
     });
-    setSessionCookie(res, token);
+    setSessionCookie(req, res, token);
     return sendJson(res, 200, { ok: true, role: "admin", email: adminEmail });
   }
 
   if (req.method === "POST" && url.pathname === "/api/auth/logout") {
-    clearSessionCookie(res);
+    clearSessionCookie(req, res);
     return sendJson(res, 200, { ok: true });
   }
 
@@ -1912,6 +1922,8 @@ createServer(async (req, res) => {
       return;
     }
     if (CLIENT_CALL_HOST_RE.test(hostname) || EASYFLOW_AI_HOST_RE.test(hostname)) {
+      if (url.pathname === "/login") return await handleStatic(req, res, url);
+      if (url.pathname.startsWith("/api/auth/")) return await handleApi(req, res, url);
       if (!requireInfinityAolLogin(req, res, url)) return;
       req.headers["x-forwarded-prefix"] = "";
       req.url = `${url.pathname}${url.search}`;
