@@ -211,9 +211,22 @@ function publicBaseUrl(request) {
 function loanFormBaseUrl(request) {
   const configured = process.env.LOAN_FORM_BASE_URL || process.env.CLIENT_LOAN_FORM_BASE_URL;
   if (configured) return configured.replace(/\/$/, "");
-  const host = String(request.get("host") || "");
-  if (/^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(host)) return publicBaseUrl(request);
-  return "https://loan-form.easyloanfinance.com.au";
+  return publicBaseUrl(request);
+}
+
+function buildInfinityAolBackup() {
+  return {
+    exportedAt: new Date().toISOString(),
+    service: "infinity-aol",
+    storage: useSupabaseStore ? "supabase-app-kv" : "local-json-fallback",
+    callNotes,
+    clientIntakes,
+    localCases,
+    preparedPayloads: preparedArchive,
+    caseHistory: Object.fromEntries(caseHistory.entries()),
+    comparisonSnapshots: Object.fromEntries(comparisonSnapshots.entries()),
+    auditLog
+  };
 }
 
 function applyClientIntakeToNote(note, intake) {
@@ -1035,6 +1048,11 @@ app.get("/api/cases/:caseId/comparison-report", (request, response) => {
 
 app.get("/api/audit-log", (_request, response) => {
   response.json(auditLog.toReversed());
+});
+
+app.get("/api/backup", (_request, response) => {
+  response.setHeader("content-disposition", `attachment; filename="infinity-aol-backup-${new Date().toISOString().slice(0, 10)}.json"`);
+  response.json(buildInfinityAolBackup());
 });
 
 if (fs.existsSync(distPath)) {

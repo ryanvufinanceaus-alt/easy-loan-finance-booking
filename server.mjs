@@ -392,6 +392,45 @@ async function saveEmailTemplates(patch) {
   return { templates: result.value, storage: result.storage, warning: result.warning };
 }
 
+async function readBackupLocalJson(name, fallback) {
+  try {
+    return await readJson(name);
+  } catch {
+    return fallback;
+  }
+}
+
+async function readInfinityAolBackup() {
+  if (!USE_SUPABASE) return null;
+  try {
+    return await supabaseRequest("app_kv", {
+      query: "?key=like.infinity_aol_%25&select=key,value,updated_at&order=key.asc"
+    });
+  } catch (error) {
+    console.warn(`Infinity AOL backup read fallback: ${error.message}`);
+    return null;
+  }
+}
+
+async function buildSystemBackup() {
+  const [brokers, bookings, settings, infinityAolStore] = await Promise.all([
+    listBrokers(),
+    listBookings(),
+    readBackupLocalJson("settings.json", {}),
+    readInfinityAolBackup()
+  ]);
+
+  return {
+    exportedAt: new Date().toISOString(),
+    service: "BrokerDesk CRM",
+    storage: USE_SUPABASE ? "supabase" : "local-json",
+    brokers,
+    bookings,
+    settings,
+    infinityAolStore
+  };
+}
+
 function sortBrokers(brokers) {
   return [...brokers].sort((a, b) => {
     if (a.id === "ryan-vu") return -1;
@@ -1573,6 +1612,17 @@ async function handleApi(req, res, url) {
 
   if (!requireAdmin(req, res, url)) return;
 
+  if (req.method === "GET" && url.pathname === "/api/backup") {
+    if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
+    res.writeHead(200, {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "content-disposition": `attachment; filename="brokerdesk-backup-${new Date().toISOString().slice(0, 10)}.json"`
+    });
+    res.end(JSON.stringify(await buildSystemBackup(), null, 2));
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/integrations") {
     if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
     const emailReady = emailDeliveryReady();
@@ -1866,6 +1916,7 @@ createServer(async (req, res) => {
       infinityAolApp(req, res);
       return;
     }
+    if (url.pathname === "/api/backup") return await handleApi(req, res, url);
     const brokerDeskHandled = await handleBrokerDesk(req, res);
     if (brokerDeskHandled || res.writableEnded) return;
     if (url.pathname.startsWith("/api/")) return await handleApi(req, res, url);

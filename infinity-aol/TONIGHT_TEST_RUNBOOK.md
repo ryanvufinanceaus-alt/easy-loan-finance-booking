@@ -22,7 +22,16 @@ Fallback path if the custom domain is not live yet:
 https://booking.easyloanfinance.com.au/infinity-aol/loan-form/<token>
 ```
 
-Render needs the custom domain `loan-form.easyloanfinance.com.au`, and Cloudflare needs a CNAME to the Render target.
+Add 2 extra custom domains to the same paid Render service. This keeps one Render bill while making the links clean:
+
+```text
+booking.easyloanfinance.com.au      Booking System
+app.easyloanfinance.com.au          Existing app / fallback
+portal.easyloanfinance.com.au       BrokerDesk CRM + Infinity AOL
+loan-form.easyloanfinance.com.au    Public client Loan Form only
+```
+
+Use `portal.easyloanfinance.com.au` for broker/admin work and `loan-form.easyloanfinance.com.au` only for client form links. All four domains point to the same Render service.
 
 ## Storage without Render Persistent Disk
 
@@ -53,6 +62,15 @@ INFINITY_AOL_STORE_PREFIX=infinity_aol
 ```
 
 If Supabase is not configured, local JSON files are used only as a fallback.
+
+Manual admin backup downloads:
+
+```text
+https://portal.easyloanfinance.com.au/api/backup
+https://portal.easyloanfinance.com.au/infinity-aol/api/backup
+```
+
+Both require BrokerDesk CRM login/admin access. Keep a downloaded JSON backup weekly or before large changes. If the new portal domain is not ready yet, use the same paths on `booking.easyloanfinance.com.au`.
 
 ## Local fallback
 
