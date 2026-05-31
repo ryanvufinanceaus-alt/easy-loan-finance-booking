@@ -148,6 +148,14 @@ function publicBaseUrl(request) {
   return `${protocol}://${request.get("host")}${prefix.replace(/\/$/, "")}`;
 }
 
+function loanFormBaseUrl(request) {
+  const configured = process.env.LOAN_FORM_BASE_URL || process.env.CLIENT_LOAN_FORM_BASE_URL;
+  if (configured) return configured.replace(/\/$/, "");
+  const host = String(request.get("host") || "");
+  if (/^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(host)) return publicBaseUrl(request);
+  return "https://loan-form.easyloanfinance.com.au";
+}
+
 function applyClientIntakeToNote(note, intake) {
   const next = { ...note };
   const fields = [
@@ -233,8 +241,8 @@ function applyClientIntakeToNote(note, intake) {
   for (const field of fields) {
     if (intake[field] !== undefined && intake[field] !== "") next[field] = intake[field];
   }
-  next.quickNotes = [next.quickNotes, intake.clientNotes && `Client intake:\n${intake.clientNotes}`].filter(Boolean).join("\n\n");
-  next.status = "Client intake received";
+  next.quickNotes = [next.quickNotes, intake.clientNotes && `Loan form:\n${intake.clientNotes}`].filter(Boolean).join("\n\n");
+  next.status = "Loan form received";
   next.updatedAt = new Date().toISOString();
   return next;
 }
@@ -704,7 +712,13 @@ app.post("/api/call-notes/:noteId/intake-link", (request, response) => {
   if (index === -1) return response.status(404).json({ error: "Call note not found" });
 
   const existing = clientIntakes.find((item) => item.callNoteId === request.params.noteId && item.status !== "expired");
-  if (existing) return response.json({ ...existing, url: `${publicBaseUrl(request)}/client-info/${existing.token}` });
+  if (existing) {
+    return response.json({
+      ...existing,
+      url: `${loanFormBaseUrl(request)}/loan-form/${existing.token}`,
+      fallbackUrl: `${publicBaseUrl(request)}/loan-form/${existing.token}`
+    });
+  }
 
   const intake = {
     id: `INTAKE-${Date.now().toString(36).toUpperCase()}`,
@@ -720,12 +734,16 @@ app.post("/api/call-notes/:noteId/intake-link", (request, response) => {
   persistClientIntakes();
   callNotes[index] = { ...callNotes[index], intakeToken: intake.token, intakeStatus: "sent", updatedAt: new Date().toISOString() };
   persistCallNotes();
-  response.status(201).json({ ...intake, url: `${publicBaseUrl(request)}/client-info/${intake.token}` });
+  response.status(201).json({
+    ...intake,
+    url: `${loanFormBaseUrl(request)}/loan-form/${intake.token}`,
+    fallbackUrl: `${publicBaseUrl(request)}/loan-form/${intake.token}`
+  });
 });
 
 app.get("/api/client-intake/:token", (request, response) => {
   const intake = clientIntakes.find((item) => item.token === request.params.token);
-  if (!intake) return response.status(404).json({ error: "Client intake link not found" });
+  if (!intake) return response.status(404).json({ error: "Loan form link not found" });
   const note = callNotes.find((item) => item.id === intake.callNoteId);
   response.json({
     token: intake.token,
@@ -744,7 +762,7 @@ app.get("/api/client-intake/:token", (request, response) => {
 
 app.post("/api/client-intake/:token", (request, response) => {
   const intakeIndex = clientIntakes.findIndex((item) => item.token === request.params.token);
-  if (intakeIndex === -1) return response.status(404).json({ error: "Client intake link not found" });
+  if (intakeIndex === -1) return response.status(404).json({ error: "Loan form link not found" });
   const noteIndex = callNotes.findIndex((item) => item.id === clientIntakes[intakeIndex].callNoteId);
   if (noteIndex === -1) return response.status(404).json({ error: "Linked call note not found" });
 

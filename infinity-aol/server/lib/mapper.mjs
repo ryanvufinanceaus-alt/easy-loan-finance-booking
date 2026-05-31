@@ -53,7 +53,7 @@ export function buildInfinityPayload(caseData) {
       caseId: caseData.id,
       brokerUser: caseData.brokerUser,
       preparedAt: new Date().toISOString(),
-      source: "Broker CRM",
+      source: "BrokerDesk CRM",
       targetPlatform: mapping.platform,
       mappingVersion: mapping.version,
       template: caseData.documentIntake?.template || caseData.selectedTemplate?.id || null,

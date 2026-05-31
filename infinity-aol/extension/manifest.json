@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Infinity AOL AutoFill Assistant",
   "version": "0.1.0",
-  "description": "Section-by-section AOL autofill from Broker CRM prepared payloads.",
+  "description": "Section-by-section AOL autofill from BrokerDesk CRM prepared payloads.",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
     "http://127.0.0.1:8797/*",

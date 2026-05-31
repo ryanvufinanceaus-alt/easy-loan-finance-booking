@@ -6,17 +6,23 @@ Use this flow for the first editable Infinity/AOL case.
 
 - Chrome logged in to Infinity and AOL manually. Do not automate passwords or MFA.
 - Chrome extension loaded from `C:\Users\User\OneDrive\Documents\New project 2\infinity-aol\extension`.
-- Extension CRM API set to `https://booking.easyloanfinance.com.au/infinity-aol`.
+- Extension BrokerDesk API set to `https://booking.easyloanfinance.com.au/infinity-aol`.
 - One editable test case in Infinity/AOL.
 - Optional customer files: driver licence front/back, income, accountant letter, bank statement.
 
 Custom domain is useful later, but it is not required for the first test. The client form already has a meaningful link:
 
 ```text
-https://booking.easyloanfinance.com.au/infinity-aol/client-info/<token>
+https://loan-form.easyloanfinance.com.au/loan-form/<token>
 ```
 
-Later we can add `client-info.easyloanfinance.com.au` or `loan-form.easyloanfinance.com.au` in Render and Cloudflare after the test flow is stable.
+Fallback path if the custom domain is not live yet:
+
+```text
+https://booking.easyloanfinance.com.au/infinity-aol/loan-form/<token>
+```
+
+Render needs the custom domain `loan-form.easyloanfinance.com.au`, and Cloudflare needs a CNAME to the Render target.
 
 ## Local fallback
 
@@ -57,7 +63,7 @@ http://127.0.0.1:8797/
 1. Open `https://booking.easyloanfinance.com.au/infinity-aol`.
 2. Search/select a case by applicant name, second applicant name, case ID, or address.
 3. Check the left info panel: loan amount, income, HEM, financial asset, files queued, fields found, warnings.
-4. If starting from a phone call, open `New Call Note`, save it, then copy the `client-info` link.
+4. If starting from a phone call, open `Client Call`, save it, then copy the `Loan Form` link.
 5. If using files, drag/drop documents and click `Prepare Files for Extension`.
 6. Select/edit the closest template and preview the generated wording.
 7. Click `Prepare for Extension`.

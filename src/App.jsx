@@ -734,7 +734,7 @@ function App() {
           <BrandMark />
           <div>
             <p className="eyebrow">Easy Loan Finance</p>
-            <h1>Broker Booking</h1>
+            <h1>BrokerDesk CRM</h1>
           </div>
         </div>
 

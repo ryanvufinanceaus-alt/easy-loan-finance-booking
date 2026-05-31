@@ -14,12 +14,15 @@ import {
   Trash2
 } from "lucide-react";
 
-const apiBase = location.pathname.startsWith("/infinity-aol")
+const isLoanFormHost = /^loan-form\./i.test(location.hostname);
+const apiBase = isLoanFormHost
+  ? location.origin
+  : location.pathname.startsWith("/infinity-aol")
   ? `${location.origin}/infinity-aol`
   : ["localhost", "127.0.0.1"].includes(location.hostname)
     ? "http://127.0.0.1:8797"
     : `${location.origin}/infinity-aol`;
-const appBasePath = location.pathname.startsWith("/infinity-aol") ? "/infinity-aol" : "";
+const appBasePath = !isLoanFormHost && location.pathname.startsWith("/infinity-aol") ? "/infinity-aol" : "";
 const mockAolPath = `${appBasePath}/mock-infinity-aol`;
 
 function currency(value) {
@@ -473,7 +476,7 @@ function CallNotesPage({ onOpenAutofill }) {
     try {
       const intake = await api(`/api/call-notes/${note.id}/intake-link`, { method: "POST", body: "{}" });
       await navigator.clipboard?.writeText(intake.url).catch(() => {});
-      setMessage(`Client intake link copied: ${intake.url}`);
+      setMessage(`Loan Form link copied: ${intake.url}`);
       await refreshNotes();
     } catch (err) {
       setError(err.message);
@@ -509,8 +512,8 @@ function CallNotesPage({ onOpenAutofill }) {
         <div className="brand-block">
           <ClipboardList size={24} />
           <div>
-            <span>Broker Desk</span>
-            <strong>Quick Call Notes</strong>
+            <span>BrokerDesk CRM</span>
+            <strong>Client Call</strong>
           </div>
         </div>
         <button className="ghost-button sidebar-action" type="button" onClick={onOpenAutofill}>
@@ -538,8 +541,8 @@ function CallNotesPage({ onOpenAutofill }) {
       <section className="notes-workspace">
         <header className="topbar">
           <div>
-            <span>One Render workflow</span>
-            <h1>New Call / Take Note</h1>
+            <span>Fast broker note</span>
+            <h1>Client Call</h1>
           </div>
           <div className="actions">
             <button className="ghost-button" type="button" onClick={() => { setForm(emptyCallNote); setRedFlags([]); setSelectedId(""); }}>
@@ -759,8 +762,8 @@ function ClientIntakePage({ token }) {
     <main className="client-intake-shell">
       <form className="client-intake-card" onSubmit={submitIntake}>
         <header>
-          <span>Easy Loan Finance</span>
-          <h1>Client Fact Find / Thong tin vay</h1>
+          <span>Easy Loan Finance Loan Form</span>
+          <h1>Loan Form / Thong tin vay</h1>
           <p>Please complete the details you know. You can leave uncertain fields blank and your broker will review before any submission.</p>
         </header>
         {error && <div className="error-banner">{error}</div>}
@@ -1242,13 +1245,13 @@ export default function App() {
         <div className="brand-block">
           <ShieldCheck size={24} />
           <div>
-            <span>Broker CRM</span>
+            <span>BrokerDesk CRM</span>
             <strong>Infinity AOL</strong>
           </div>
         </div>
         <button className="ghost-button sidebar-action" type="button" onClick={() => setView("notes")}>
           <ClipboardList size={16} />
-          New Call Note
+          Client Call
         </button>
         <div className="case-search">
           <label>

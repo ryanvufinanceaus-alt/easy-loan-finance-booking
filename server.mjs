@@ -15,6 +15,7 @@ const PORT = Number(process.env.PORT || 3000);
 const DATA_DIR = path.join(__dirname, "data");
 const DIST_DIR = path.join(__dirname, "dist");
 const INFINITY_AOL_BASE = "/infinity-aol";
+const LOAN_FORM_HOST_RE = /^loan-form\./i;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
 const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
@@ -1809,7 +1810,14 @@ setInterval(() => {
 createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", requestOrigin(req));
+    const hostname = String(req.headers.host || "").split(":")[0];
     processBookingReminders(requestOrigin(req)).catch((error) => console.warn(error.message));
+    if (LOAN_FORM_HOST_RE.test(hostname)) {
+      req.headers["x-forwarded-prefix"] = "";
+      req.url = `${url.pathname}${url.search}`;
+      infinityAolApp(req, res);
+      return;
+    }
     if (url.pathname === INFINITY_AOL_BASE || url.pathname.startsWith(`${INFINITY_AOL_BASE}/`)) {
       req.headers["x-forwarded-prefix"] = INFINITY_AOL_BASE;
       req.url = `${url.pathname.slice(INFINITY_AOL_BASE.length) || "/"}${url.search}`;
