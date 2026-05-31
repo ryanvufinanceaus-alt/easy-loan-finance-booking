@@ -12,18 +12,24 @@ import { buildDocumentDraft, mergeDocumentDraft } from "./lib/documentIntake.mjs
 import { listTemplates, getTemplate, saveTemplate } from "./lib/caseTemplates.mjs";
 import { buildTemplateTextPreview } from "./lib/infinityTemplate.mjs";
 
-const app = express();
+export const app = express();
 const port = Number(process.env.PORT || 8797);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distPath = path.resolve(__dirname, "../dist");
 const historyPath = path.resolve(__dirname, "data/caseHistory.json");
 const preparedArchivePath = path.resolve(__dirname, "data/preparedPayloads.json");
 const comparisonSnapshotsPath = path.resolve(__dirname, "data/comparisonSnapshots.json");
+const callNotesPath = path.resolve(__dirname, "data/callNotes.json");
+const localCasesPath = path.resolve(__dirname, "data/localCases.json");
+const clientIntakesPath = path.resolve(__dirname, "data/clientIntakes.json");
 
 const preparedCases = new Map();
 const documentDrafts = new Map();
 const caseHistory = new Map();
 const comparisonSnapshots = new Map();
+let callNotes = [];
+let localCases = [];
+let clientIntakes = [];
 const auditLog = [];
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 12 } });
 
@@ -31,7 +37,18 @@ app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
 function findCase(caseId) {
-  return cases.find((item) => item.id === caseId);
+  return [...localCases, ...cases].find((item) => item.id === caseId);
+}
+
+function summarizeCase(caseData) {
+  return {
+    id: caseData.id,
+    status: caseData.status,
+    brokerUser: caseData.brokerUser,
+    applicantNames: caseData.applicants.map((applicant) => `${applicant.firstName} ${applicant.lastName}`).join(" & "),
+    loanAmount: caseData.loan.loanAmount,
+    propertyAddress: caseData.property.address || "Missing property address"
+  };
 }
 
 function readJson(filePath, fallback) {
@@ -106,6 +123,163 @@ function hydrateLocalHistory() {
     preparedCases.set(prepared.token, prepared);
     if (!preparedCases.has(prepared.caseId)) preparedCases.set(prepared.caseId, prepared);
   }
+
+  callNotes = readJson(callNotesPath, []);
+  localCases = readJson(localCasesPath, []);
+  clientIntakes = readJson(clientIntakesPath, []);
+}
+
+function persistCallNotes() {
+  writeJson(callNotesPath, callNotes);
+}
+
+function persistLocalCases() {
+  writeJson(localCasesPath, localCases);
+}
+
+function persistClientIntakes() {
+  writeJson(clientIntakesPath, clientIntakes);
+}
+
+function publicBaseUrl(request) {
+  const forwardedProto = request.get("x-forwarded-proto");
+  const protocol = forwardedProto || request.protocol || "https";
+  return `${protocol}://${request.get("host")}${request.get("x-forwarded-prefix") || ""}`;
+}
+
+function applyClientIntakeToNote(note, intake) {
+  const next = { ...note };
+  const fields = [
+    "clientName",
+    "secondApplicantName",
+    "mobile",
+    "email",
+    "preferredLanguage",
+    "loanType",
+    "loanPurpose",
+    "loanAmount",
+    "propertyValue",
+    "depositEquity",
+    "propertyLocation",
+    "timeline",
+    "dateOfBirth",
+    "address",
+    "residencyStatus",
+    "maritalStatus",
+    "dependants",
+    "employmentType",
+    "employerName",
+    "occupation",
+    "annualIncome",
+    "secondAnnualIncome",
+    "rentalIncomeAnnual",
+    "existingDebtsSummary",
+    "creditIssue",
+    "loanTermYears",
+    "repaymentType",
+    "ratePreference",
+    "offsetRequested",
+    "hemMonthly",
+    "financialAssetBuffer"
+  ];
+  for (const field of fields) {
+    if (intake[field] !== undefined && intake[field] !== "") next[field] = intake[field];
+  }
+  next.quickNotes = [next.quickNotes, intake.clientNotes && `Client intake:\n${intake.clientNotes}`].filter(Boolean).join("\n\n");
+  next.status = "Client intake received";
+  next.updatedAt = new Date().toISOString();
+  return next;
+}
+
+function splitName(fullName = "") {
+  const parts = String(fullName).trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return { firstName: "", lastName: "" };
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  return { firstName: parts.slice(0, -1).join(" "), lastName: parts.at(-1) };
+}
+
+function buildLocalCaseFromCallNote(note) {
+  const primary = splitName(note.clientName);
+  const secondary = splitName(note.secondApplicantName);
+  const applicants = [
+    {
+      role: "primary",
+      firstName: primary.firstName,
+      middleName: "",
+      lastName: primary.lastName,
+      dateOfBirth: note.dateOfBirth || "",
+      maritalStatus: note.maritalStatus || "Single",
+      residencyStatus: note.residencyStatus || "",
+      dependants: Number(note.dependants || 0),
+      email: note.email || "",
+      mobile: note.mobile || "",
+      address: { line1: note.address || "", suburb: "", state: "", postcode: "", country: "Australia" },
+      employment: {
+        status: note.employmentType || "",
+        employerName: note.employerName || "",
+        occupation: note.occupation || "",
+        startDate: ""
+      },
+      income: { baseAnnual: Number(note.annualIncome || 0), overtimeAnnual: 0, bonusAnnual: 0, rentalAnnual: Number(note.rentalIncomeAnnual || 0) }
+    }
+  ];
+
+  if (note.secondApplicantName?.trim()) {
+    applicants.push({
+      role: "secondary",
+      firstName: secondary.firstName,
+      middleName: "",
+      lastName: secondary.lastName,
+      dateOfBirth: "",
+      maritalStatus: note.maritalStatus || "Married",
+      residencyStatus: note.residencyStatus || "",
+      dependants: Number(note.dependants || 0),
+      email: "",
+      mobile: "",
+      address: { line1: note.address || "", suburb: "", state: "", postcode: "", country: "Australia" },
+      employment: { status: "", employerName: "", occupation: "", startDate: "" },
+      income: { baseAnnual: Number(note.secondAnnualIncome || 0), overtimeAnnual: 0, bonusAnnual: 0, rentalAnnual: 0 }
+    });
+  }
+
+  return {
+    id: `ELF-DRAFT-${Date.now().toString(36).toUpperCase()}`,
+    status: "Draft from call note",
+    brokerUser: note.brokerUser || "ryan.vu",
+    sourceCallNoteId: note.id,
+    applicants,
+    expenses: {
+      livingMonthly: Number(note.hemMonthly || (applicants.length > 1 ? 4300 : 3200)),
+      rentMonthly: 0,
+      educationMonthly: 0,
+      insuranceMonthly: 0,
+      transportMonthly: 0,
+      otherMonthly: 0
+    },
+    assets: [{ type: "Cash", description: "Savings / deposit", value: Number(note.financialAssetBuffer || note.depositEquity || 0) }],
+    liabilities: note.existingDebtsSummary ? [{ type: "Other", lender: "", limit: 0, balance: 0, repaymentMonthly: 0, description: note.existingDebtsSummary }] : [],
+    property: {
+      purpose: note.loanPurpose || note.loanType || "",
+      address: note.propertyLocation || "",
+      purchasePrice: Number(note.propertyValue || 0),
+      estimatedValue: Number(note.propertyValue || 0),
+      propertyType: "",
+      titleType: "",
+      bedrooms: 0
+    },
+    loan: {
+      applicationType: note.loanType || "Purchase",
+      loanAmount: Number(note.loanAmount || 0),
+      deposit: Number(note.depositEquity || 0),
+      lvr: Number(note.lvr || 0),
+      productPreference: note.ratePreference || "Variable",
+      repaymentType: note.repaymentType || "Principal and interest",
+      loanTermYears: Number(note.loanTermYears || 30),
+      offsetRequested: Boolean(note.offsetRequested)
+    },
+    brokerNotes: [note.quickNotes, note.brokerAssessment, note.nextAction].filter(Boolean).join("\n\n"),
+    documentChecklist: []
+  };
 }
 
 function normalizeCompare(value) {
@@ -290,16 +464,7 @@ app.get("/api/health", (_request, response) => {
 });
 
 app.get("/api/cases", (_request, response) => {
-  response.json(
-    cases.map((caseData) => ({
-      id: caseData.id,
-      status: caseData.status,
-      brokerUser: caseData.brokerUser,
-      applicantNames: caseData.applicants.map((applicant) => `${applicant.firstName} ${applicant.lastName}`).join(" & "),
-      loanAmount: caseData.loan.loanAmount,
-      propertyAddress: caseData.property.address || "Missing property address"
-    }))
-  );
+  response.json([...localCases, ...cases].map(summarizeCase));
 });
 
 app.get("/api/cases/:caseId", (request, response) => {
@@ -354,6 +519,199 @@ app.post("/api/cases/:caseId/template-preview", (request, response) => {
 
 app.get("/api/templates", (_request, response) => {
   response.json(listTemplates());
+});
+
+app.get("/api/call-notes", (_request, response) => {
+  response.json([...callNotes].sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)));
+});
+
+app.get("/api/call-notes/:noteId", (request, response) => {
+  const note = callNotes.find((item) => item.id === request.params.noteId);
+  if (!note) return response.status(404).json({ error: "Call note not found" });
+  response.json(note);
+});
+
+app.post("/api/call-notes", (request, response) => {
+  const now = new Date().toISOString();
+  const note = {
+    id: `CN-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+    status: request.body?.status || "New call",
+    brokerUser: request.body?.brokerUser || "ryan.vu",
+    clientName: request.body?.clientName || "",
+    secondApplicantName: request.body?.secondApplicantName || "",
+    mobile: request.body?.mobile || "",
+    email: request.body?.email || "",
+    preferredLanguage: request.body?.preferredLanguage || "Vietnamese / English",
+    sourceChannel: request.body?.sourceChannel || "",
+    bestTimeToContact: request.body?.bestTimeToContact || "",
+    loanType: request.body?.loanType || "Purchase",
+    loanPurpose: request.body?.loanPurpose || "",
+    loanAmount: Number(request.body?.loanAmount || 0),
+    propertyValue: Number(request.body?.propertyValue || 0),
+    depositEquity: Number(request.body?.depositEquity || 0),
+    propertyLocation: request.body?.propertyLocation || "",
+    timeline: request.body?.timeline || "",
+    dateOfBirth: request.body?.dateOfBirth || "",
+    address: request.body?.address || "",
+    residencyStatus: request.body?.residencyStatus || "",
+    maritalStatus: request.body?.maritalStatus || "",
+    dependants: Number(request.body?.dependants || 0),
+    employmentType: request.body?.employmentType || "",
+    employerName: request.body?.employerName || "",
+    occupation: request.body?.occupation || "",
+    annualIncome: Number(request.body?.annualIncome || 0),
+    secondAnnualIncome: Number(request.body?.secondAnnualIncome || 0),
+    rentalIncomeAnnual: Number(request.body?.rentalIncomeAnnual || 0),
+    existingDebtsSummary: request.body?.existingDebtsSummary || "",
+    creditIssue: request.body?.creditIssue || "Unknown",
+    loanTermYears: Number(request.body?.loanTermYears || 30),
+    repaymentType: request.body?.repaymentType || "Principal and interest",
+    ratePreference: request.body?.ratePreference || "Variable",
+    offsetRequested: Boolean(request.body?.offsetRequested),
+    hemMonthly: Number(request.body?.hemMonthly || 0),
+    financialAssetBuffer: Number(request.body?.financialAssetBuffer || 0),
+    redFlags: Array.isArray(request.body?.redFlags) ? request.body.redFlags : [],
+    quickNotes: request.body?.quickNotes || "",
+    brokerAssessment: request.body?.brokerAssessment || "",
+    nextAction: request.body?.nextAction || "",
+    convertedCaseId: null,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  callNotes.unshift(note);
+  persistCallNotes();
+  auditLog.push({ type: "call-note", timestamp: now, brokerUser: note.brokerUser, caseId: note.id, clientName: note.clientName });
+  response.status(201).json(note);
+});
+
+app.patch("/api/call-notes/:noteId", (request, response) => {
+  const index = callNotes.findIndex((item) => item.id === request.params.noteId);
+  if (index === -1) return response.status(404).json({ error: "Call note not found" });
+  const updated = { ...callNotes[index], ...request.body, id: callNotes[index].id, updatedAt: new Date().toISOString() };
+  callNotes[index] = updated;
+  persistCallNotes();
+  response.json(updated);
+});
+
+app.delete("/api/call-notes/:noteId", (request, response) => {
+  const note = callNotes.find((item) => item.id === request.params.noteId);
+  if (!note) return response.status(404).json({ error: "Call note not found" });
+  const expected = `DELETE ${note.id}`;
+  if (request.body?.confirm !== expected) return response.status(400).json({ error: `Type ${expected} to confirm.` });
+  callNotes = callNotes.filter((item) => item.id !== note.id);
+  persistCallNotes();
+  auditLog.push({ type: "delete-call-note", timestamp: new Date().toISOString(), brokerUser: note.brokerUser, caseId: note.id });
+  response.json({ ok: true, id: note.id });
+});
+
+app.post("/api/call-notes/:noteId/convert-to-case", (request, response) => {
+  const index = callNotes.findIndex((item) => item.id === request.params.noteId);
+  if (index === -1) return response.status(404).json({ error: "Call note not found" });
+
+  const existingCaseId = callNotes[index].convertedCaseId;
+  if (existingCaseId) {
+    const existing = findCase(existingCaseId);
+    return response.json({ note: callNotes[index], case: existing, summary: existing ? summarizeCase(existing) : null });
+  }
+
+  const localCase = buildLocalCaseFromCallNote({ ...callNotes[index], ...(request.body || {}) });
+  localCases.unshift(localCase);
+  callNotes[index] = { ...callNotes[index], convertedCaseId: localCase.id, status: "Draft case created", updatedAt: new Date().toISOString() };
+  persistLocalCases();
+  persistCallNotes();
+  pushCaseHistory(localCase.id, {
+    type: "call-note-converted",
+    brokerUser: localCase.brokerUser,
+    sourceCallNoteId: callNotes[index].id,
+    clientName: callNotes[index].clientName
+  });
+  auditLog.push({
+    type: "convert-call-note",
+    timestamp: new Date().toISOString(),
+    brokerUser: localCase.brokerUser,
+    caseId: localCase.id,
+    sourceCallNoteId: callNotes[index].id
+  });
+  response.status(201).json({ note: callNotes[index], case: localCase, summary: summarizeCase(localCase) });
+});
+
+app.post("/api/call-notes/:noteId/intake-link", (request, response) => {
+  const index = callNotes.findIndex((item) => item.id === request.params.noteId);
+  if (index === -1) return response.status(404).json({ error: "Call note not found" });
+
+  const existing = clientIntakes.find((item) => item.callNoteId === request.params.noteId && item.status !== "expired");
+  if (existing) return response.json({ ...existing, url: `${publicBaseUrl(request)}/apply/${existing.token}` });
+
+  const intake = {
+    id: `INTAKE-${Date.now().toString(36).toUpperCase()}`,
+    token: crypto.randomBytes(18).toString("hex"),
+    callNoteId: request.params.noteId,
+    brokerUser: callNotes[index].brokerUser,
+    status: "sent",
+    createdAt: new Date().toISOString(),
+    submittedAt: null,
+    submission: null
+  };
+  clientIntakes.unshift(intake);
+  persistClientIntakes();
+  callNotes[index] = { ...callNotes[index], intakeToken: intake.token, intakeStatus: "sent", updatedAt: new Date().toISOString() };
+  persistCallNotes();
+  response.status(201).json({ ...intake, url: `${publicBaseUrl(request)}/apply/${intake.token}` });
+});
+
+app.get("/api/client-intake/:token", (request, response) => {
+  const intake = clientIntakes.find((item) => item.token === request.params.token);
+  if (!intake) return response.status(404).json({ error: "Client intake link not found" });
+  const note = callNotes.find((item) => item.id === intake.callNoteId);
+  response.json({
+    token: intake.token,
+    status: intake.status,
+    submittedAt: intake.submittedAt,
+    callNoteId: intake.callNoteId,
+    clientName: note?.clientName || "",
+    secondApplicantName: note?.secondApplicantName || "",
+    mobile: note?.mobile || "",
+    email: note?.email || "",
+    loanPurpose: note?.loanPurpose || "",
+    loanAmount: note?.loanAmount || "",
+    preferredLanguage: note?.preferredLanguage || "Vietnamese / English"
+  });
+});
+
+app.post("/api/client-intake/:token", (request, response) => {
+  const intakeIndex = clientIntakes.findIndex((item) => item.token === request.params.token);
+  if (intakeIndex === -1) return response.status(404).json({ error: "Client intake link not found" });
+  const noteIndex = callNotes.findIndex((item) => item.id === clientIntakes[intakeIndex].callNoteId);
+  if (noteIndex === -1) return response.status(404).json({ error: "Linked call note not found" });
+
+  const now = new Date().toISOString();
+  const submission = {
+    ...request.body,
+    loanAmount: Number(request.body?.loanAmount || 0),
+    propertyValue: Number(request.body?.propertyValue || 0),
+    depositEquity: Number(request.body?.depositEquity || 0),
+    dependants: Number(request.body?.dependants || 0),
+    annualIncome: Number(request.body?.annualIncome || 0),
+    secondAnnualIncome: Number(request.body?.secondAnnualIncome || 0),
+    rentalIncomeAnnual: Number(request.body?.rentalIncomeAnnual || 0),
+    loanTermYears: Number(request.body?.loanTermYears || 30),
+    hemMonthly: Number(request.body?.hemMonthly || 0),
+    financialAssetBuffer: Number(request.body?.financialAssetBuffer || 0),
+    offsetRequested: Boolean(request.body?.offsetRequested)
+  };
+  clientIntakes[intakeIndex] = { ...clientIntakes[intakeIndex], status: "submitted", submittedAt: now, submission };
+  callNotes[noteIndex] = applyClientIntakeToNote(callNotes[noteIndex], submission);
+  persistClientIntakes();
+  persistCallNotes();
+  auditLog.push({
+    type: "client-intake",
+    timestamp: now,
+    brokerUser: callNotes[noteIndex].brokerUser,
+    caseId: callNotes[noteIndex].id,
+    clientName: callNotes[noteIndex].clientName
+  });
+  response.status(201).json({ ok: true, status: "submitted" });
 });
 
 app.get("/api/templates/:templateId", (request, response) => {
@@ -536,9 +894,7 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-export { app };
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   app.listen(port, () => {
     console.log(`Infinity AOL AutoFill Assistant API running on http://127.0.0.1:${port}`);
   });

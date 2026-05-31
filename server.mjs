@@ -1809,14 +1809,15 @@ setInterval(() => {
 createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", requestOrigin(req));
-    const brokerDeskHandled = await handleBrokerDesk(req, res);
-    if (brokerDeskHandled || res.writableEnded) return;
     processBookingReminders(requestOrigin(req)).catch((error) => console.warn(error.message));
     if (url.pathname === INFINITY_AOL_BASE || url.pathname.startsWith(`${INFINITY_AOL_BASE}/`)) {
+      req.headers["x-forwarded-prefix"] = INFINITY_AOL_BASE;
       req.url = `${url.pathname.slice(INFINITY_AOL_BASE.length) || "/"}${url.search}`;
       infinityAolApp(req, res);
       return;
     }
+    const brokerDeskHandled = await handleBrokerDesk(req, res);
+    if (brokerDeskHandled || res.writableEnded) return;
     if (url.pathname.startsWith("/api/")) return await handleApi(req, res, url);
     if (url.pathname === "/calendar/team.ics" || url.pathname.startsWith("/calendar/broker/")) {
       return await handleCalendar(req, res, url);

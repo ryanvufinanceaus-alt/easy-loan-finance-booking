@@ -302,7 +302,462 @@ function MockInfinity() {
   );
 }
 
+const emptyCallNote = {
+  brokerUser: "ryan.vu",
+  clientName: "",
+  secondApplicantName: "",
+  mobile: "",
+  email: "",
+  preferredLanguage: "Vietnamese / English",
+  sourceChannel: "",
+  bestTimeToContact: "",
+  loanType: "Purchase",
+  loanPurpose: "Purchase owner occupied dwelling",
+  loanAmount: "",
+  propertyValue: "",
+  depositEquity: "",
+  propertyLocation: "",
+  timeline: "",
+  dateOfBirth: "",
+  address: "",
+  residencyStatus: "Australian citizen",
+  maritalStatus: "Single",
+  dependants: "0",
+  employmentType: "PAYG",
+  employerName: "",
+  occupation: "",
+  annualIncome: "",
+  secondAnnualIncome: "",
+  rentalIncomeAnnual: "",
+  existingDebtsSummary: "",
+  creditIssue: "Unknown",
+  loanTermYears: "30",
+  repaymentType: "Principal and interest",
+  ratePreference: "Variable",
+  offsetRequested: true,
+  hemMonthly: "",
+  financialAssetBuffer: "30000",
+  quickNotes: "",
+  brokerAssessment: "",
+  nextAction: ""
+};
+
+const redFlagOptions = [
+  "Low deposit",
+  "LMI likely",
+  "Self-employed",
+  "Visa/residency",
+  "Credit issue",
+  "Urgent settlement"
+];
+
+function CallNotesPage({ onOpenAutofill }) {
+  const [form, setForm] = useState(emptyCallNote);
+  const [notes, setNotes] = useState([]);
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState("");
+  const [redFlags, setRedFlags] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  async function refreshNotes() {
+    const result = await api("/api/call-notes");
+    setNotes(result);
+  }
+
+  useEffect(() => {
+    refreshNotes().catch((err) => setError(err.message));
+  }, []);
+
+  const filteredNotes = useMemo(() => {
+    const terms = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const source = terms.length
+      ? notes.filter((note) => {
+          const haystack = [
+            note.id,
+            note.clientName,
+            note.secondApplicantName,
+            note.mobile,
+            note.email,
+            note.loanPurpose,
+            note.convertedCaseId
+          ].join(" ").toLowerCase();
+          return terms.every((term) => haystack.includes(term));
+        })
+      : notes.slice(0, 6);
+    return source.slice(0, 12);
+  }, [notes, search]);
+
+  function updateField(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function loadNote(note) {
+    setSelectedId(note.id);
+    setForm({ ...emptyCallNote, ...note });
+    setRedFlags(note.redFlags || []);
+    setMessage(`Loaded ${note.id}`);
+  }
+
+  function toggleRedFlag(flag) {
+    setRedFlags((items) => (items.includes(flag) ? items.filter((item) => item !== flag) : [...items, flag]));
+  }
+
+  async function saveCallNote({ convert = false } = {}) {
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const saved = await api("/api/call-notes", {
+        method: "POST",
+        body: JSON.stringify({ ...form, redFlags })
+      });
+      let output = saved;
+      if (convert) {
+        const converted = await api(`/api/call-notes/${saved.id}/convert-to-case`, { method: "POST", body: "{}" });
+        output = converted.note;
+        setMessage(`Draft case created: ${converted.case.id}. You can now prepare it in Infinity/AOL.`);
+      } else {
+        setMessage(`Call note saved: ${saved.id}`);
+      }
+      setSelectedId(output.id);
+      setForm(emptyCallNote);
+      setRedFlags([]);
+      await refreshNotes();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function convertSelected(note) {
+    setSaving(true);
+    setError("");
+    try {
+      const converted = await api(`/api/call-notes/${note.id}/convert-to-case`, { method: "POST", body: "{}" });
+      setMessage(`Draft case ready: ${converted.case.id}`);
+      await refreshNotes();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function createIntakeLink(note) {
+    setSaving(true);
+    setError("");
+    try {
+      const intake = await api(`/api/call-notes/${note.id}/intake-link`, { method: "POST", body: "{}" });
+      await navigator.clipboard?.writeText(intake.url).catch(() => {});
+      setMessage(`Client intake link copied: ${intake.url}`);
+      await refreshNotes();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteNote(note) {
+    const expected = `DELETE ${note.id}`;
+    const typed = window.prompt(`Delete this local call note only.\n\nType ${expected} to confirm.`);
+    if (typed !== expected) return;
+    setSaving(true);
+    setError("");
+    try {
+      await api(`/api/call-notes/${note.id}`, {
+        method: "DELETE",
+        body: JSON.stringify({ confirm: expected })
+      });
+      if (selectedId === note.id) setSelectedId("");
+      setMessage(`Deleted ${note.id}`);
+      await refreshNotes();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <main className="notes-shell">
+      <aside className="notes-sidebar">
+        <div className="brand-block">
+          <ClipboardList size={24} />
+          <div>
+            <span>Broker Desk</span>
+            <strong>Quick Call Notes</strong>
+          </div>
+        </div>
+        <button className="ghost-button sidebar-action" type="button" onClick={onOpenAutofill}>
+          <ExternalLink size={16} />
+          Infinity/AOL
+        </button>
+        <label className="note-search">
+          Search clients
+          <div className="search-input">
+            <Search size={16} />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, phone, case" />
+          </div>
+        </label>
+        <div className="note-list">
+          {filteredNotes.length ? filteredNotes.map((note) => (
+            <button className={note.id === selectedId ? "active" : ""} key={note.id} type="button" onClick={() => loadNote(note)}>
+              <span>{note.convertedCaseId || note.id}</span>
+              <strong>{[note.clientName, note.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
+              <small>{note.mobile || note.email || note.status}</small>
+            </button>
+          )) : <div className="case-search-empty">No call notes yet.</div>}
+        </div>
+      </aside>
+
+      <section className="notes-workspace">
+        <header className="topbar">
+          <div>
+            <span>One Render workflow</span>
+            <h1>New Call / Take Note</h1>
+          </div>
+          <div className="actions">
+            <button className="ghost-button" type="button" onClick={() => { setForm(emptyCallNote); setRedFlags([]); setSelectedId(""); }}>
+              New
+            </button>
+            <button className="ghost-button" type="button" disabled={saving} onClick={() => saveCallNote()}>
+              Save Note
+            </button>
+            <button className="primary-button" type="button" disabled={saving || !form.clientName.trim()} onClick={() => saveCallNote({ convert: true })}>
+              {saving ? <RefreshCw size={17} className="spin" /> : <Play size={17} />}
+              Save + Draft Case
+            </button>
+          </div>
+        </header>
+        {error && <div className="error-banner">{error}</div>}
+        {message && <div className="success-banner">{message}</div>}
+
+        <div className="notes-grid">
+          <section className="panel note-panel">
+            <div className="panel-title"><ClipboardList size={18} /><h2>Client & Loan</h2></div>
+            <div className="note-form-grid">
+              <label>Client name<input value={form.clientName} onChange={(event) => updateField("clientName", event.target.value)} placeholder="Main applicant" /></label>
+              <label>Second applicant<input value={form.secondApplicantName} onChange={(event) => updateField("secondApplicantName", event.target.value)} placeholder="Leave blank if single" /></label>
+              <label>Mobile<input value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
+              <label>Email<input value={form.email} onChange={(event) => updateField("email", event.target.value)} /></label>
+              <label>Language<select value={form.preferredLanguage} onChange={(event) => updateField("preferredLanguage", event.target.value)}><option>Vietnamese / English</option><option>English</option><option>Vietnamese</option></select></label>
+              <label>Source<input value={form.sourceChannel} onChange={(event) => updateField("sourceChannel", event.target.value)} placeholder="Referral, Facebook, website" /></label>
+              <label>Loan type<select value={form.loanType} onChange={(event) => updateField("loanType", event.target.value)}><option>Purchase</option><option>Refinance</option><option>Pre-approval</option><option>Construction</option></select></label>
+              <label>Loan purpose<input value={form.loanPurpose} onChange={(event) => updateField("loanPurpose", event.target.value)} /></label>
+              <label>Loan amount<input value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>
+              <label>Property value<input value={form.propertyValue} onChange={(event) => updateField("propertyValue", event.target.value)} /></label>
+              <label>Deposit/equity<input value={form.depositEquity} onChange={(event) => updateField("depositEquity", event.target.value)} /></label>
+              <label>Property/location<input value={form.propertyLocation} onChange={(event) => updateField("propertyLocation", event.target.value)} /></label>
+            </div>
+          </section>
+
+          <section className="panel note-panel">
+            <div className="panel-title"><ShieldCheck size={18} /><h2>Fact Find Snapshot</h2></div>
+            <div className="note-form-grid">
+              <label>DOB<input value={form.dateOfBirth} onChange={(event) => updateField("dateOfBirth", event.target.value)} placeholder="YYYY-MM-DD" /></label>
+              <label>Address<input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
+              <label>Residency<input value={form.residencyStatus} onChange={(event) => updateField("residencyStatus", event.target.value)} /></label>
+              <label>Marital<select value={form.maritalStatus} onChange={(event) => updateField("maritalStatus", event.target.value)}><option>Single</option><option>Married</option><option>Defacto</option><option>Separated</option></select></label>
+              <label>Dependants<input value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)} /></label>
+              <label>Employment<select value={form.employmentType} onChange={(event) => updateField("employmentType", event.target.value)}><option>PAYG</option><option>Self-employed</option><option>Casual</option><option>Contractor</option><option>Unemployed</option></select></label>
+              <label>Employer<input value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
+              <label>Occupation<input value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
+              <label>Income p.a.<input value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} /></label>
+              <label>Second income p.a.<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
+              <label>HEM monthly<input value={form.hemMonthly} onChange={(event) => updateField("hemMonthly", event.target.value)} placeholder="Auto if blank" /></label>
+              <label>Financial asset<input value={form.financialAssetBuffer} onChange={(event) => updateField("financialAssetBuffer", event.target.value)} /></label>
+            </div>
+            <div className="red-flag-row">
+              {redFlagOptions.map((flag) => (
+                <button className={redFlags.includes(flag) ? "selected" : ""} key={flag} type="button" onClick={() => toggleRedFlag(flag)}>
+                  {flag}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="panel note-panel note-text-panel">
+            <div className="panel-title"><FileJson size={18} /><h2>Broker Notes</h2></div>
+            <div className="note-text-grid">
+              <label>Quick notes<textarea value={form.quickNotes} onChange={(event) => updateField("quickNotes", event.target.value)} placeholder="What client said on call" /></label>
+              <label>Broker assessment<textarea value={form.brokerAssessment} onChange={(event) => updateField("brokerAssessment", event.target.value)} placeholder="Serviceability, red flags, likely lender path" /></label>
+              <label>Next action<textarea value={form.nextAction} onChange={(event) => updateField("nextAction", event.target.value)} placeholder="Send intake link, collect payslips, book appointment" /></label>
+            </div>
+          </section>
+
+          <section className="panel note-panel recent-note-panel">
+            <div className="panel-title"><History size={18} /><h2>Recent / Search Results</h2></div>
+            <div className="recent-note-list">
+              {filteredNotes.map((note) => (
+                <div key={`row-${note.id}`}>
+                  <button type="button" onClick={() => loadNote(note)}>
+                    <strong>{[note.clientName, note.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
+                    <span>{note.convertedCaseId || note.status} | {new Date(note.updatedAt || note.createdAt).toLocaleString()}</span>
+                  </button>
+                  <div>
+                    {!note.convertedCaseId && <button type="button" onClick={() => convertSelected(note)}>Draft case</button>}
+                    <button type="button" onClick={() => createIntakeLink(note)}>Copy intake link</button>
+                    {note.convertedCaseId && <button type="button" onClick={onOpenAutofill}>Open Autofill</button>}
+                    <button type="button" className="danger-link" onClick={() => deleteNote(note)}>Delete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function ClientIntakePage({ token }) {
+  const [meta, setMeta] = useState(null);
+  const [form, setForm] = useState({
+    clientName: "",
+    secondApplicantName: "",
+    mobile: "",
+    email: "",
+    preferredLanguage: "Vietnamese / English",
+    loanType: "Purchase",
+    loanPurpose: "",
+    loanAmount: "",
+    propertyValue: "",
+    depositEquity: "",
+    propertyLocation: "",
+    timeline: "",
+    dateOfBirth: "",
+    address: "",
+    residencyStatus: "Australian citizen",
+    maritalStatus: "Single",
+    dependants: "0",
+    employmentType: "PAYG",
+    employerName: "",
+    occupation: "",
+    annualIncome: "",
+    secondAnnualIncome: "",
+    rentalIncomeAnnual: "",
+    existingDebtsSummary: "",
+    creditIssue: "No",
+    loanTermYears: "30",
+    repaymentType: "Principal and interest",
+    ratePreference: "Variable",
+    offsetRequested: true,
+    hemMonthly: "",
+    financialAssetBuffer: "",
+    clientNotes: ""
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api(`/api/client-intake/${token}`)
+      .then((result) => {
+        setMeta(result);
+        setForm((current) => ({ ...current, ...Object.fromEntries(Object.entries(result).filter(([, value]) => value !== "" && value !== null)) }));
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  function updateField(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submitIntake(event) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      await api(`/api/client-intake/${token}`, {
+        method: "POST",
+        body: JSON.stringify(form)
+      });
+      setMessage("Thank you. Your details have been sent to Easy Loan Finance.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return <main className="client-intake-shell"><div className="empty-state">Loading secure intake link...</div></main>;
+
+  return (
+    <main className="client-intake-shell">
+      <form className="client-intake-card" onSubmit={submitIntake}>
+        <header>
+          <span>Easy Loan Finance</span>
+          <h1>Client Fact Find / Thong tin vay</h1>
+          <p>Please complete the details you know. You can leave uncertain fields blank and your broker will review before any submission.</p>
+        </header>
+        {error && <div className="error-banner">{error}</div>}
+        {message && <div className="success-banner">{message}</div>}
+        {meta?.status === "submitted" && !message ? <div className="success-banner">This form has already been submitted. You can submit again if you need to update details.</div> : null}
+
+        <section>
+          <h2>Applicants</h2>
+          <div className="client-intake-grid">
+            <label>Main applicant<input required value={form.clientName} onChange={(event) => updateField("clientName", event.target.value)} /></label>
+            <label>Second applicant<input value={form.secondApplicantName} onChange={(event) => updateField("secondApplicantName", event.target.value)} /></label>
+            <label>Mobile<input required value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
+            <label>Email<input value={form.email} onChange={(event) => updateField("email", event.target.value)} /></label>
+            <label>Date of birth<input value={form.dateOfBirth} onChange={(event) => updateField("dateOfBirth", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+            <label>Current address<input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
+            <label>Residency<select value={form.residencyStatus} onChange={(event) => updateField("residencyStatus", event.target.value)}><option>Australian citizen</option><option>Permanent resident</option><option>Temporary visa</option><option>Other</option></select></label>
+            <label>Marital status<select value={form.maritalStatus} onChange={(event) => updateField("maritalStatus", event.target.value)}><option>Single</option><option>Married</option><option>Defacto</option><option>Separated</option></select></label>
+            <label>Dependants<input value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)} /></label>
+          </div>
+        </section>
+
+        <section>
+          <h2>Loan & Property</h2>
+          <div className="client-intake-grid">
+            <label>Loan type<select value={form.loanType} onChange={(event) => updateField("loanType", event.target.value)}><option>Purchase</option><option>Refinance</option><option>Pre-approval</option><option>Construction</option></select></label>
+            <label>Loan purpose<input value={form.loanPurpose} onChange={(event) => updateField("loanPurpose", event.target.value)} /></label>
+            <label>Loan amount<input value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>
+            <label>Property value<input value={form.propertyValue} onChange={(event) => updateField("propertyValue", event.target.value)} /></label>
+            <label>Deposit/equity<input value={form.depositEquity} onChange={(event) => updateField("depositEquity", event.target.value)} /></label>
+            <label>Property address/suburb<input value={form.propertyLocation} onChange={(event) => updateField("propertyLocation", event.target.value)} /></label>
+            <label>Timeline<input value={form.timeline} onChange={(event) => updateField("timeline", event.target.value)} placeholder="ASAP, 3 months, pre-approval" /></label>
+            <label>Loan term<select value={form.loanTermYears} onChange={(event) => updateField("loanTermYears", event.target.value)}><option>30</option><option>25</option><option>40</option></select></label>
+            <label>Repayment<select value={form.repaymentType} onChange={(event) => updateField("repaymentType", event.target.value)}><option>Principal and interest</option><option>Interest only</option></select></label>
+          </div>
+        </section>
+
+        <section>
+          <h2>Income & Expenses</h2>
+          <div className="client-intake-grid">
+            <label>Employment<select value={form.employmentType} onChange={(event) => updateField("employmentType", event.target.value)}><option>PAYG</option><option>Self-employed</option><option>Casual</option><option>Contractor</option><option>Other</option></select></label>
+            <label>Employer/business<input value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
+            <label>Occupation<input value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
+            <label>Main income p.a.<input value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} /></label>
+            <label>Second income p.a.<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
+            <label>Rental income p.a.<input value={form.rentalIncomeAnnual} onChange={(event) => updateField("rentalIncomeAnnual", event.target.value)} /></label>
+            <label>Monthly living expense<input value={form.hemMonthly} onChange={(event) => updateField("hemMonthly", event.target.value)} placeholder="Leave blank if unsure" /></label>
+            <label>Savings/assets<input value={form.financialAssetBuffer} onChange={(event) => updateField("financialAssetBuffer", event.target.value)} /></label>
+            <label>Credit issue<select value={form.creditIssue} onChange={(event) => updateField("creditIssue", event.target.value)}><option>No</option><option>Unsure</option><option>Yes</option></select></label>
+          </div>
+          <label className="client-wide-field">Existing debts / comments<textarea value={form.existingDebtsSummary} onChange={(event) => updateField("existingDebtsSummary", event.target.value)} /></label>
+          <label className="client-wide-field">Anything else for your broker<textarea value={form.clientNotes} onChange={(event) => updateField("clientNotes", event.target.value)} /></label>
+        </section>
+
+        <button className="primary-button client-submit" type="submit" disabled={saving}>
+          {saving ? <RefreshCw size={17} className="spin" /> : <CheckCircle2 size={17} />}
+          Submit to Broker
+        </button>
+      </form>
+    </main>
+  );
+}
+
 export default function App() {
+  const [view, setView] = useState(() => (location.pathname.includes("call-notes") ? "notes" : "autofill"));
   const [cases, setCases] = useState([]);
   const [caseSearch, setCaseSearch] = useState("");
   const [selectedCaseId, setSelectedCaseId] = useState("");
@@ -330,6 +785,7 @@ export default function App() {
   const [error, setError] = useState("");
 
   const showMock = location.pathname === "/mock-infinity-aol" || location.pathname === "/infinity-aol/mock-infinity-aol";
+  const intakeToken = location.pathname.match(/^\/(?:infinity-aol\/)?apply\/([^/]+)/)?.[1] || "";
 
   useEffect(() => {
     if (showMock) return;
@@ -648,6 +1104,8 @@ export default function App() {
   ];
 
   if (showMock) return <MockInfinity />;
+  if (intakeToken) return <ClientIntakePage token={intakeToken} />;
+  if (view === "notes") return <CallNotesPage onOpenAutofill={() => setView("autofill")} />;
 
   return (
     <main className="app-shell">
@@ -659,6 +1117,10 @@ export default function App() {
             <strong>Infinity AOL</strong>
           </div>
         </div>
+        <button className="ghost-button sidebar-action" type="button" onClick={() => setView("notes")}>
+          <ClipboardList size={16} />
+          New Call Note
+        </button>
         <div className="case-search">
           <label>
             Search
