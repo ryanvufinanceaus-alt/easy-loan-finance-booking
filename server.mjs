@@ -1,13 +1,16 @@
 import { createServer } from "node:http";
 import { createHash, createHmac, createSign, timingSafeEqual } from "node:crypto";
 import { promises as fs } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dns from "node:dns";
+import express from "express";
 import nodemailer from "nodemailer";
 import { app as infinityAolApp } from "./infinity-aol/server/index.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const PORT = Number(process.env.PORT || 3000);
 const DATA_DIR = path.join(__dirname, "data");
 const DIST_DIR = path.join(__dirname, "dist");
@@ -51,6 +54,9 @@ const BUSINESS_END = "17:00";
 const REMINDER_MINUTES_BEFORE = Number(process.env.BOOKING_REMINDER_MINUTES_BEFORE || 10);
 const reminderSendKeys = new Set();
 const EMAIL_TEMPLATES_SETTING_KEY = "email_templates";
+const brokerDeskApp = express();
+brokerDeskApp.disable("x-powered-by");
+brokerDeskApp.use(require("./broker-desk"));
 
 dns.setDefaultResultOrder?.("ipv4first");
 
@@ -1776,6 +1782,22 @@ async function handleStatic(req, res, url) {
   }
 }
 
+function handleBrokerDesk(req, res) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const done = (handled, error) => {
+      if (settled) return;
+      settled = true;
+      if (error) reject(error);
+      else resolve(handled);
+    };
+
+    brokerDeskApp.handle(req, res, (error) => done(false, error));
+    res.once("finish", () => done(true));
+    res.once("close", () => done(true));
+  });
+}
+
 await ensureData();
 
 setInterval(() => {
@@ -1787,6 +1809,8 @@ setInterval(() => {
 createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", requestOrigin(req));
+    const brokerDeskHandled = await handleBrokerDesk(req, res);
+    if (brokerDeskHandled || res.writableEnded) return;
     processBookingReminders(requestOrigin(req)).catch((error) => console.warn(error.message));
     if (url.pathname === INFINITY_AOL_BASE || url.pathname.startsWith(`${INFINITY_AOL_BASE}/`)) {
       req.url = `${url.pathname.slice(INFINITY_AOL_BASE.length) || "/"}${url.search}`;
