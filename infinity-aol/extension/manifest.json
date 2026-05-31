@@ -9,6 +9,8 @@
     "http://localhost:8797/*",
     "http://127.0.0.1:3000/*",
     "http://localhost:3000/*",
+    "https://booking.easyloanfinance.com.au/*",
+    "https://*.easyloanfinance.com.au/*",
     "https://*.onrender.com/*"
   ],
   "icons": {

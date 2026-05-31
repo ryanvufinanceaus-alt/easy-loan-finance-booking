@@ -144,7 +144,8 @@ function persistClientIntakes() {
 function publicBaseUrl(request) {
   const forwardedProto = request.get("x-forwarded-proto");
   const protocol = forwardedProto || request.protocol || "https";
-  return `${protocol}://${request.get("host")}${request.get("x-forwarded-prefix") || ""}`;
+  const prefix = request.get("x-forwarded-prefix") || "";
+  return `${protocol}://${request.get("host")}${prefix.replace(/\/$/, "")}`;
 }
 
 function applyClientIntakeToNote(note, intake) {

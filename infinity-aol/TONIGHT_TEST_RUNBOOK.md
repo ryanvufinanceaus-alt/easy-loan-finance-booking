@@ -1,8 +1,24 @@
-# Tonight Test Runbook
+# Tomorrow Test Runbook
 
 Use this flow for the first editable Infinity/AOL case.
 
-## Before opening lender pages
+## What Ryan needs before testing
+
+- Chrome logged in to Infinity and AOL manually. Do not automate passwords or MFA.
+- Chrome extension loaded from `C:\Users\User\OneDrive\Documents\New project 2\infinity-aol\extension`.
+- Extension CRM API set to `https://booking.easyloanfinance.com.au/infinity-aol`.
+- One editable test case in Infinity/AOL.
+- Optional customer files: driver licence front/back, income, accountant letter, bank statement.
+
+Custom domain is useful later, but it is not required for the first test. The client form already has a meaningful link:
+
+```text
+https://booking.easyloanfinance.com.au/infinity-aol/client-info/<token>
+```
+
+Later we can add `client-info.easyloanfinance.com.au` or `loan-form.easyloanfinance.com.au` in Render and Cloudflare after the test flow is stable.
+
+## Local fallback
 
 1. Start the assistant:
 
@@ -35,6 +51,22 @@ http://127.0.0.1:8797/
 7. If needed, edit the template JSON.
 8. Click `Prepare Infinity AOL`.
 9. Copy the token into the Chrome Extension.
+
+## Live flow
+
+1. Open `https://booking.easyloanfinance.com.au/infinity-aol`.
+2. Search/select a case by applicant name, second applicant name, case ID, or address.
+3. Check the left info panel: loan amount, income, HEM, financial asset, files queued, fields found, warnings.
+4. If starting from a phone call, open `New Call Note`, save it, then copy the `client-info` link.
+5. If using files, drag/drop documents and click `Prepare Files for Extension`.
+6. Select/edit the closest template and preview the generated wording.
+7. Click `Prepare for Extension`.
+8. Copy the Case ID or token into the Chrome Extension.
+9. Open the editable Infinity case tab and click `Start AutoFill`.
+10. Review Infinity. Broker manually clicks `Push AOL`.
+11. Open AOL and click `Start AutoFill` again.
+12. Click `Compare Current Page` or `Compare Case` to see mismatches.
+13. Broker reviews and manually submits only when satisfied.
 
 ## Default tick logic
 
@@ -90,7 +122,7 @@ Default for standard variable P&I:
 
 ## Fill sequence
 
-Use `Fill Section`, not full blind fill, for first test:
+Use `Start AutoFill` for the normal test. Use Advanced `Fill Current Popup` only if one popup needs a retry:
 
 1. Infinity Client Details
 2. Infinity Financials

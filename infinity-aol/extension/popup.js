@@ -16,7 +16,11 @@ const els = {
 };
 
 chrome.storage.local.get(["apiBase", "caseToken"], (stored) => {
-  if (stored.apiBase) els.apiBase.value = stored.apiBase;
+  if (stored.apiBase) {
+    els.apiBase.value = stored.apiBase.includes("easy-loan-finance-booking.onrender.com")
+      ? "https://booking.easyloanfinance.com.au/infinity-aol"
+      : stored.apiBase;
+  }
   if (stored.caseToken) els.caseToken.value = stored.caseToken;
 });
 
