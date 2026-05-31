@@ -1,11 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/png" href="/elf-logo.png">
-<link rel="apple-touch-icon" href="/elf-logo.png">
-<title>Broker Desk - Easy Loan Finance</title>
+<title>Broker Desk — Easy Loan Finance</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script>
 // Global error catcher \u2014 installed BEFORE the main app script so it captures
@@ -60,8 +58,7 @@ body{font-family:'Outfit',-apple-system,sans-serif;background:#0D1117;color:#C9D
 #hdr{height:56px;background:#0A0D14;border-bottom:1px solid #1e2430;display:flex;align-items:center;justify-content:space-between;padding:0 22px;flex-shrink:0;}
 #content{flex:1;overflow-y:auto;padding:20px 22px;background:#0D1117;}
 
-.logo-area{padding:18px;border-bottom:1px solid #1e2430;display:flex;align-items:center;gap:11px;}
-.logo-mark{width:38px;height:38px;border-radius:10px;object-fit:cover;box-shadow:0 0 0 1px #D4A84355,0 10px 26px rgba(0,0,0,.32);}
+.logo-area{padding:20px 18px 14px;border-bottom:1px solid #1e2430;}
 .logo-tag{font-size:9px;color:#4a5568;letter-spacing:3px;text-transform:uppercase;margin-bottom:3px;}
 .logo-name{font-size:16px;font-weight:800;color:#D4A843;letter-spacing:-.5px;}
 #nav-items{flex:1;padding:6px 0;overflow-y:auto;}
@@ -101,10 +98,10 @@ body{font-family:'Outfit',-apple-system,sans-serif;background:#0D1117;color:#C9D
 .pc-body{flex:1;padding:7px;overflow-y:auto;}
 .pk{background:#0A0D14;border:1px solid #1e2430;border-radius:10px;padding:11px 12px;cursor:pointer;margin-bottom:6px;position:relative;transition:border-color .13s;}
 .pk:hover{border-color:var(--sc);}
-/* Risk indicators on pipeline cards â€” left border bar */
+/* Risk indicators on pipeline cards — left border bar */
 .pk-stuck{border-left:3px solid #DC2626 !important;}
 .pk-deadline{border-left:3px solid #FBBF24 !important;}
-/* Compact pipeline view â€” single vertical column with collapsible stage groups */
+/* Compact pipeline view — single vertical column with collapsible stage groups */
 .pc-grp{margin-bottom:12px;border:1px solid #1e2430;border-radius:10px;background:#111827;overflow:hidden;}
 .pc-grp-hd{padding:11px 14px;background:#0f1420;cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:1px solid transparent;transition:background .12s;}
 .pc-grp-hd:hover{background:#161b26;}
@@ -198,7 +195,7 @@ pre.em-body{font-family:inherit;font-size:13px;color:#c9d1d9;line-height:1.85;wh
 .lender-chip button{background:none;border:none;color:#4a5568;cursor:pointer;padding:0;display:flex;align-items:center;}
 .lender-chip button:hover{color:#ef4444;}
 
-/* â”€â”€ Mobile responsive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Mobile responsive ───────────────────────────── */
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: .65; }
@@ -221,22 +218,32 @@ pre.em-body{font-family:inherit;font-size:13px;color:#c9d1d9;line-height:1.85;wh
   .tbl th, .tbl td { padding: 7px 6px !important; }
   #bell-popover { width: calc(100vw - 24px) !important; right: 12px !important; }
 }
-/* iPad / small laptop â€” tighter pipeline so more columns fit */
+/* iPad / small laptop — tighter pipeline so more columns fit */
 @media (min-width: 881px) and (max-width: 1366px) {
   #pb .pc { min-width: 190px; max-width: 190px; }
   .pk { padding: 8px 9px; }
   /* Tighten font for amount/client */
   .pk .pk-amt { font-size: 14px !important; }
 }
-/* Very wide screens â€” slightly bigger columns */
+/* Very wide screens — slightly bigger columns */
 @media (min-width: 1700px) {
   #pb .pc { min-width: 240px; max-width: 240px; }
 }
+/* ===== Light theme =====
+   The UI uses dark inline colors throughout, so the most reliable light option
+   is a tuned invert + hue-rotate on the root element, with images / marked
+   elements re-inverted to look normal. Pure CSS, can't break the app, instantly
+   reversible. */
+html.theme-light { filter: invert(0.95) hue-rotate(180deg); background: #ffffff; }
+html.theme-light img,
+html.theme-light video,
+html.theme-light .keep-color { filter: invert(1) hue-rotate(180deg); }
+html.theme-light body { background: #f4f5f7; }
 </style>
 </head>
 <body>
 
-<!-- â•â•â•â•â•â• LOGIN â•â•â•â•â•â• -->
+<!-- ══════ LOGIN ══════ -->
 <div id="login-wrap">
   <div style="width:380px;">
     <div style="text-align:center;margin-bottom:32px;">
@@ -263,19 +270,16 @@ pre.em-body{font-family:inherit;font-size:13px;color:#c9d1d9;line-height:1.85;wh
         <div id="forgot-msg" style="font-size:11.5px;text-align:center;margin-top:9px;color:#8b949e;line-height:1.5;"></div>
       </div>
     </div>
-    <div style="text-align:center;margin-top:12px;font-size:11px;color:#21262D;">Session: 6 hours Â· Easy Loan Finance</div>
+    <div style="text-align:center;margin-top:12px;font-size:11px;color:#21262D;">Session: 6 hours · Easy Loan Finance</div>
   </div>
 </div>
 
-<!-- â•â•â•â•â•â• APP â•â•â•â•â•â• -->
+<!-- ══════ APP ══════ -->
 <div id="app-wrap">
   <aside id="sb">
     <div class="logo-area">
-      <img class="logo-mark" src="/elf-logo.png" alt="Easy Loan Finance">
-      <div>
-        <div class="logo-tag">Easy Loan Finance</div>
-        <div class="logo-name">BROKER DESK</div>
-      </div>
+      <div class="logo-tag">Easy Loan Finance</div>
+      <div class="logo-name">BROKER DESK</div>
     </div>
     <div id="nav-items"></div>
     <div class="sb-foot" onclick="openModal('changePass')">
@@ -306,10 +310,13 @@ pre.em-body{font-family:inherit;font-size:13px;color:#c9d1d9;line-height:1.85;wh
         </div>
 
         <div style="display:flex;align-items:center;gap:0;background:#161b26;border:1px solid #2d3748;border-radius:8px;overflow:hidden;" title="Font size">
-          <button class="btn-ghost" style="padding:6px 9px;color:#c9d1d9;border-right:1px solid #2d3748;" onclick="changeZoom(-0.1)" title="Smaller">Aâˆ’</button>
+          <button class="btn-ghost" style="padding:6px 9px;color:#c9d1d9;border-right:1px solid #2d3748;" onclick="changeZoom(-0.1)" title="Smaller">A−</button>
           <button class="btn-ghost" style="padding:6px 8px;color:#c9d1d9;border-right:1px solid #2d3748;font-size:10px;min-width:38px;" onclick="resetZoom()" title="Reset to 100%"><span id="zoom-pct">100%</span></button>
           <button class="btn-ghost" style="padding:6px 9px;color:#c9d1d9;" onclick="changeZoom(0.1)" title="Bigger">A+</button>
         </div>
+        <button class="btn-sec" onclick="toggleTheme()" style="padding:6px 10px;" title="Toggle light/dark theme" id="theme-btn">
+          <svg id="theme-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
         <button class="btn-sec" onclick="refreshAll()" style="padding:6px 10px;" title="Refresh">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         </button>
@@ -792,6 +799,7 @@ async function checkSess(){
 // \u2551  INIT                                           \u2551
 // \u255A\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255D
 async function init(){
+  applyTheme();
   applyFontZoom();
   const v=await checkSess();
   if(!v){document.getElementById('login-wrap').style.display='flex';return;}
@@ -804,6 +812,7 @@ async function startApp(){
   await loadAll_();
   checkNewMyTasks(true);
   requestNotifyPerm();
+  _autoEscalateOnce();
   // Poll every 90s for new tasks; skip if tab is hidden (browser visibility) to save bandwidth
   if(!window._bdPoll){
     window._bdPoll=setInterval(async()=>{
@@ -988,6 +997,52 @@ async function handleSigImageUpload(input, target){
 // Run on every render \u2014 find inputs marked .money-fmt and attach
 function attachAllMoneyInputs(){
   document.querySelectorAll('.money-fmt').forEach(attachMoneyFormat);
+}
+
+// \u2500\u2500 Light / dark theme (saved to localStorage) \u2500\u2500
+const THEME_KEY='bd_theme';
+function applyTheme(){
+  const light = localStorage.getItem(THEME_KEY)==='light';
+  document.documentElement.classList.toggle('theme-light', light);
+  // Swap the header icon (moon for dark, sun for light)
+  const ico=document.getElementById('theme-ico');
+  if(ico){
+    ico.innerHTML = light
+      ? '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'
+      : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  }
+}
+function toggleTheme(){
+  const light = localStorage.getItem(THEME_KEY)==='light';
+  localStorage.setItem(THEME_KEY, light ? 'dark' : 'light');
+  applyTheme();
+}
+
+// \u2500\u2500 24h overdue escalation \u2500\u2500
+// Emails the task creator (assigner) + Ryan about overdue 24h-response tasks.
+async function reportOverdue24h(){
+  showLoad();
+  const r = await gs_('escalate24hOverdue', S.tok);
+  hideLoad();
+  if(r && r.ok){
+    if(r.escalated>0){
+      toast(`\u26A0 Reported ${r.escalated} overdue task(s) to assigner + Ryan`);
+      const tr = await gs_('getTasks', S.tok);
+      if(tr && tr.ok) S.tasks = tr.data||[];
+      render();
+    } else {
+      toast('No new overdue tasks to report');
+    }
+  } else {
+    toast((r && r.msg) || 'Could not send reports', 1);
+  }
+}
+// Auto-run once per session (admins) so overdue tasks get reported without a click.
+async function _autoEscalateOnce(){
+  if(S._escalatedThisSession) return;
+  if(!(S.user && S.user.role==='admin')) return;
+  S._escalatedThisSession = true;
+  try { await gs_('escalate24hOverdue', S.tok); } catch(e){}
 }
 
 // \u2500\u2500 Font zoom (saved to localStorage) \u2500\u2500
@@ -2477,10 +2532,17 @@ function rDash24hResponse(tasks, filterId, myCaseIdsForFilter){
       }
     }
     let bucket, bucketColor, bucketLabel;
+    const hrMs = 3600000;
     if(dueMs === null){
       bucket = 'unsched'; bucketColor = '#6b7280'; bucketLabel = 'No due date';
     } else if(dueMs < now){
-      bucket = 'overdue'; bucketColor = '#DC2626'; bucketLabel = 'OVERDUE';
+      const oh = Math.floor((now - dueMs)/hrMs);
+      bucket = 'overdue'; bucketColor = '#DC2626';
+      bucketLabel = oh < 1 ? 'OVERDUE' : (oh < 24 ? `OVERDUE ${oh}h` : `OVERDUE ${Math.floor(oh/24)}d`);
+    } else if(dueMs - now <= 4*hrMs){
+      // Nearly out of time \u2014 most urgent live state
+      const hl = Math.max(1, Math.ceil((dueMs - now)/hrMs));
+      bucket = 'soon'; bucketColor = '#EF4444'; bucketLabel = `${hl}h left`;
     } else if(dueMs - now < dayMs){
       bucket = 'today'; bucketColor = '#FB923C'; bucketLabel = 'Due today';
     } else if(dueMs - now < 2*dayMs){
@@ -2490,8 +2552,8 @@ function rDash24hResponse(tasks, filterId, myCaseIdsForFilter){
     }
     return {t, c, dueMs, bucket, bucketColor, bucketLabel};
   });
-  // Sort: overdue \u2192 today \u2192 tomorrow \u2192 later \u2192 unsched
-  const order = {overdue:0, today:1, tomorrow:2, later:3, unsched:4};
+  // Sort: overdue \u2192 soon \u2192 today \u2192 tomorrow \u2192 later \u2192 unsched
+  const order = {overdue:0, soon:1, today:2, tomorrow:3, later:4, unsched:5};
   enriched.sort((a,b)=>{
     const oa = order[a.bucket], ob = order[b.bucket];
     if(oa !== ob) return oa - ob;
@@ -2517,7 +2579,9 @@ function rDash24hResponse(tasks, filterId, myCaseIdsForFilter){
 
   const overdueCount = enriched.filter(e=>e.bucket==='overdue').length;
   const todayCount = enriched.filter(e=>e.bucket==='today').length;
+  const soonCount = enriched.filter(e=>e.bucket==='soon').length;
   const visible = enriched.slice(0, 6);
+  const isAdmin = S.user && S.user.role==='admin';
 
   return `<div class="lux-section" style="border-color:#DC262644;background:linear-gradient(180deg,rgba(220,38,38,.03),transparent 60%);">
     <div class="lux-section-hd" style="background:linear-gradient(90deg,rgba(220,38,38,.10),transparent);">
@@ -2526,8 +2590,9 @@ function rDash24hResponse(tasks, filterId, myCaseIdsForFilter){
       </div>
       <div style="flex:1;">
         <div class="lux-section-title" style="color:#DC2626;text-transform:uppercase;letter-spacing:.7px;font-size:12px;font-weight:800;">\u26A1 24h Response</div>
-        <div class="lux-section-sub">${enriched.length} task${enriched.length!==1?'s':''}${overdueCount?` \u00B7 <span style="color:#DC2626;font-weight:700;">${overdueCount} overdue</span>`:''}${todayCount?` \u00B7 <span style="color:#FB923C;font-weight:600;">${todayCount} due today</span>`:''}</div>
+        <div class="lux-section-sub">${enriched.length} task${enriched.length!==1?'s':''}${overdueCount?` \u00B7 <span style="color:#DC2626;font-weight:700;">${overdueCount} overdue</span>`:''}${soonCount?` \u00B7 <span style="color:#EF4444;font-weight:700;">${soonCount} nearly out of time</span>`:''}${todayCount?` \u00B7 <span style="color:#FB923C;font-weight:600;">${todayCount} due today</span>`:''}</div>
       </div>
+      ${isAdmin && overdueCount?`<button class="btn-ghost" style="font-size:10px;color:#fff;background:#DC2626;border:1px solid #DC2626;letter-spacing:.4px;text-transform:uppercase;font-weight:700;padding:5px 10px;border-radius:6px;margin-right:8px;" onclick="event.stopPropagation();reportOverdue24h()" title="Email the assigner + Ryan about overdue tasks">\u26A0 Report overdue</button>`:''}
       <button class="btn-ghost" style="font-size:10px;color:#DC2626;letter-spacing:.4px;text-transform:uppercase;font-weight:700;" onclick="setView('tasks');S.taskFilter='response_24h';render()">View All \u2192</button>
     </div>
     <div style="max-height:380px;overflow-y:auto;">
