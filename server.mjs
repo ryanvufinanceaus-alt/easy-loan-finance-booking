@@ -20,7 +20,7 @@ const PORTAL_HOST_RE = /^(portal|app)\./i;
 const CLIENT_CALL_HOST_RE = /^client-call\./i;
 const LOAN_FORM_HOST_RE = /^loan-form\./i;
 const EASYFLOW_AI_HOST_RE = /^(easyflow-ai|loanops|autofill)\./i;
-const LOAN_FORM_PUBLIC_PATH_RE = /^\/(?:loan-form|client-info|apply)\/[^/]+\/?$/;
+const LOAN_FORM_PUBLIC_PATH_RE = /^\/(?:loan-form|client-info|apply)(?:\/[^/]+)?\/?$/;
 const LOAN_FORM_PUBLIC_API_RE = /^\/api\/client-intake\/[^/]+\/?$/;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
@@ -1582,11 +1582,6 @@ function requireLoanFormHostPublicOnly(res, url) {
   if (url.pathname === "/") {
     res.writeHead(302, { location: "/loan-form" });
     res.end();
-    return false;
-  }
-  if (url.pathname === "/loan-form") {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end("<!doctype html><title>Loan Form</title><main style=\"font-family:Arial,sans-serif;max-width:680px;margin:80px auto;padding:24px\"><h1>Loan Form link required</h1><p>Please open the secure Loan Form link sent by Easy Loan Finance. The link includes a private token for the client file.</p></main>");
     return false;
   }
   sendJson(res, 404, { error: "Loan Form link required" });

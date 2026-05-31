@@ -1045,6 +1045,32 @@ pre {
   width: calc(100% - 40px);
 }
 
+.client-thank-you-card {
+  max-width: 760px;
+}
+
+.client-thank-you-body {
+  align-items: flex-start;
+  display: flex;
+  gap: 18px;
+  padding: 26px 28px 30px;
+}
+
+.client-thank-you-body svg {
+  color: #10a66a;
+  flex: 0 0 auto;
+}
+
+.client-thank-you-body h2 {
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+
+.client-thank-you-body p {
+  color: #4b5b53;
+  margin: 0 0 10px;
+}
+
 .spin {
   animation: spin 0.8s linear infinite;
 }

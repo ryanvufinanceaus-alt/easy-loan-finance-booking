@@ -320,6 +320,32 @@ function applyClientIntakeToNote(note, intake) {
   return next;
 }
 
+function normalizeClientIntakeSubmission(body = {}) {
+  return {
+    ...body,
+    loanAmount: Number(body.loanAmount || 0),
+    propertyValue: Number(body.propertyValue || 0),
+    depositEquity: Number(body.depositEquity || 0),
+    dependants: Number(body.dependants || 0),
+    annualIncome: Number(body.annualIncome || 0),
+    secondAnnualIncome: Number(body.secondAnnualIncome || 0),
+    rentalIncomeAnnual: Number(body.rentalIncomeAnnual || 0),
+    generalExpenses: Number(body.generalExpenses || 0),
+    applicant1Expenses: Number(body.applicant1Expenses || 0),
+    applicant2Expenses: Number(body.applicant2Expenses || 0),
+    applicant1PrivateHealthAmount: Number(body.applicant1PrivateHealthAmount || 0),
+    applicant2PrivateHealthAmount: Number(body.applicant2PrivateHealthAmount || 0),
+    realEstateAssetValue: Number(body.realEstateAssetValue || 0),
+    cashSavingsAmount: Number(body.cashSavingsAmount || 0),
+    motorVehicleValue: Number(body.motorVehicleValue || 0),
+    homeContentsValue: Number(body.homeContentsValue || 0),
+    loanTermYears: Number(body.loanTermYears || 30),
+    hemMonthly: Number(body.hemMonthly || 0),
+    financialAssetBuffer: Number(body.financialAssetBuffer || 0),
+    offsetRequested: Boolean(body.offsetRequested)
+  };
+}
+
 function splitName(fullName = "") {
   const parts = String(fullName).trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return { firstName: "", lastName: "" };
@@ -814,6 +840,96 @@ app.post("/api/call-notes/:noteId/intake-link", (request, response) => {
   });
 });
 
+app.get("/api/client-intake/public", (_request, response) => {
+  response.json({
+    token: "public",
+    status: "new",
+    submittedAt: null,
+    callNoteId: null,
+    clientName: "",
+    secondApplicantName: "",
+    mobile: "",
+    email: "",
+    loanPurpose: "",
+    loanAmount: "",
+    preferredLanguage: "Vietnamese / English"
+  });
+});
+
+app.post("/api/client-intake/public", (request, response) => {
+  const now = new Date().toISOString();
+  const submission = normalizeClientIntakeSubmission(request.body || {});
+  const baseNote = {
+    id: `CN-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+    status: "Loan form received",
+    brokerUser: "loan-form",
+    clientName: "",
+    secondApplicantName: "",
+    mobile: "",
+    email: "",
+    preferredLanguage: "Vietnamese / English",
+    sourceChannel: "Loan Form",
+    bestTimeToContact: submission.timeline || "",
+    loanType: "Purchase",
+    loanPurpose: "",
+    loanAmount: 0,
+    propertyValue: 0,
+    depositEquity: 0,
+    propertyLocation: "",
+    timeline: "",
+    dateOfBirth: "",
+    address: "",
+    residencyStatus: "",
+    maritalStatus: "",
+    dependants: 0,
+    employmentType: "",
+    employerName: "",
+    occupation: "",
+    annualIncome: 0,
+    secondAnnualIncome: 0,
+    rentalIncomeAnnual: 0,
+    existingDebtsSummary: "",
+    creditIssue: "Unknown",
+    loanTermYears: 30,
+    repaymentType: "Principal and interest",
+    ratePreference: "Variable",
+    offsetRequested: false,
+    hemMonthly: 0,
+    financialAssetBuffer: 0,
+    redFlags: [],
+    quickNotes: "",
+    brokerAssessment: "",
+    nextAction: "Review loan form submission",
+    convertedCaseId: null,
+    createdAt: now,
+    updatedAt: now
+  };
+  const note = applyClientIntakeToNote(baseNote, submission);
+  const intake = {
+    id: `INTAKE-${Date.now().toString(36).toUpperCase()}`,
+    token: crypto.randomBytes(18).toString("hex"),
+    callNoteId: note.id,
+    brokerUser: note.brokerUser,
+    status: "submitted",
+    createdAt: now,
+    submittedAt: now,
+    submission
+  };
+
+  callNotes.unshift({ ...note, intakeToken: intake.token, intakeStatus: "submitted" });
+  clientIntakes.unshift(intake);
+  persistCallNotes();
+  persistClientIntakes();
+  auditLog.push({
+    type: "client-intake",
+    timestamp: now,
+    brokerUser: note.brokerUser,
+    caseId: note.id,
+    clientName: note.clientName
+  });
+  response.status(201).json({ ok: true, status: "submitted", callNoteId: note.id, token: intake.token });
+});
+
 app.get("/api/client-intake/:token", (request, response) => {
   const intake = clientIntakes.find((item) => item.token === request.params.token);
   if (!intake) return response.status(404).json({ error: "Loan form link not found" });
@@ -840,29 +956,7 @@ app.post("/api/client-intake/:token", (request, response) => {
   if (noteIndex === -1) return response.status(404).json({ error: "Linked call note not found" });
 
   const now = new Date().toISOString();
-  const submission = {
-    ...request.body,
-    loanAmount: Number(request.body?.loanAmount || 0),
-    propertyValue: Number(request.body?.propertyValue || 0),
-    depositEquity: Number(request.body?.depositEquity || 0),
-    dependants: Number(request.body?.dependants || 0),
-    annualIncome: Number(request.body?.annualIncome || 0),
-    secondAnnualIncome: Number(request.body?.secondAnnualIncome || 0),
-    rentalIncomeAnnual: Number(request.body?.rentalIncomeAnnual || 0),
-    generalExpenses: Number(request.body?.generalExpenses || 0),
-    applicant1Expenses: Number(request.body?.applicant1Expenses || 0),
-    applicant2Expenses: Number(request.body?.applicant2Expenses || 0),
-    applicant1PrivateHealthAmount: Number(request.body?.applicant1PrivateHealthAmount || 0),
-    applicant2PrivateHealthAmount: Number(request.body?.applicant2PrivateHealthAmount || 0),
-    realEstateAssetValue: Number(request.body?.realEstateAssetValue || 0),
-    cashSavingsAmount: Number(request.body?.cashSavingsAmount || 0),
-    motorVehicleValue: Number(request.body?.motorVehicleValue || 0),
-    homeContentsValue: Number(request.body?.homeContentsValue || 0),
-    loanTermYears: Number(request.body?.loanTermYears || 30),
-    hemMonthly: Number(request.body?.hemMonthly || 0),
-    financialAssetBuffer: Number(request.body?.financialAssetBuffer || 0),
-    offsetRequested: Boolean(request.body?.offsetRequested)
-  };
+  const submission = normalizeClientIntakeSubmission(request.body || {});
   clientIntakes[intakeIndex] = { ...clientIntakes[intakeIndex], status: "submitted", submittedAt: now, submission };
   callNotes[noteIndex] = applyClientIntakeToNote(callNotes[noteIndex], submission);
   persistClientIntakes();

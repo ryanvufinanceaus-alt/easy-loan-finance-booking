@@ -388,6 +388,7 @@ function CallNotesPage({ onOpenAutofill }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [submitted, setSubmitted] = useState(false);
 
   async function refreshNotes() {
     const result = await api("/api/call-notes");
@@ -517,7 +518,7 @@ function CallNotesPage({ onOpenAutofill }) {
           <ClipboardList size={24} />
           <div>
           <span>Easy Loan Finance</span>
-          <strong>Client Call</strong>
+          <strong>Client Call Notes</strong>
           </div>
         </div>
         <button className="ghost-button sidebar-action" type="button" onClick={onOpenAutofill}>
@@ -545,8 +546,9 @@ function CallNotesPage({ onOpenAutofill }) {
       <section className="notes-workspace">
         <header className="topbar">
           <div>
-            <span>Fast broker note</span>
-            <h1>Client Call</h1>
+            <span>Quick phone intake only</span>
+            <h1>Client Call Notes</h1>
+            <p>Use this for a short call summary. Send the Loan Form when the client needs to provide full application details.</p>
           </div>
           <div className="actions">
             <button className="ghost-button" type="button" onClick={() => { setForm(emptyCallNote); setRedFlags([]); setSelectedId(""); }}>
@@ -642,7 +644,7 @@ function CallNotesPage({ onOpenAutofill }) {
   );
 }
 
-function ClientIntakePage({ token }) {
+function ClientIntakePage({ token, publicForm = false }) {
   const [meta, setMeta] = useState(null);
   const [form, setForm] = useState({
     clientName: "",
@@ -730,14 +732,15 @@ function ClientIntakePage({ token }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api(`/api/client-intake/${token}`)
+    const endpointToken = publicForm ? "public" : token;
+    api(`/api/client-intake/${endpointToken}`)
       .then((result) => {
         setMeta(result);
         setForm((current) => ({ ...current, ...Object.fromEntries(Object.entries(result).filter(([, value]) => value !== "" && value !== null)) }));
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, publicForm]);
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -748,11 +751,13 @@ function ClientIntakePage({ token }) {
     setSaving(true);
     setError("");
     try {
-      await api(`/api/client-intake/${token}`, {
+      const endpointToken = publicForm ? "public" : token;
+      await api(`/api/client-intake/${endpointToken}`, {
         method: "POST",
         body: JSON.stringify(form)
       });
-      setMessage("Thank you. Your details have been sent to Easy Loan Finance.");
+      setSubmitted(true);
+      setMessage("");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -760,7 +765,28 @@ function ClientIntakePage({ token }) {
     }
   }
 
-  if (loading) return <main className="client-intake-shell"><div className="empty-state">Loading secure intake link...</div></main>;
+  if (loading) return <main className="client-intake-shell"><div className="empty-state">Loading loan form...</div></main>;
+  if (submitted) {
+    return (
+      <main className="client-intake-shell">
+        <section className="client-intake-card client-thank-you-card">
+          <header>
+            <span>Easy Loan Finance</span>
+            <h1>Thank you. We have received your loan form.</h1>
+            <p>Your information has been sent securely to Easy Loan Finance. A broker will review your details and contact you as soon as practical.</p>
+          </header>
+          <div className="client-thank-you-body">
+            <CheckCircle2 size={42} />
+            <div>
+              <h2>What happens next</h2>
+              <p>We will check the information you provided, match it with any call notes already on file, and let you know if anything else is needed before preparing lender or application documents.</p>
+              <p>This confirmation means your form was received. It is not a loan approval or lender submission.</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="client-intake-shell">
@@ -768,7 +794,7 @@ function ClientIntakePage({ token }) {
         <header>
           <span>Easy Loan Finance Loan Form</span>
           <h1>Loan Form / Thong tin vay</h1>
-          <p>Please complete the details you know. You can leave uncertain fields blank and your broker will review before any submission.</p>
+          <p>This is the full client information form. It links with any phone call note we already have, and your broker will review everything before any application submission.</p>
         </header>
         {error && <div className="error-banner">{error}</div>}
         {message && <div className="success-banner">{message}</div>}
@@ -922,6 +948,7 @@ export default function App() {
 
   const showMock = location.pathname === "/mock-infinity-aol" || location.pathname === "/infinity-aol/mock-infinity-aol";
   const intakeToken = location.pathname.match(/^\/(?:infinity-aol\/)?(?:client-info|loan-form|apply)\/([^/]+)/)?.[1] || "";
+  const publicLoanForm = /^\/(?:infinity-aol\/)?(?:client-info|loan-form|apply)\/?$/.test(location.pathname) || (isLoanFormHost && location.pathname === "/");
 
   useEffect(() => {
     if (showMock) return;
@@ -1240,7 +1267,7 @@ export default function App() {
   ];
 
   if (showMock) return <MockInfinity />;
-  if (intakeToken) return <ClientIntakePage token={intakeToken} />;
+  if (intakeToken || publicLoanForm) return <ClientIntakePage token={intakeToken} publicForm={!intakeToken} />;
   if (view === "notes") return <CallNotesPage onOpenAutofill={() => setView("autofill")} />;
 
   return (
