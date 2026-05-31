@@ -15,6 +15,7 @@ const PORT = Number(process.env.PORT || 3000);
 const DATA_DIR = path.join(__dirname, "data");
 const DIST_DIR = path.join(__dirname, "dist");
 const INFINITY_AOL_BASE = "/infinity-aol";
+const BOOKING_HOST_RE = /^booking\./i;
 const CLIENT_CALL_HOST_RE = /^client-call\./i;
 const LOAN_FORM_HOST_RE = /^loan-form\./i;
 const EASYFLOW_AI_HOST_RE = /^(easyflow-ai|loanops|autofill)\./i;
@@ -1534,6 +1535,17 @@ function infinityAolPath(url) {
   return url.pathname;
 }
 
+function forwardToInfinityAolApp(req, res, url, forwardedPrefix = "") {
+  req.headers["x-forwarded-prefix"] = forwardedPrefix;
+  const pathname = url.pathname.startsWith(`${INFINITY_AOL_BASE}/`)
+    ? url.pathname.slice(INFINITY_AOL_BASE.length) || "/"
+    : url.pathname === INFINITY_AOL_BASE
+      ? "/"
+      : url.pathname;
+  req.url = `${pathname}${url.search}`;
+  infinityAolApp(req, res);
+}
+
 function isPublicInfinityAolRequest(url) {
   const pathname = infinityAolPath(url);
   return pathname === "/api/health"
@@ -1916,25 +1928,24 @@ createServer(async (req, res) => {
     processBookingReminders(requestOrigin(req)).catch((error) => console.warn(error.message));
     if (LOAN_FORM_HOST_RE.test(hostname)) {
       if (!requireLoanFormHostPublicOnly(res, url)) return;
-      req.headers["x-forwarded-prefix"] = "";
-      req.url = `${url.pathname}${url.search}`;
-      infinityAolApp(req, res);
+      forwardToInfinityAolApp(req, res, url);
       return;
     }
     if (CLIENT_CALL_HOST_RE.test(hostname) || EASYFLOW_AI_HOST_RE.test(hostname)) {
       if (url.pathname === "/login") return await handleStatic(req, res, url);
       if (url.pathname.startsWith("/api/auth/")) return await handleApi(req, res, url);
       if (!requireInfinityAolLogin(req, res, url)) return;
-      req.headers["x-forwarded-prefix"] = "";
-      req.url = `${url.pathname}${url.search}`;
-      infinityAolApp(req, res);
+      forwardToInfinityAolApp(req, res, url);
       return;
     }
     if (url.pathname === INFINITY_AOL_BASE || url.pathname.startsWith(`${INFINITY_AOL_BASE}/`)) {
       if (!requireInfinityAolLogin(req, res, url)) return;
-      req.headers["x-forwarded-prefix"] = INFINITY_AOL_BASE;
-      req.url = `${url.pathname.slice(INFINITY_AOL_BASE.length) || "/"}${url.search}`;
-      infinityAolApp(req, res);
+      forwardToInfinityAolApp(req, res, url, INFINITY_AOL_BASE);
+      return;
+    }
+    if (BOOKING_HOST_RE.test(hostname) && url.pathname === "/") {
+      res.writeHead(302, { location: "/book" });
+      res.end();
       return;
     }
     if (url.pathname === "/api/backup") return await handleApi(req, res, url);
