@@ -16,6 +16,7 @@ const DATA_DIR = path.join(__dirname, "data");
 const DIST_DIR = path.join(__dirname, "dist");
 const INFINITY_AOL_BASE = "/infinity-aol";
 const BOOKING_HOST_RE = /^booking\./i;
+const PORTAL_HOST_RE = /^(portal|app)\./i;
 const CLIENT_CALL_HOST_RE = /^client-call\./i;
 const LOAN_FORM_HOST_RE = /^loan-form\./i;
 const EASYFLOW_AI_HOST_RE = /^(easyflow-ai|loanops|autofill)\./i;
@@ -1506,6 +1507,14 @@ function requestOrigin(req) {
   return `${proto}://${req.headers.host}`;
 }
 
+function requestHostname(req) {
+  return String(req.headers["x-forwarded-host"] || req.headers.host || "")
+    .split(",")[0]
+    .trim()
+    .split(":")[0]
+    .toLowerCase();
+}
+
 function safeJoin(base, pathname) {
   const decoded = decodeURIComponent(pathname);
   const target = path.join(base, decoded === "/" ? "index.html" : decoded);
@@ -1924,7 +1933,7 @@ setInterval(() => {
 createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", requestOrigin(req));
-    const hostname = String(req.headers.host || "").split(":")[0];
+    const hostname = requestHostname(req);
     processBookingReminders(requestOrigin(req)).catch((error) => console.warn(error.message));
     if (LOAN_FORM_HOST_RE.test(hostname)) {
       if (!requireLoanFormHostPublicOnly(res, url)) return;
@@ -1943,10 +1952,24 @@ createServer(async (req, res) => {
       forwardToInfinityAolApp(req, res, url, INFINITY_AOL_BASE);
       return;
     }
-    if (BOOKING_HOST_RE.test(hostname) && url.pathname === "/") {
-      res.writeHead(302, { location: "/book" });
-      res.end();
-      return;
+    if (PORTAL_HOST_RE.test(hostname)) {
+      const brokerDeskHandled = await handleBrokerDesk(req, res);
+      if (brokerDeskHandled || res.writableEnded) return;
+      return sendJson(res, 404, { error: "BrokerDesk CRM route not found" });
+    }
+    if (BOOKING_HOST_RE.test(hostname)) {
+      if (url.pathname === "/") {
+        res.writeHead(302, { location: "/book" });
+        res.end();
+        return;
+      }
+      if (url.pathname.startsWith("/book") || url.pathname.startsWith("/widget")) return await handleStatic(req, res, url);
+      if (url.pathname.startsWith("/api/") || url.pathname === "/calendar/team.ics" || url.pathname.startsWith("/calendar/broker/")) {
+        if (url.pathname === "/calendar/team.ics" || url.pathname.startsWith("/calendar/broker/")) return await handleCalendar(req, res, url);
+        return await handleApi(req, res, url);
+      }
+      if (isStaticAsset(url.pathname)) return await handleStatic(req, res, url);
+      return sendJson(res, 404, { error: "Booking route not found" });
     }
     if (url.pathname === "/api/backup") return await handleApi(req, res, url);
     const brokerDeskHandled = await handleBrokerDesk(req, res);

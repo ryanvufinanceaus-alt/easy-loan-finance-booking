@@ -2,7 +2,7 @@
  * Broker Desk — drop-in module for an existing Express app (e.g. your booking app)
  * ------------------------------------------------------------------------------
  * Lets ONE Render service serve BOTH apps, routed by hostname:
- *    app.easyloanfinance.com.au      -> Broker Desk (this module)
+ *    portal.easyloanfinance.com.au   -> Broker Desk (this module)
  *    booking.easyloanfinance.com.au  -> your existing booking app (untouched)
  *
  * HOW TO USE (in your booking app's server entry, e.g. server.js / index.js / app.js):
@@ -17,9 +17,9 @@
  *
  * Then on Render (the booking service) set env vars:
  *    APPS_SCRIPT_URL = https://script.google.com/macros/s/AKfy..../exec
- *    DESK_HOST       = app.easyloanfinance.com.au      (optional; defaults below)
+ *    DESK_HOST       = portal.easyloanfinance.com.au   (optional; defaults below)
  *
- * And add the custom domain app.easyloanfinance.com.au to that same service.
+ * And add the custom domain portal.easyloanfinance.com.au to that same service.
  *
  * For any request whose hostname is NOT the desk host, this module immediately
  * calls next() and does nothing — your booking app behaves exactly as before.
@@ -31,8 +31,13 @@ const path = require('path');
 const router = express.Router();
 
 const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL || '';
-// Match the desk either by exact DESK_HOST env var, or any host starting "app."
-const DESK_HOST = (process.env.DESK_HOST || 'app.easyloanfinance.com.au').toLowerCase();
+// Match the desk by configured hosts, plus the old app host while DNS is being moved.
+const DESK_HOSTS = new Set(
+  (process.env.DESK_HOSTS || process.env.DESK_HOST || 'portal.easyloanfinance.com.au,app.easyloanfinance.com.au')
+    .split(',')
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean)
+);
 const LOCAL_DESK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 function isDeskHost(req) {
@@ -42,7 +47,7 @@ function isDeskHost(req) {
   return sources
     .filter(Boolean)
     .map((s) => String(s).toLowerCase().split(',')[0].trim().split(':')[0])
-    .some((h) => h === DESK_HOST || (process.env.NODE_ENV !== 'production' && LOCAL_DESK_HOSTS.has(h)));
+    .some((h) => DESK_HOSTS.has(h) || (process.env.NODE_ENV !== 'production' && LOCAL_DESK_HOSTS.has(h)));
 }
 
 // --- API proxy (desk host only) -------------------------------
