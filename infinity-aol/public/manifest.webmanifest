@@ -1,7 +1,7 @@
 {
-  "name": "Infinity AOL AutoFill Assistant",
-  "short_name": "Infinity AOL",
-  "description": "Broker-controlled document intake, Infinity payload preparation, and AOL autofill review.",
+  "name": "EasyFlow AI - Infinity & AOL Automation",
+  "short_name": "EasyFlow AI",
+  "description": "Broker-controlled client intake, Infinity payload preparation, and AOL automation review.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
