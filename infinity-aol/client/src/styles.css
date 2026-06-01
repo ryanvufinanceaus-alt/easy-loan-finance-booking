@@ -1298,19 +1298,78 @@ select {
   }
 
   .client-intake-shell {
-    padding: 12px;
+    background:
+      linear-gradient(180deg, #08120e 0, #14251d 245px, #faf9f5 245px, #faf9f5 100%);
+    padding: 10px;
+  }
+
+  .client-intake-card {
+    border-radius: 12px;
+    box-shadow: 0 18px 44px rgba(8, 18, 14, 0.16);
   }
 
   .client-form-hero {
-    padding: 22px 18px;
+    gap: 16px;
+    padding: 20px 16px 18px;
+  }
+
+  .client-form-brand {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(198, 163, 89, 0.2);
+    border-radius: 14px;
+    padding: 10px;
+  }
+
+  .client-form-brand img {
+    border-radius: 10px;
+    height: 72px;
+    padding: 7px;
+    width: 72px;
+  }
+
+  .client-form-brand span {
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
+  .client-form-brand strong {
+    font-size: 14px;
   }
 
   .client-form-copy h1 {
-    font-size: 28px;
+    font-size: 27px;
+    line-height: 1.14;
+  }
+
+  .client-form-copy p {
+    font-size: 14px;
   }
 
   .client-form-support a {
+    border-radius: 10px;
+    display: block;
+    overflow-wrap: anywhere;
+    text-align: center;
     width: 100%;
+  }
+
+  .client-intake-card section {
+    padding: 16px 14px 18px;
+  }
+
+  .client-intake-card section h2 {
+    font-size: 17px;
+  }
+
+  .client-submit {
+    margin: 16px 14px 18px;
+    width: calc(100% - 28px);
+  }
+
+  .client-thank-you-body {
+    display: grid;
+    padding: 22px 18px 24px;
   }
 
   .topbar,
