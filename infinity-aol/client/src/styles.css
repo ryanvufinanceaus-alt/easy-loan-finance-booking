@@ -1468,6 +1468,29 @@ pre {
   margin-top: 4px;
 }
 
+.draft-banner {
+  align-items: center;
+  background: #fff8e8;
+  border-top: 1px solid #eadab9;
+  color: #5f4617;
+  display: flex;
+  font-weight: 800;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 14px clamp(18px, 3vw, 32px);
+}
+
+.draft-banner button {
+  background: #fff;
+  border: 1px solid #d6bd84;
+  border-radius: 8px;
+  color: #523c12;
+  cursor: pointer;
+  font-weight: 900;
+  min-height: 38px;
+  padding: 8px 12px;
+}
+
 .commercial-panel,
 .conditional-panel {
   background: #f5f8f5;
@@ -1747,6 +1770,11 @@ select {
     overflow-wrap: anywhere;
     text-align: center;
     width: 100%;
+  }
+
+  .draft-banner {
+    align-items: stretch;
+    display: grid;
   }
 
   .client-intake-card section {

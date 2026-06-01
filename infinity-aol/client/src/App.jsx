@@ -1361,6 +1361,22 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
     document.title = pageTitle();
   }, []);
   const [submitted, setSubmitted] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const draftKey = `elf-loan-form-draft:${publicForm ? entry?.type || location.pathname : token || "public"}`;
+
+  function readDraft() {
+    try {
+      const raw = localStorage.getItem(draftKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function clearDraft() {
+    localStorage.removeItem(draftKey);
+    setDraftRestored(false);
+  }
 
   useEffect(() => {
     const endpointToken = publicForm ? "public" : token;
@@ -1368,15 +1384,31 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
       .then((result) => {
         setMeta(result);
         const routeDefaults = publicForm && entry ? { loanType: entry.type, loanPurpose: entry.purpose } : {};
+        const draft = readDraft();
+        if (draft?.language) setLanguage(draft.language);
+        if (draft?.form) setDraftRestored(true);
         setForm((current) => ({
           ...current,
           ...routeDefaults,
-          ...Object.fromEntries(Object.entries(result).filter(([, value]) => value !== "" && value !== null))
+          ...Object.fromEntries(Object.entries(result).filter(([, value]) => value !== "" && value !== null)),
+          ...(draft?.form || {})
         }));
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [token, publicForm, entry]);
+
+  useEffect(() => {
+    if (loading || submitted) return undefined;
+    const timeout = setTimeout(() => {
+      localStorage.setItem(draftKey, JSON.stringify({
+        form,
+        language,
+        savedAt: new Date().toISOString()
+      }));
+    }, 600);
+    return () => clearTimeout(timeout);
+  }, [draftKey, form, language, loading, submitted]);
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -1402,6 +1434,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
         method: "POST",
         body: JSON.stringify({ ...form, sourceUrl: location.href })
       });
+      clearDraft();
       setSubmitted(true);
       setMessage("");
     } catch (err) {
@@ -1446,6 +1479,31 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
         {error && <div className="error-banner">{error}</div>}
         {message && <div className="success-banner">{message}</div>}
         {meta?.status === "submitted" && !message ? <div className="success-banner">{txt.alreadySubmitted}</div> : null}
+        {draftRestored ? (
+          <div className="draft-banner">
+            <span>{L("Saved draft restored on this device.")}</span>
+            <button type="button" onClick={() => {
+              clearDraft();
+              window.location.reload();
+            }}>{L("Start fresh")}</button>
+          </div>
+        ) : null}
+
+        <section className="loan-type-strip">
+          <div>
+            <span>{L("Loan type")}</span>
+            <strong>{currentTitle}</strong>
+          </div>
+          <label>{L("Change loan type")}
+            <select value={form.loanType} onChange={(event) => {
+              const nextType = event.target.value;
+              const nextPurpose = purposeOptionsForLoanType(nextType)[0] || "";
+              setForm((current) => ({ ...current, loanType: nextType, loanPurpose: nextPurpose }));
+            }}>
+              {loanTypeOptions.map((option) => <option key={option} value={option}>{optionText(option, language)}</option>)}
+            </select>
+          </label>
+        </section>
 
         <section>
           <h2>{L("Personal Details")}</h2>
@@ -1464,22 +1522,6 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
             <label>{L("DOB of Dependent 3")}<input value={form.dependant3Dob} onChange={(event) => updateField("dependant3Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
             <label>{L("DOB of Dependent 4")}<input value={form.dependant4Dob} onChange={(event) => updateField("dependant4Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
           </div>
-        </section>
-
-        <section className="loan-type-strip">
-          <div>
-            <span>{L("Loan type")}</span>
-            <strong>{currentTitle}</strong>
-          </div>
-          <label>{L("Change loan type")}
-            <select value={form.loanType} onChange={(event) => {
-              const nextType = event.target.value;
-              const nextPurpose = purposeOptionsForLoanType(nextType)[0] || "";
-              setForm((current) => ({ ...current, loanType: nextType, loanPurpose: nextPurpose }));
-            }}>
-              {loanTypeOptions.map((option) => <option key={option} value={option}>{optionText(option, language)}</option>)}
-            </select>
-          </label>
         </section>
 
         <section>
