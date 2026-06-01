@@ -309,7 +309,31 @@ function applyClientIntakeToNote(note, intake) {
     "ratePreference",
     "offsetRequested",
     "hemMonthly",
-    "financialAssetBuffer"
+    "financialAssetBuffer",
+    "commercialPropertyUse",
+    "businessTradingName",
+    "businessAbnAcn",
+    "businessStructure",
+    "annualBusinessTurnover",
+    "netProfitBeforeTax",
+    "commercialSecurityAddress",
+    "commercialLeaseIncome",
+    "commercialFundsPurpose",
+    "vehicleUse",
+    "vehicleCondition",
+    "saleType",
+    "vehicleDescription",
+    "vehiclePrice",
+    "tradeInDeposit",
+    "currentLender",
+    "currentLoanBalance",
+    "currentRepayment",
+    "refinanceReason",
+    "businessPurpose",
+    "gstRegistered",
+    "yearsTrading",
+    "monthlyTurnover",
+    "sourceUrl"
   ];
   for (const field of fields) {
     if (intake[field] !== undefined && intake[field] !== "") next[field] = intake[field];
@@ -342,6 +366,14 @@ function normalizeClientIntakeSubmission(body = {}) {
     loanTermYears: Number(body.loanTermYears || 30),
     hemMonthly: Number(body.hemMonthly || 0),
     financialAssetBuffer: Number(body.financialAssetBuffer || 0),
+    annualBusinessTurnover: Number(body.annualBusinessTurnover || 0),
+    netProfitBeforeTax: Number(body.netProfitBeforeTax || 0),
+    commercialLeaseIncome: Number(body.commercialLeaseIncome || 0),
+    vehiclePrice: Number(body.vehiclePrice || 0),
+    tradeInDeposit: Number(body.tradeInDeposit || 0),
+    currentLoanBalance: Number(body.currentLoanBalance || 0),
+    currentRepayment: Number(body.currentRepayment || 0),
+    monthlyTurnover: Number(body.monthlyTurnover || 0),
     offsetRequested: Boolean(body.offsetRequested)
   };
 }
@@ -1007,35 +1039,11 @@ app.get("/api/client-intake/:token", (request, response) => {
   if (!intake) return response.status(404).json({ error: "Loan form link not found" });
   const note = callNotes.find((item) => item.id === intake.callNoteId);
   response.json({
+    ...(note || {}),
     token: intake.token,
     status: intake.status,
     submittedAt: intake.submittedAt,
-    callNoteId: intake.callNoteId,
-    ...Object.fromEntries([
-      "clientName",
-      "secondApplicantName",
-      "mobile",
-      "email",
-      "preferredLanguage",
-      "loanType",
-      "loanPurpose",
-      "loanAmount",
-      "propertyValue",
-      "depositEquity",
-      "propertyLocation",
-      "timeline",
-      "dateOfBirth",
-      "address",
-      "residencyStatus",
-      "maritalStatus",
-      "dependants",
-      "employmentType",
-      "annualIncome",
-      "secondAnnualIncome",
-      "hemMonthly",
-      "financialAssetBuffer",
-      "creditIssue"
-    ].map((field) => [field, note?.[field] ?? ""]))
+    callNoteId: intake.callNoteId
   });
 });
 

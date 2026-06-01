@@ -1245,20 +1245,19 @@ pre {
 
 .client-intake-shell {
   background:
-    radial-gradient(circle at top left, rgba(198, 163, 89, 0.18), transparent 300px),
-    linear-gradient(135deg, #08120e 0, #14251d 38%, #f7f5ef 38.2%, #faf9f5 100%);
+    linear-gradient(135deg, rgba(8, 18, 14, 0.96), rgba(14, 31, 24, 0.92) 36%, rgba(246, 243, 236, 0.98) 36.1%, #fbfaf7 100%);
   min-height: 100vh;
-  padding: 28px;
+  padding: clamp(14px, 3vw, 32px);
 }
 
 .client-intake-card {
   background: rgba(255, 255, 255, 0.98);
   border: 1px solid rgba(198, 163, 89, 0.28);
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: 0 24px 70px rgba(8, 18, 14, 0.18);
-  font-size: 17px;
+  font-size: 16px;
   margin: 0 auto;
-  max-width: 1120px;
+  max-width: 1180px;
   overflow: hidden;
 }
 
@@ -1268,9 +1267,15 @@ pre {
     #10231b;
   color: #fff;
   display: grid;
-  gap: 20px;
-  grid-template-columns: 1.05fr 1.6fr;
-  padding: 28px;
+  gap: 22px;
+  padding: clamp(22px, 4vw, 36px);
+}
+
+.client-form-hero-top {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
 }
 
 .client-form-brand {
@@ -1308,18 +1313,53 @@ pre {
 
 .client-form-copy h1 {
   color: #fff;
-  font-size: 34px;
+  font-size: clamp(32px, 5vw, 54px);
   letter-spacing: 0;
-  line-height: 1.08;
+  line-height: 1;
   margin: 6px 0 8px;
 }
 
 .client-form-copy p {
   color: #dce7df;
-  font-size: 17px;
+  font-size: clamp(17px, 2vw, 20px);
   line-height: 1.55;
   margin: 0;
   max-width: 780px;
+}
+
+.language-switch {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  display: flex;
+  gap: 4px;
+  padding: 5px;
+}
+
+.language-switch button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: #f5ead1;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 900;
+  gap: 7px;
+  min-height: 42px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.language-switch button.active {
+  background: #fff8e8;
+  color: #10231b;
+}
+
+.language-switch span {
+  font-size: 20px;
+  line-height: 1;
 }
 
 .client-form-support {
@@ -1345,21 +1385,51 @@ pre {
 
 .client-intake-card section {
   border-top: 1px solid #edf0ed;
-  padding: 26px 30px 30px;
+  padding: clamp(22px, 3vw, 32px);
 }
 
 .client-intake-card section h2 {
   color: #13201a;
-  font-size: 23px;
+  font-size: clamp(24px, 3vw, 30px);
   letter-spacing: 0;
-  margin-bottom: 2px;
+  margin: 0 0 4px;
 }
 
 .client-intake-grid {
   display: grid;
-  gap: 16px;
+  gap: 14px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 14px;
+  margin-top: 16px;
+}
+
+.client-intake-card label {
+  color: #1d2d25;
+  display: grid;
+  font-size: 14px;
+  font-weight: 900;
+  gap: 7px;
+}
+
+.client-intake-card input,
+.client-intake-card textarea,
+.client-intake-card select {
+  background: #fbfcfa;
+  border: 1px solid #c9d4ce;
+  border-radius: 8px;
+  color: #11241a;
+  min-height: 48px;
+  outline: 0;
+  padding: 0 13px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  width: 100%;
+}
+
+.client-intake-card input:focus,
+.client-intake-card textarea:focus,
+.client-intake-card select:focus {
+  background: #fff;
+  border-color: #b89044;
+  box-shadow: 0 0 0 3px rgba(184, 144, 68, 0.16);
 }
 
 .client-wide-field {
@@ -1367,12 +1437,51 @@ pre {
 }
 
 .client-wide-field textarea {
-  border: 1px solid #cfd8d2;
-  border-radius: 8px;
   font-size: 16px;
   min-height: 90px;
-  padding: 10px;
+  padding: 12px;
   resize: vertical;
+}
+
+.loan-type-strip {
+  align-items: end;
+  background: #f7f4ec;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 360px);
+}
+
+.loan-type-strip span {
+  color: #6e766f;
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.loan-type-strip strong {
+  color: #10251d;
+  display: block;
+  font-size: 24px;
+  letter-spacing: 0;
+  margin-top: 4px;
+}
+
+.commercial-panel,
+.conditional-panel {
+  background: #f5f8f5;
+  border: 1px solid #dce8df;
+  border-radius: 8px;
+  margin-top: 16px;
+  padding: 18px;
+}
+
+.commercial-panel h3,
+.conditional-panel h3 {
+  color: #0f3328;
+  font-size: 20px;
+  margin: 0;
 }
 
 .client-submit {
@@ -1566,6 +1675,7 @@ select {
     .check-grid,
     .note-form-grid,
     .note-text-grid,
+    .loan-type-strip,
     .client-intake-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1687,6 +1797,7 @@ select {
     .log-row,
     .note-form-grid,
     .note-text-grid,
+    .loan-type-strip,
     .client-intake-grid,
     .recent-note-list > div {
     grid-template-columns: 1fr;

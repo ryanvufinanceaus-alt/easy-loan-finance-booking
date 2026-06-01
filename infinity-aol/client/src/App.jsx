@@ -587,7 +587,7 @@ const emptyCallNote = {
   preferredLanguage: "Vietnamese / English",
   sourceChannel: "",
   bestTimeToContact: "",
-  loanType: "Purchase",
+  loanType: "Home loan",
   loanPurpose: "Purchase owner occupied dwelling",
   loanAmount: "",
   propertyValue: "",
@@ -627,16 +627,43 @@ const redFlagOptions = [
   "Urgent settlement"
 ];
 
-const loanPurposeOptions = [
+const homeLoanPurposeOptions = [
   "Purchase owner occupied dwelling",
   "Purchase investment property",
   "Pre-approval - owner occupied",
   "Pre-approval - investment",
   "Refinance existing home loan",
   "Refinance and cash out",
-  "Debt consolidation",
   "Construction",
   "Other purpose"
+];
+const commercialPurposeOptions = ["Commercial property purchase", "Commercial refinance", "Commercial cash out", "Business/commercial lending", "Asset finance", "Other purpose"];
+const businessPurposeOptions = ["Working capital", "Business expansion", "Equipment purchase", "Cash flow support", "Tax debt", "Other purpose"];
+const carPurposeOptions = ["Car loan - purchase", "Car loan - refinance", "Business vehicle", "Other purpose"];
+const personalPurposeOptions = ["Personal loan - debt consolidation", "Personal loan - home improvement", "Personal loan - travel", "Personal loan - other"];
+const loanPurposeOptions = [...homeLoanPurposeOptions, ...commercialPurposeOptions, ...businessPurposeOptions, ...carPurposeOptions, ...personalPurposeOptions]
+  .filter((value, index, arr) => arr.indexOf(value) === index);
+const loanTypeOptions = ["Home loan", "Refinance", "Commercial loan", "Business loan", "Car loan", "Personal loan"];
+const publicLoanEntries = {
+  start: { type: "", title: "Loan Application", viTitle: "Thông tin vay", purpose: "" },
+  "loan-form": { type: "", title: "Loan Application", viTitle: "Thông tin vay", purpose: "" },
+  "client-info": { type: "", title: "Loan Application", viTitle: "Thông tin vay", purpose: "" },
+  apply: { type: "", title: "Loan Application", viTitle: "Thông tin vay", purpose: "" },
+  "home-loan": { type: "Home loan", title: "Home Loan Application", viTitle: "Thông tin vay mua nhà", purpose: "Purchase owner occupied dwelling" },
+  refinance: { type: "Refinance", title: "Refinance Application", viTitle: "Thông tin refinance", purpose: "Refinance existing home loan" },
+  "commercial-loan": { type: "Commercial loan", title: "Commercial Loan Application", viTitle: "Thông tin vay commercial", purpose: "Commercial property purchase" },
+  "business-loan": { type: "Business loan", title: "Business Loan Application", viTitle: "Thông tin vay business", purpose: "Working capital" },
+  "car-loan": { type: "Car loan", title: "Car Loan Application", viTitle: "Thông tin vay mua xe", purpose: "Car loan - purchase" },
+  "personal-loan": { type: "Personal loan", title: "Personal Loan Application", viTitle: "Thông tin vay cá nhân", purpose: "Personal loan - debt consolidation" }
+};
+
+const callLoanTypeOptions = ["Home loan", "Investment loan", "Refinance", "Commercial", "Personal loan", "Car loan"];
+const callLoanPurposeOptions = [
+  ...loanPurposeOptions,
+  "Personal loan - debt consolidation",
+  "Personal loan - other",
+  "Car loan - purchase",
+  "Car loan - refinance"
 ];
 
 const defaultHemProfiles = {
@@ -656,30 +683,227 @@ const yesNoOptions = ["Yes", "No"];
 const yesNoAdviseOptions = ["Yes", "No", "Please advise"];
 const insurancePolicyOptions = ["Yes", "No", "I would like to know more"];
 
-function SelectField({ label, value, onChange, options }) {
+const clientFormCopy = {
+  en: {
+    title: "Loan Form",
+    intro: "Please complete this form with accurate, complete and up-to-date information so Easy Loan Finance can prepare your loan application properly.",
+    secure: "Secure client information",
+    receivedTitle: "Thank you. We have received your loan form.",
+    receivedDescription: "Your information has been sent securely to Easy Loan Finance. A broker will review your details and contact you as soon as practical.",
+    nextTitle: "What happens next",
+    nextBody: "We will check the information you provided, match it with any call notes already on file, and let you know if anything else is needed before preparing lender or application documents.",
+    disclaimer: "This confirmation means your form was received. It is not a loan approval or lender submission.",
+    alreadySubmitted: "This form has already been submitted. You can submit again if you need to update details.",
+    submit: "Submit to Easy Loan Finance",
+    select: "Please Select",
+    updating: "Submitting..."
+  },
+  vi: {
+    title: "Thông tin vay",
+    intro: "Vui lòng điền thông tin chính xác, đầy đủ và cập nhật để Easy Loan Finance chuẩn bị hồ sơ vay cho bạn.",
+    secure: "Thông tin khách hàng bảo mật",
+    receivedTitle: "Cảm ơn bạn. Easy Loan Finance đã nhận được form.",
+    receivedDescription: "Thông tin đã được gửi bảo mật đến Easy Loan Finance. Broker sẽ kiểm tra và liên hệ bạn trong thời gian sớm nhất.",
+    nextTitle: "Bước tiếp theo",
+    nextBody: "Chúng tôi sẽ kiểm tra thông tin bạn cung cấp, đối chiếu với ghi chú cuộc gọi nếu đã có, và báo lại nếu cần thêm giấy tờ trước khi chuẩn bị hồ sơ cho ngân hàng.",
+    disclaimer: "Xác nhận này nghĩa là form đã được nhận. Đây không phải là phê duyệt khoản vay hoặc hồ sơ đã nộp lên ngân hàng.",
+    alreadySubmitted: "Form này đã được gửi trước đó. Bạn vẫn có thể gửi lại nếu muốn cập nhật thông tin.",
+    submit: "Gửi cho Easy Loan Finance",
+    select: "Vui lòng chọn",
+    updating: "Đang gửi..."
+  }
+};
+
+const labelVi = {
+  "Personal Details": "Thông tin cá nhân",
+  "Full Name": "Họ và tên",
+  "Second applicant": "Người vay thứ hai",
+  "Date of birth": "Ngày sinh",
+  "Email": "Email",
+  "Mobile": "Số điện thoại",
+  "Marital Status": "Tình trạng hôn nhân",
+  "Residential Status": "Tình trạng cư trú",
+  "Visa Sub-class": "Loại visa",
+  "Number of Dependents": "Số người phụ thuộc",
+  "DOB of Dependent 1": "Ngày sinh người phụ thuộc 1",
+  "DOB of Dependent 2": "Ngày sinh người phụ thuộc 2",
+  "DOB of Dependent 3": "Ngày sinh người phụ thuộc 3",
+  "DOB of Dependent 4": "Ngày sinh người phụ thuộc 4",
+  "Residential History Within The Last 3 Years": "Lịch sử địa chỉ trong 3 năm gần nhất",
+  "Current residential address": "Địa chỉ hiện tại",
+  "Suburb": "Suburb",
+  "State": "Bang",
+  "From Date": "Từ ngày",
+  "Previous residential address": "Địa chỉ trước đây",
+  "Previous suburb": "Suburb trước đây",
+  "Previous state": "Bang trước đây",
+  "Previous postal code": "Postcode trước đây",
+  "Previous Residential Status": "Tình trạng nhà ở trước đây",
+  "Employment History Within The Last 3 Years": "Lịch sử công việc trong 3 năm gần nhất",
+  "Employment Type": "Loại công việc",
+  "Business Name": "Tên công ty/doanh nghiệp",
+  "Business Address": "Địa chỉ công ty/doanh nghiệp",
+  "Job Title": "Chức danh",
+  "Employment Basis": "Hình thức làm việc",
+  "Contact Name": "Tên người liên hệ",
+  "Contact Number": "Số điện thoại liên hệ",
+  "Main income p.a.": "Thu nhập chính mỗi năm",
+  "Second income p.a.": "Thu nhập người vay thứ hai mỗi năm",
+  "Rental income p.a.": "Thu nhập cho thuê mỗi năm",
+  "Previous Employment Type": "Loại công việc trước đây",
+  "Previous Business Name": "Tên công ty trước đây",
+  "Previous Job Title": "Chức danh trước đây",
+  "Previous Employment Basis": "Hình thức làm việc trước đây",
+  "Previous From Date": "Làm từ ngày",
+  "Previous To Date": "Đến ngày",
+  "Living Expenses": "Chi phí sinh hoạt",
+  "Expenses": "Loại chi phí",
+  "AP 1 - Amount ($)": "Người vay 1 - số tiền ($)",
+  "AP 2 - Amount ($)": "Người vay 2 - số tiền ($)",
+  "Private Health Insurance - Applicant 1": "Bảo hiểm sức khỏe tư nhân - người vay 1",
+  "Applicant 1 Amount ($)/month": "Người vay 1 - số tiền/tháng",
+  "Private Health Insurance - Applicant 2": "Bảo hiểm sức khỏe tư nhân - người vay 2",
+  "Applicant 2 Amount ($)/month": "Người vay 2 - số tiền/tháng",
+  "Income protection or life insurance policies": "Bảo hiểm thu nhập hoặc bảo hiểm nhân thọ",
+  "Monthly living expense total": "Tổng chi phí sinh hoạt mỗi tháng",
+  "Your Assets": "Tài sản",
+  "Real Estate Address": "Địa chỉ bất động sản",
+  "Real Estate Value ($)": "Giá trị bất động sản ($)",
+  "Cash/Savings Amount ($)": "Tiền mặt/tiết kiệm ($)",
+  "Banking with": "Ngân hàng đang dùng",
+  "Car/Motor Vehicle Model/year": "Xe - model/năm",
+  "Motor Vehicle Estimated value ($)": "Giá trị xe ước tính ($)",
+  "Home contents item": "Tài sản trong nhà",
+  "Home contents estimated value ($)": "Giá trị tài sản trong nhà ($)",
+  "Savings/assets total": "Tổng tiết kiệm/tài sản",
+  "Loan Details": "Thông tin khoản vay",
+  "Your loan purpose": "Mục đích vay",
+  "Type of property": "Loại bất động sản",
+  "How much would you like to borrow ($)": "Số tiền muốn vay ($)",
+  "Location (intended postcode OR address)": "Địa chỉ hoặc postcode dự định mua/vay",
+  "Estimated property value ($)": "Giá trị bất động sản ước tính ($)",
+  "Deposit/equity": "Tiền cọc/equity",
+  "Are you first home buyer?": "Bạn có phải người mua nhà lần đầu không?",
+  "Would you like fixed interest rate for a certain period?": "Bạn có muốn lãi suất cố định trong một thời gian không?",
+  "Would you like interest rate to be variable?": "Bạn có muốn lãi suất thả nổi không?",
+  "Would you like to consider a split home loan?": "Bạn có muốn cân nhắc vay split không?",
+  "Loan term": "Thời hạn vay",
+  "Timeline": "Thời gian dự kiến",
+  "Credit issue": "Vấn đề tín dụng",
+  "Existing debts / comments": "Các khoản nợ hiện tại / ghi chú",
+  "Anything else for your broker": "Thông tin khác cho broker",
+  "Commercial Details": "Thông tin commercial",
+  "Commercial property use": "Mục đích sử dụng tài sản commercial",
+  "Business trading name": "Tên doanh nghiệp giao dịch",
+  "Business ABN/ACN": "ABN/ACN",
+  "Business structure": "Cấu trúc doanh nghiệp",
+  "Annual business turnover": "Doanh thu doanh nghiệp mỗi năm",
+  "Net profit before tax": "Lợi nhuận trước thuế",
+  "Commercial security address": "Địa chỉ tài sản bảo đảm commercial",
+  "Lease/rental income": "Thu nhập thuê/lease",
+  "Purpose of funds": "Mục đích sử dụng vốn"
+};
+
+const optionVi = {
+  "Single": "Độc thân",
+  "Married": "Đã kết hôn",
+  "Divorced": "Ly hôn",
+  "Widowed": "Góa",
+  "Australian Citizen": "Công dân Úc",
+  "Australian PR": "Thường trú nhân Úc",
+  "Australian TR": "Visa tạm trú Úc",
+  "NZ Citizen": "Công dân New Zealand",
+  "Own home": "Nhà sở hữu",
+  "Own home with mortgage": "Nhà sở hữu còn mortgage",
+  "Renting": "Thuê nhà",
+  "Boarding": "Ở cùng gia đình/người khác",
+  "PAYG": "Làm công ăn lương",
+  "Self - employed": "Tự kinh doanh",
+  "Unemployed": "Thất nghiệp",
+  "Retired": "Nghỉ hưu",
+  "Full-time": "Toàn thời gian",
+  "Part-time": "Bán thời gian",
+  "Contract": "Hợp đồng",
+  "Temporary": "Tạm thời",
+  "Internship": "Thực tập",
+  "Yes": "Có",
+  "No": "Không",
+  "Please advise": "Cần tư vấn",
+  "I would like to know more": "Tôi muốn biết thêm",
+  "Purchase owner occupied dwelling": "Mua nhà để ở",
+  "Purchase investment property": "Mua bất động sản đầu tư",
+  "Pre-approval - owner occupied": "Pre-approval mua nhà ở",
+  "Pre-approval - investment": "Pre-approval mua đầu tư",
+  "Refinance existing home loan": "Refinance khoản vay hiện tại",
+  "Refinance and cash out": "Refinance và rút equity",
+  "Construction": "Xây nhà",
+  "Commercial property purchase": "Mua bất động sản commercial",
+  "Commercial refinance": "Refinance commercial",
+  "Business/commercial lending": "Vay doanh nghiệp/commercial",
+  "Other purpose": "Mục đích khác"
+};
+
+function tx(label, language) {
+  return language === "vi" ? labelVi[label] || label : label;
+}
+
+function optionText(option, language) {
+  return language === "vi" ? optionVi[option] || option : option;
+}
+
+function getPublicLoanEntry(pathname) {
+  const clean = pathname.replace(/^\/infinity-aol\/?/, "/").replace(/^\/+|\/+$/g, "");
+  const [first, second] = clean.split("/");
+  if (publicLoanEntries[first]) return publicLoanEntries[first];
+  if (["loan-form", "client-info", "apply"].includes(first) && !second) return publicLoanEntries[first];
+  return null;
+}
+
+function purposeOptionsForLoanType(loanType) {
+  if (loanType === "Commercial loan") return commercialPurposeOptions;
+  if (loanType === "Business loan") return businessPurposeOptions;
+  if (loanType === "Car loan") return carPurposeOptions;
+  if (loanType === "Personal loan") return personalPurposeOptions;
+  if (loanType === "Refinance") return ["Refinance existing home loan", "Refinance and cash out", "Other purpose"];
+  return homeLoanPurposeOptions;
+}
+
+function SelectField({ label, value, onChange, options, language = "en" }) {
   return (
     <label>
-      {label}
+      {tx(label, language)}
       <select value={value} onChange={(event) => onChange(event.target.value)}>
-        <option value="">Please Select</option>
-        {options.map((option) => <option key={option}>{option}</option>)}
+        <option value="">{clientFormCopy[language].select}</option>
+        {options.map((option) => <option key={option} value={option}>{optionText(option, language)}</option>)}
       </select>
     </label>
   );
 }
 
-function ClientLoanFormHeader({ title, description }) {
+function ClientLoanFormHeader({ title, description, language = "en", onLanguageChange }) {
   return (
     <header className="client-form-hero">
-      <div className="client-form-brand">
-        <img src="/elf-logo.png" alt="Easy Loan Finance" />
-        <div>
-          <span>Easy Loan Finance</span>
-          <strong>Quick Loan, Easy Life</strong>
+      <div className="client-form-hero-top">
+        <div className="client-form-brand">
+          <img src="/elf-logo.png" alt="Easy Loan Finance" />
+          <div>
+            <span>Easy Loan Finance</span>
+            <strong>Quick Loan, Easy Life</strong>
+          </div>
         </div>
+        {onLanguageChange && (
+          <div className="language-switch" aria-label="Language">
+            <button type="button" className={language === "en" ? "active" : ""} onClick={() => onLanguageChange("en")}>
+              <span>🇦🇺</span> English
+            </button>
+            <button type="button" className={language === "vi" ? "active" : ""} onClick={() => onLanguageChange("vi")}>
+              <span>🇻🇳</span> Việt Nam
+            </button>
+          </div>
+        )}
       </div>
       <div className="client-form-copy">
-        <p className="client-form-kicker">Secure client information</p>
+        <p className="client-form-kicker">{clientFormCopy[language].secure}</p>
         <h1>{title}</h1>
         <p>{description}</p>
       </div>
@@ -920,8 +1144,8 @@ function CallNotesPage({ onOpenAutofill }) {
               <label>Email<input value={form.email} onChange={(event) => updateField("email", event.target.value)} /></label>
               <label>Language<select value={form.preferredLanguage} onChange={(event) => updateField("preferredLanguage", event.target.value)}><option>Vietnamese / English</option><option>English</option><option>Vietnamese</option></select></label>
               <label>Source<input value={form.sourceChannel} onChange={(event) => updateField("sourceChannel", event.target.value)} placeholder="Referral, Facebook, website" /></label>
-              <label>Loan type<select value={form.loanType} onChange={(event) => updateField("loanType", event.target.value)}><option>Purchase</option><option>Refinance</option><option>Pre-approval</option><option>Construction</option></select></label>
-              <label>Loan purpose<select value={form.loanPurpose} onChange={(event) => updateField("loanPurpose", event.target.value)}>{loanPurposeOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+              <label>Loan type<select value={form.loanType} onChange={(event) => updateField("loanType", event.target.value)}>{callLoanTypeOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+              <label>Loan purpose<select value={form.loanPurpose} onChange={(event) => updateField("loanPurpose", event.target.value)}>{callLoanPurposeOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
               <label>Loan amount<input value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>
               <label>Property value<input value={form.propertyValue} onChange={(event) => updateField("propertyValue", event.target.value)} /></label>
               <label>Deposit/equity<input value={form.depositEquity} onChange={(event) => updateField("depositEquity", event.target.value)} /></label>
@@ -1021,16 +1245,17 @@ function CallNotesPage({ onOpenAutofill }) {
   );
 }
 
-function ClientIntakePage({ token, publicForm = false }) {
+function ClientIntakePage({ token, publicForm = false, entry = null }) {
   const [meta, setMeta] = useState(null);
+  const [language, setLanguage] = useState("en");
   const [form, setForm] = useState({
     clientName: "",
     secondApplicantName: "",
     mobile: "",
     email: "",
     preferredLanguage: "Vietnamese / English",
-    loanType: "Purchase",
-    loanPurpose: "",
+    loanType: entry?.type || "Home loan",
+    loanPurpose: entry?.purpose || "",
     loanAmount: "",
     propertyValue: "",
     depositEquity: "",
@@ -1101,6 +1326,30 @@ function ClientIntakePage({ token, publicForm = false }) {
     offsetRequested: true,
     hemMonthly: "",
     financialAssetBuffer: "",
+    commercialPropertyUse: "",
+    businessTradingName: "",
+    businessAbnAcn: "",
+    businessStructure: "",
+    annualBusinessTurnover: "",
+    netProfitBeforeTax: "",
+    commercialSecurityAddress: "",
+    commercialLeaseIncome: "",
+    commercialFundsPurpose: "",
+    vehicleUse: "",
+    vehicleCondition: "",
+    saleType: "",
+    vehicleDescription: "",
+    vehiclePrice: "",
+    tradeInDeposit: "",
+    currentLender: "",
+    currentLoanBalance: "",
+    currentRepayment: "",
+    refinanceReason: "",
+    businessPurpose: "",
+    gstRegistered: "",
+    yearsTrading: "",
+    monthlyTurnover: "",
+    sourceUrl: "",
     clientNotes: ""
   });
   const [loading, setLoading] = useState(true);
@@ -1118,15 +1367,30 @@ function ClientIntakePage({ token, publicForm = false }) {
     api(`/api/client-intake/${endpointToken}`)
       .then((result) => {
         setMeta(result);
-        setForm((current) => ({ ...current, ...Object.fromEntries(Object.entries(result).filter(([, value]) => value !== "" && value !== null)) }));
+        const routeDefaults = publicForm && entry ? { loanType: entry.type, loanPurpose: entry.purpose } : {};
+        setForm((current) => ({
+          ...current,
+          ...routeDefaults,
+          ...Object.fromEntries(Object.entries(result).filter(([, value]) => value !== "" && value !== null))
+        }));
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [token, publicForm]);
+  }, [token, publicForm, entry]);
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
   }
+
+  const txt = clientFormCopy[language];
+  const currentTitle = language === "vi" ? entry?.viTitle || txt.title : entry?.title || txt.title;
+  const purposeOptions = purposeOptionsForLoanType(form.loanType);
+  const isCommercial = /commercial/i.test(`${form.loanPurpose} ${form.loanType}`);
+  const isBusiness = /business/i.test(`${form.loanPurpose} ${form.loanType}`);
+  const isVehicle = /car loan/i.test(form.loanType);
+  const isPersonal = /personal loan/i.test(form.loanType);
+  const isRefinance = /refinance/i.test(`${form.loanPurpose} ${form.loanType}`);
+  const L = (label) => tx(label, language);
 
   async function submitIntake(event) {
     event.preventDefault();
@@ -1136,7 +1400,7 @@ function ClientIntakePage({ token, publicForm = false }) {
       const endpointToken = publicForm ? "public" : token;
       await api(`/api/client-intake/${endpointToken}`, {
         method: "POST",
-        body: JSON.stringify(form)
+        body: JSON.stringify({ ...form, sourceUrl: location.href })
       });
       setSubmitted(true);
       setMessage("");
@@ -1153,15 +1417,16 @@ function ClientIntakePage({ token, publicForm = false }) {
       <main className="client-intake-shell">
         <section className="client-intake-card client-thank-you-card">
           <ClientLoanFormHeader
-            title="Thank you. We have received your loan form."
-            description="Your information has been sent securely to Easy Loan Finance. A broker will review your details and contact you as soon as practical."
+            title={txt.receivedTitle}
+            description={txt.receivedDescription}
+            language={language}
           />
           <div className="client-thank-you-body">
             <CheckCircle2 size={42} />
             <div>
-              <h2>What happens next</h2>
-              <p>We will check the information you provided, match it with any call notes already on file, and let you know if anything else is needed before preparing lender or application documents.</p>
-              <p>This confirmation means your form was received. It is not a loan approval or lender submission.</p>
+              <h2>{txt.nextTitle}</h2>
+              <p>{txt.nextBody}</p>
+              <p>{txt.disclaimer}</p>
             </div>
           </div>
         </section>
@@ -1173,125 +1438,200 @@ function ClientIntakePage({ token, publicForm = false }) {
     <main className="client-intake-shell">
       <form className="client-intake-card" onSubmit={submitIntake}>
         <ClientLoanFormHeader
-          title="Loan Form / Thong tin vay"
-          description="This is the full client information form. It links with any phone call note we already have, and your broker will review everything before any application submission."
+          title={currentTitle}
+          description={txt.intro}
+          language={language}
+          onLanguageChange={setLanguage}
         />
         {error && <div className="error-banner">{error}</div>}
         {message && <div className="success-banner">{message}</div>}
-        {meta?.status === "submitted" && !message ? <div className="success-banner">This form has already been submitted. You can submit again if you need to update details.</div> : null}
+        {meta?.status === "submitted" && !message ? <div className="success-banner">{txt.alreadySubmitted}</div> : null}
 
         <section>
-          <h2>Personal Details</h2>
+          <h2>{L("Personal Details")}</h2>
           <div className="client-intake-grid">
-            <label>Full Name<input required value={form.clientName} onChange={(event) => updateField("clientName", event.target.value)} /></label>
-            <label>Second applicant<input value={form.secondApplicantName} onChange={(event) => updateField("secondApplicantName", event.target.value)} /></label>
-            <label>Date of birth<input value={form.dateOfBirth} onChange={(event) => updateField("dateOfBirth", event.target.value)} placeholder="DD/MM/YYYY" /></label>
-            <label>Email<input required value={form.email} onChange={(event) => updateField("email", event.target.value)} placeholder="example@example.com" /></label>
-            <label>Mobile<input required value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
-            <SelectField label="Marital Status" value={form.maritalStatus} onChange={(value) => updateField("maritalStatus", value)} options={maritalStatusOptions} />
-            <SelectField label="Residential Status" value={form.residencyStatus} onChange={(value) => updateField("residencyStatus", value)} options={residencyOptions} />
-            <label>Visa Sub-class<input value={form.visaSubclass || ""} onChange={(event) => updateField("visaSubclass", event.target.value)} /></label>
-            <label>Number of Dependents<input value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)} /></label>
-            <label>DOB of Dependent 1<input value={form.dependant1Dob} onChange={(event) => updateField("dependant1Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
-            <label>DOB of Dependent 2<input value={form.dependant2Dob} onChange={(event) => updateField("dependant2Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
-            <label>DOB of Dependent 3<input value={form.dependant3Dob} onChange={(event) => updateField("dependant3Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
-            <label>DOB of Dependent 4<input value={form.dependant4Dob} onChange={(event) => updateField("dependant4Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+            <label>{L("Full Name")}<input required value={form.clientName} onChange={(event) => updateField("clientName", event.target.value)} /></label>
+            <label>{L("Second applicant")}<input value={form.secondApplicantName} onChange={(event) => updateField("secondApplicantName", event.target.value)} /></label>
+            <label>{L("Date of birth")}<input value={form.dateOfBirth} onChange={(event) => updateField("dateOfBirth", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+            <label>{L("Email")}<input required value={form.email} onChange={(event) => updateField("email", event.target.value)} placeholder="example@example.com" /></label>
+            <label>{L("Mobile")}<input required value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
+            <SelectField language={language} label="Marital Status" value={form.maritalStatus} onChange={(value) => updateField("maritalStatus", value)} options={maritalStatusOptions} />
+            <SelectField language={language} label="Residential Status" value={form.residencyStatus} onChange={(value) => updateField("residencyStatus", value)} options={residencyOptions} />
+            <label>{L("Visa Sub-class")}<input value={form.visaSubclass || ""} onChange={(event) => updateField("visaSubclass", event.target.value)} /></label>
+            <label>{L("Number of Dependents")}<input value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)} /></label>
+            <label>{L("DOB of Dependent 1")}<input value={form.dependant1Dob} onChange={(event) => updateField("dependant1Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+            <label>{L("DOB of Dependent 2")}<input value={form.dependant2Dob} onChange={(event) => updateField("dependant2Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+            <label>{L("DOB of Dependent 3")}<input value={form.dependant3Dob} onChange={(event) => updateField("dependant3Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+            <label>{L("DOB of Dependent 4")}<input value={form.dependant4Dob} onChange={(event) => updateField("dependant4Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+          </div>
+        </section>
+
+        <section className="loan-type-strip">
+          <div>
+            <span>{L("Loan type")}</span>
+            <strong>{currentTitle}</strong>
+          </div>
+          <label>{L("Change loan type")}
+            <select value={form.loanType} onChange={(event) => {
+              const nextType = event.target.value;
+              const nextPurpose = purposeOptionsForLoanType(nextType)[0] || "";
+              setForm((current) => ({ ...current, loanType: nextType, loanPurpose: nextPurpose }));
+            }}>
+              {loanTypeOptions.map((option) => <option key={option} value={option}>{optionText(option, language)}</option>)}
+            </select>
+          </label>
+        </section>
+
+        <section>
+          <h2>{L("Residential History Within The Last 3 Years")}</h2>
+          <div className="client-intake-grid">
+            <label>{L("Current residential address")}<input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
+            <label>{L("Suburb")}<input value={form.currentSuburb} onChange={(event) => updateField("currentSuburb", event.target.value)} /></label>
+            <label>{L("State")}<input value={form.currentState} onChange={(event) => updateField("currentState", event.target.value)} /></label>
+            <label>{L("From Date")}<input value={form.currentAddressFromDate} onChange={(event) => updateField("currentAddressFromDate", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+            <SelectField language={language} label="Residential Status" value={form.currentResidentialStatus} onChange={(value) => updateField("currentResidentialStatus", value)} options={residentialStatusOptions} />
+            <label>{L("Previous residential address")}<input value={form.previousAddress} onChange={(event) => updateField("previousAddress", event.target.value)} /></label>
+            <label>{L("Previous suburb")}<input value={form.previousSuburb} onChange={(event) => updateField("previousSuburb", event.target.value)} /></label>
+            <label>{L("Previous state")}<input value={form.previousState} onChange={(event) => updateField("previousState", event.target.value)} /></label>
+            <label>{L("Previous postal code")}<input value={form.previousPostcode} onChange={(event) => updateField("previousPostcode", event.target.value)} /></label>
+            <SelectField language={language} label="Previous Residential Status" value={form.previousResidentialStatus} onChange={(value) => updateField("previousResidentialStatus", value)} options={residentialStatusOptions} />
           </div>
         </section>
 
         <section>
-          <h2>Residential History Within The Last 3 Years</h2>
+          <h2>{L("Employment History Within The Last 3 Years")}</h2>
           <div className="client-intake-grid">
-            <label>Current residential address<input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
-            <label>Suburb<input value={form.currentSuburb} onChange={(event) => updateField("currentSuburb", event.target.value)} /></label>
-            <label>State<input value={form.currentState} onChange={(event) => updateField("currentState", event.target.value)} /></label>
-            <label>From Date<input value={form.currentAddressFromDate} onChange={(event) => updateField("currentAddressFromDate", event.target.value)} placeholder="DD/MM/YYYY" /></label>
-            <SelectField label="Residential Status" value={form.currentResidentialStatus} onChange={(value) => updateField("currentResidentialStatus", value)} options={residentialStatusOptions} />
-            <label>Previous residential address<input value={form.previousAddress} onChange={(event) => updateField("previousAddress", event.target.value)} /></label>
-            <label>Previous suburb<input value={form.previousSuburb} onChange={(event) => updateField("previousSuburb", event.target.value)} /></label>
-            <label>Previous state<input value={form.previousState} onChange={(event) => updateField("previousState", event.target.value)} /></label>
-            <label>Previous postal code<input value={form.previousPostcode} onChange={(event) => updateField("previousPostcode", event.target.value)} /></label>
-            <SelectField label="Previous Residential Status" value={form.previousResidentialStatus} onChange={(value) => updateField("previousResidentialStatus", value)} options={residentialStatusOptions} />
+            <SelectField language={language} label="Employment Type" value={form.employmentType} onChange={(value) => updateField("employmentType", value)} options={employmentTypeOptions} />
+            <label>{L("Business Name")}<input value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
+            <label>{L("Business Address")}<input value={form.businessAddress} onChange={(event) => updateField("businessAddress", event.target.value)} /></label>
+            <label>{L("Job Title")}<input value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
+            <SelectField language={language} label="Employment Basis" value={form.employmentBasis} onChange={(value) => updateField("employmentBasis", value)} options={employmentBasisOptions} />
+            <label>{L("From Date")}<input value={form.employmentFromDate} onChange={(event) => updateField("employmentFromDate", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+            <label>{L("Contact Name")}<input value={form.employmentContactName} onChange={(event) => updateField("employmentContactName", event.target.value)} /></label>
+            <label>{L("Contact Number")}<input value={form.employmentContactNumber} onChange={(event) => updateField("employmentContactNumber", event.target.value)} /></label>
+            <label>{L("Main income p.a.")}<input value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} /></label>
+            <label>{L("Second income p.a.")}<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
+            <label>{L("Rental income p.a.")}<input value={form.rentalIncomeAnnual} onChange={(event) => updateField("rentalIncomeAnnual", event.target.value)} /></label>
+            <SelectField language={language} label="Previous Employment Type" value={form.previousEmploymentType} onChange={(value) => updateField("previousEmploymentType", value)} options={employmentBasisOptions} />
+            <label>{L("Previous Business Name")}<input value={form.previousBusinessName} onChange={(event) => updateField("previousBusinessName", event.target.value)} /></label>
+            <label>{L("Previous Job Title")}<input value={form.previousJobTitle} onChange={(event) => updateField("previousJobTitle", event.target.value)} /></label>
+            <SelectField language={language} label="Previous Employment Basis" value={form.previousEmploymentBasis} onChange={(value) => updateField("previousEmploymentBasis", value)} options={employmentBasisOptions} />
+            <label>{L("Previous From Date")}<input value={form.previousEmploymentFromDate} onChange={(event) => updateField("previousEmploymentFromDate", event.target.value)} /></label>
+            <label>{L("Previous To Date")}<input value={form.previousEmploymentToDate} onChange={(event) => updateField("previousEmploymentToDate", event.target.value)} /></label>
           </div>
         </section>
 
         <section>
-          <h2>Employment History Within The Last 3 Years</h2>
+          <h2>{L("Living Expenses")}</h2>
           <div className="client-intake-grid">
-            <SelectField label="Employment Type" value={form.employmentType} onChange={(value) => updateField("employmentType", value)} options={employmentTypeOptions} />
-            <label>Business Name<input value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
-            <label>Business Address<input value={form.businessAddress} onChange={(event) => updateField("businessAddress", event.target.value)} /></label>
-            <label>Job Title<input value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
-            <SelectField label="Employment Basis" value={form.employmentBasis} onChange={(value) => updateField("employmentBasis", value)} options={employmentBasisOptions} />
-            <label>From Date<input value={form.employmentFromDate} onChange={(event) => updateField("employmentFromDate", event.target.value)} placeholder="DD/MM/YYYY" /></label>
-            <label>Contact Name<input value={form.employmentContactName} onChange={(event) => updateField("employmentContactName", event.target.value)} /></label>
-            <label>Contact Number<input value={form.employmentContactNumber} onChange={(event) => updateField("employmentContactNumber", event.target.value)} /></label>
-            <label>Main income p.a.<input value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} /></label>
-            <label>Second income p.a.<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
-            <label>Rental income p.a.<input value={form.rentalIncomeAnnual} onChange={(event) => updateField("rentalIncomeAnnual", event.target.value)} /></label>
-            <SelectField label="Previous Employment Type" value={form.previousEmploymentType} onChange={(value) => updateField("previousEmploymentType", value)} options={employmentBasisOptions} />
-            <label>Previous Business Name<input value={form.previousBusinessName} onChange={(event) => updateField("previousBusinessName", event.target.value)} /></label>
-            <label>Previous Job Title<input value={form.previousJobTitle} onChange={(event) => updateField("previousJobTitle", event.target.value)} /></label>
-            <SelectField label="Previous Employment Basis" value={form.previousEmploymentBasis} onChange={(value) => updateField("previousEmploymentBasis", value)} options={employmentBasisOptions} />
-            <label>Previous From Date<input value={form.previousEmploymentFromDate} onChange={(event) => updateField("previousEmploymentFromDate", event.target.value)} /></label>
-            <label>Previous To Date<input value={form.previousEmploymentToDate} onChange={(event) => updateField("previousEmploymentToDate", event.target.value)} /></label>
+            <label>{L("Expenses")}<input value={form.generalExpenses} onChange={(event) => updateField("generalExpenses", event.target.value)} /></label>
+            <label>{L("AP 1 - Amount ($)")}<input value={form.applicant1Expenses} onChange={(event) => updateField("applicant1Expenses", event.target.value)} /></label>
+            <label>{L("AP 2 - Amount ($)")}<input value={form.applicant2Expenses} onChange={(event) => updateField("applicant2Expenses", event.target.value)} /></label>
+            <SelectField language={language} label="Private Health Insurance - Applicant 1" value={form.applicant1PrivateHealth} onChange={(value) => updateField("applicant1PrivateHealth", value)} options={yesNoOptions} />
+            <label>{L("Applicant 1 Amount ($)/month")}<input value={form.applicant1PrivateHealthAmount} onChange={(event) => updateField("applicant1PrivateHealthAmount", event.target.value)} /></label>
+            <SelectField language={language} label="Private Health Insurance - Applicant 2" value={form.applicant2PrivateHealth} onChange={(value) => updateField("applicant2PrivateHealth", value)} options={yesNoOptions} />
+            <label>{L("Applicant 2 Amount ($)/month")}<input value={form.applicant2PrivateHealthAmount} onChange={(event) => updateField("applicant2PrivateHealthAmount", event.target.value)} /></label>
+            <SelectField language={language} label="Income protection or life insurance policies" value={form.insurancePolicies} onChange={(value) => updateField("insurancePolicies", value)} options={insurancePolicyOptions} />
+            <label>{L("Monthly living expense total")}<input value={form.hemMonthly} onChange={(event) => updateField("hemMonthly", event.target.value)} placeholder={language === "vi" ? "Để trống nếu chưa rõ" : "Leave blank if unsure"} /></label>
           </div>
         </section>
 
         <section>
-          <h2>Living Expenses</h2>
+          <h2>{L("Your Assets")}</h2>
           <div className="client-intake-grid">
-            <label>Expenses<input value={form.generalExpenses} onChange={(event) => updateField("generalExpenses", event.target.value)} /></label>
-            <label>AP 1 - Amount ($)<input value={form.applicant1Expenses} onChange={(event) => updateField("applicant1Expenses", event.target.value)} /></label>
-            <label>AP 2 - Amount ($)<input value={form.applicant2Expenses} onChange={(event) => updateField("applicant2Expenses", event.target.value)} /></label>
-            <SelectField label="Private Health Insurance - Applicant 1" value={form.applicant1PrivateHealth} onChange={(value) => updateField("applicant1PrivateHealth", value)} options={yesNoOptions} />
-            <label>Applicant 1 Amount ($)/month<input value={form.applicant1PrivateHealthAmount} onChange={(event) => updateField("applicant1PrivateHealthAmount", event.target.value)} /></label>
-            <SelectField label="Private Health Insurance - Applicant 2" value={form.applicant2PrivateHealth} onChange={(value) => updateField("applicant2PrivateHealth", value)} options={yesNoOptions} />
-            <label>Applicant 2 Amount ($)/month<input value={form.applicant2PrivateHealthAmount} onChange={(event) => updateField("applicant2PrivateHealthAmount", event.target.value)} /></label>
-            <SelectField label="Income protection or life insurance policies" value={form.insurancePolicies} onChange={(value) => updateField("insurancePolicies", value)} options={insurancePolicyOptions} />
-            <label>Monthly living expense total<input value={form.hemMonthly} onChange={(event) => updateField("hemMonthly", event.target.value)} placeholder="Leave blank if unsure" /></label>
+            <label>{L("Real Estate Address")}<input value={form.realEstateAssetAddress} onChange={(event) => updateField("realEstateAssetAddress", event.target.value)} /></label>
+            <label>{L("Real Estate Value ($)")}<input value={form.realEstateAssetValue} onChange={(event) => updateField("realEstateAssetValue", event.target.value)} /></label>
+            <label>{L("Cash/Savings Amount ($)")}<input value={form.cashSavingsAmount} onChange={(event) => updateField("cashSavingsAmount", event.target.value)} /></label>
+            <label>{L("Banking with")}<input value={form.cashSavingsBank} onChange={(event) => updateField("cashSavingsBank", event.target.value)} /></label>
+            <label>{L("Car/Motor Vehicle Model/year")}<input value={form.motorVehicleModelYear} onChange={(event) => updateField("motorVehicleModelYear", event.target.value)} /></label>
+            <label>{L("Motor Vehicle Estimated value ($)")}<input value={form.motorVehicleValue} onChange={(event) => updateField("motorVehicleValue", event.target.value)} /></label>
+            <label>{L("Home contents item")}<input value={form.homeContentsItem} onChange={(event) => updateField("homeContentsItem", event.target.value)} /></label>
+            <label>{L("Home contents estimated value ($)")}<input value={form.homeContentsValue} onChange={(event) => updateField("homeContentsValue", event.target.value)} /></label>
+            <label>{L("Savings/assets total")}<input value={form.financialAssetBuffer} onChange={(event) => updateField("financialAssetBuffer", event.target.value)} /></label>
           </div>
         </section>
 
         <section>
-          <h2>Your Assets</h2>
+          <h2>{L("Loan Details")}</h2>
           <div className="client-intake-grid">
-            <label>Real Estate Address<input value={form.realEstateAssetAddress} onChange={(event) => updateField("realEstateAssetAddress", event.target.value)} /></label>
-            <label>Real Estate Value ($)<input value={form.realEstateAssetValue} onChange={(event) => updateField("realEstateAssetValue", event.target.value)} /></label>
-            <label>Cash/Savings Amount ($)<input value={form.cashSavingsAmount} onChange={(event) => updateField("cashSavingsAmount", event.target.value)} /></label>
-            <label>Banking with<input value={form.cashSavingsBank} onChange={(event) => updateField("cashSavingsBank", event.target.value)} /></label>
-            <label>Car/Motor Vehicle Model/year<input value={form.motorVehicleModelYear} onChange={(event) => updateField("motorVehicleModelYear", event.target.value)} /></label>
-            <label>Motor Vehicle Estimated value ($)<input value={form.motorVehicleValue} onChange={(event) => updateField("motorVehicleValue", event.target.value)} /></label>
-            <label>Home contents item<input value={form.homeContentsItem} onChange={(event) => updateField("homeContentsItem", event.target.value)} /></label>
-            <label>Home contents estimated value ($)<input value={form.homeContentsValue} onChange={(event) => updateField("homeContentsValue", event.target.value)} /></label>
-            <label>Savings/assets total<input value={form.financialAssetBuffer} onChange={(event) => updateField("financialAssetBuffer", event.target.value)} /></label>
+            <SelectField language={language} label="Your loan purpose" value={form.loanPurpose} onChange={(value) => updateField("loanPurpose", value)} options={purposeOptions} />
+            <label>{L("Type of property")}<input value={form.propertyType} onChange={(event) => updateField("propertyType", event.target.value)} /></label>
+            <label>{L("How much would you like to borrow ($)")}<input value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>
+            <label>{L("Location (intended postcode OR address)")}<input value={form.propertyLocation} onChange={(event) => updateField("propertyLocation", event.target.value)} /></label>
+            <label>{L("Estimated property value ($)")}<input value={form.propertyValue} onChange={(event) => updateField("propertyValue", event.target.value)} /></label>
+            <label>{L("Deposit/equity")}<input value={form.depositEquity} onChange={(event) => updateField("depositEquity", event.target.value)} /></label>
+            <SelectField language={language} label="Are you first home buyer?" value={form.firstHomeBuyer} onChange={(value) => updateField("firstHomeBuyer", value)} options={yesNoOptions} />
+            <SelectField language={language} label="Would you like fixed interest rate for a certain period?" value={form.fixedRatePreference} onChange={(value) => updateField("fixedRatePreference", value)} options={yesNoAdviseOptions} />
+            <SelectField language={language} label="Would you like interest rate to be variable?" value={form.variableRatePreference} onChange={(value) => updateField("variableRatePreference", value)} options={yesNoAdviseOptions} />
+            <SelectField language={language} label="Would you like to consider a split home loan?" value={form.splitLoanPreference} onChange={(value) => updateField("splitLoanPreference", value)} options={yesNoAdviseOptions} />
+            <label>{L("Loan term")}<select value={form.loanTermYears} onChange={(event) => updateField("loanTermYears", event.target.value)}><option>30</option><option>25</option><option>40</option></select></label>
+            <label>{L("Timeline")}<input value={form.timeline} onChange={(event) => updateField("timeline", event.target.value)} placeholder="ASAP, 3 months, pre-approval" /></label>
+            <SelectField language={language} label="Credit issue" value={form.creditIssue} onChange={(value) => updateField("creditIssue", value)} options={["No", "Unsure", "Yes"]} />
           </div>
-        </section>
-
-        <section>
-          <h2>Loan Details</h2>
-          <div className="client-intake-grid">
-            <label>Your loan purpose<select value={form.loanPurpose} onChange={(event) => updateField("loanPurpose", event.target.value)}><option value="">Please Select</option>{loanPurposeOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
-            <label>Type of property<input value={form.propertyType} onChange={(event) => updateField("propertyType", event.target.value)} /></label>
-            <label>How much would you like to borrow ($)<input value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>
-            <label>Location (intended postcode OR address)<input value={form.propertyLocation} onChange={(event) => updateField("propertyLocation", event.target.value)} /></label>
-            <label>Estimated property value ($)<input value={form.propertyValue} onChange={(event) => updateField("propertyValue", event.target.value)} /></label>
-            <label>Deposit/equity<input value={form.depositEquity} onChange={(event) => updateField("depositEquity", event.target.value)} /></label>
-            <SelectField label="Are you first home buyer?" value={form.firstHomeBuyer} onChange={(value) => updateField("firstHomeBuyer", value)} options={yesNoOptions} />
-            <SelectField label="Would you like fixed interest rate for a certain period?" value={form.fixedRatePreference} onChange={(value) => updateField("fixedRatePreference", value)} options={yesNoAdviseOptions} />
-            <SelectField label="Would you like interest rate to be variable?" value={form.variableRatePreference} onChange={(value) => updateField("variableRatePreference", value)} options={yesNoAdviseOptions} />
-            <SelectField label="Would you like to consider a split home loan?" value={form.splitLoanPreference} onChange={(value) => updateField("splitLoanPreference", value)} options={yesNoAdviseOptions} />
-            <label>Loan term<select value={form.loanTermYears} onChange={(event) => updateField("loanTermYears", event.target.value)}><option>30</option><option>25</option><option>40</option></select></label>
-            <label>Timeline<input value={form.timeline} onChange={(event) => updateField("timeline", event.target.value)} placeholder="ASAP, 3 months, pre-approval" /></label>
-            <SelectField label="Credit issue" value={form.creditIssue} onChange={(value) => updateField("creditIssue", value)} options={["No", "Unsure", "Yes"]} />
-          </div>
-          <label className="client-wide-field">Existing debts / comments<textarea value={form.existingDebtsSummary} onChange={(event) => updateField("existingDebtsSummary", event.target.value)} /></label>
-          <label className="client-wide-field">Anything else for your broker<textarea value={form.clientNotes} onChange={(event) => updateField("clientNotes", event.target.value)} /></label>
+          {isRefinance && (
+            <div className="conditional-panel">
+              <h3>{L("Refinance Details")}</h3>
+              <div className="client-intake-grid">
+                <label>{L("Current lender")}<input value={form.currentLender} onChange={(event) => updateField("currentLender", event.target.value)} /></label>
+                <label>{L("Current loan balance")}<input value={form.currentLoanBalance} onChange={(event) => updateField("currentLoanBalance", event.target.value)} /></label>
+                <label>{L("Current repayment")}<input value={form.currentRepayment} onChange={(event) => updateField("currentRepayment", event.target.value)} /></label>
+                <label className="client-wide-field">{L("Reason for refinance")}<textarea value={form.refinanceReason} onChange={(event) => updateField("refinanceReason", event.target.value)} /></label>
+              </div>
+            </div>
+          )}
+          {isVehicle && (
+            <div className="conditional-panel">
+              <h3>{L("Vehicle Details")}</h3>
+              <div className="client-intake-grid">
+                <label>{L("Vehicle use")}<select value={form.vehicleUse} onChange={(event) => updateField("vehicleUse", event.target.value)}><option value="">Please select</option><option>Private</option><option>Business</option></select></label>
+                <label>{L("Vehicle condition")}<select value={form.vehicleCondition} onChange={(event) => updateField("vehicleCondition", event.target.value)}><option value="">Please select</option><option>New</option><option>Used</option></select></label>
+                <label>{L("Sale type")}<select value={form.saleType} onChange={(event) => updateField("saleType", event.target.value)}><option value="">Please select</option><option>Dealer</option><option>Private sale</option></select></label>
+                <label>{L("Vehicle price")}<input value={form.vehiclePrice} onChange={(event) => updateField("vehiclePrice", event.target.value)} /></label>
+                <label>{L("Deposit / trade-in")}<input value={form.tradeInDeposit} onChange={(event) => updateField("tradeInDeposit", event.target.value)} /></label>
+                <label className="client-wide-field">{L("Vehicle description")}<textarea value={form.vehicleDescription} onChange={(event) => updateField("vehicleDescription", event.target.value)} placeholder="Year, make, model, dealer/private seller" /></label>
+              </div>
+            </div>
+          )}
+          {isPersonal && (
+            <div className="conditional-panel">
+              <h3>{L("Personal Loan Details")}</h3>
+              <label className="client-wide-field">{L("What will the loan be used for?")}<textarea value={form.existingDebtsSummary} onChange={(event) => updateField("existingDebtsSummary", event.target.value)} /></label>
+            </div>
+          )}
+          {isBusiness && (
+            <div className="conditional-panel">
+              <h3>{L("Business Details")}</h3>
+              <div className="client-intake-grid">
+                <label>{L("Business purpose")}<input value={form.businessPurpose} onChange={(event) => updateField("businessPurpose", event.target.value)} /></label>
+                <label>{L("GST registered")}<select value={form.gstRegistered} onChange={(event) => updateField("gstRegistered", event.target.value)}><option value="">Please select</option><option>Yes</option><option>No</option></select></label>
+                <label>{L("Years trading")}<input value={form.yearsTrading} onChange={(event) => updateField("yearsTrading", event.target.value)} /></label>
+                <label>{L("Monthly turnover")}<input value={form.monthlyTurnover} onChange={(event) => updateField("monthlyTurnover", event.target.value)} /></label>
+              </div>
+            </div>
+          )}
+          {isCommercial && (
+            <div className="commercial-panel">
+              <h3>{L("Commercial Details")}</h3>
+              <div className="client-intake-grid">
+                <label>{L("Commercial property use")}<input value={form.commercialPropertyUse} onChange={(event) => updateField("commercialPropertyUse", event.target.value)} placeholder={language === "vi" ? "Owner occupied, investment, mixed use" : "Owner occupied, investment, mixed use"} /></label>
+                <label>{L("Business trading name")}<input value={form.businessTradingName} onChange={(event) => updateField("businessTradingName", event.target.value)} /></label>
+                <label>{L("Business ABN/ACN")}<input value={form.businessAbnAcn} onChange={(event) => updateField("businessAbnAcn", event.target.value)} /></label>
+                <label>{L("Business structure")}<input value={form.businessStructure} onChange={(event) => updateField("businessStructure", event.target.value)} placeholder="Sole trader, company, trust, partnership" /></label>
+                <label>{L("Annual business turnover")}<input value={form.annualBusinessTurnover} onChange={(event) => updateField("annualBusinessTurnover", event.target.value)} /></label>
+                <label>{L("Net profit before tax")}<input value={form.netProfitBeforeTax} onChange={(event) => updateField("netProfitBeforeTax", event.target.value)} /></label>
+                <label>{L("Commercial security address")}<input value={form.commercialSecurityAddress} onChange={(event) => updateField("commercialSecurityAddress", event.target.value)} /></label>
+                <label>{L("Lease/rental income")}<input value={form.commercialLeaseIncome} onChange={(event) => updateField("commercialLeaseIncome", event.target.value)} /></label>
+                <label>{L("Purpose of funds")}<input value={form.commercialFundsPurpose} onChange={(event) => updateField("commercialFundsPurpose", event.target.value)} /></label>
+              </div>
+            </div>
+          )}
+          <label className="client-wide-field">{L("Existing debts / comments")}<textarea value={form.existingDebtsSummary} onChange={(event) => updateField("existingDebtsSummary", event.target.value)} /></label>
+          <label className="client-wide-field">{L("Anything else for your broker")}<textarea value={form.clientNotes} onChange={(event) => updateField("clientNotes", event.target.value)} /></label>
         </section>
 
         <button className="primary-button client-submit" type="submit" disabled={saving}>
           {saving ? <RefreshCw size={17} className="spin" /> : <CheckCircle2 size={17} />}
-          Submit to Easy Loan Finance
+          {saving ? txt.updating : txt.submit}
         </button>
       </form>
     </main>
@@ -1336,7 +1676,8 @@ export default function App() {
   const showMock = location.pathname === "/mock-infinity-aol" || location.pathname === "/infinity-aol/mock-infinity-aol";
   const internalLogin = (isClientCallHost || isEasyFlowAiHost) && location.pathname === "/login";
   const intakeToken = location.pathname.match(/^\/(?:infinity-aol\/)?(?:client-info|loan-form|apply)\/([^/]+)/)?.[1] || "";
-  const publicLoanForm = /^\/(?:infinity-aol\/)?(?:client-info|loan-form|apply)\/?$/.test(location.pathname) || (isLoanFormHost && location.pathname === "/");
+  const publicEntry = getPublicLoanEntry(location.pathname);
+  const publicLoanForm = Boolean(publicEntry) || (isLoanFormHost && location.pathname === "/");
 
   useEffect(() => {
     if (showMock || internalLogin) return;
@@ -1673,7 +2014,7 @@ export default function App() {
 
   if (showMock) return <MockInfinity />;
   if (internalLogin) return <InternalLoginPage />;
-  if (intakeToken || publicLoanForm) return <ClientIntakePage token={intakeToken} publicForm={!intakeToken} />;
+  if (intakeToken || publicLoanForm) return <ClientIntakePage token={intakeToken} publicForm={!intakeToken} entry={publicEntry} />;
   if (view === "notes") return <CallNotesPage onOpenAutofill={() => setView("autofill")} />;
 
   return (

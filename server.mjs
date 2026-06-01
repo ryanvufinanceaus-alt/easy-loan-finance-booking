@@ -20,7 +20,7 @@ const PORTAL_HOST_RE = /^(portal|app)\./i;
 const CLIENT_CALL_HOST_RE = /^client-call\./i;
 const LOAN_FORM_HOST_RE = /^loan-form\./i;
 const EASYFLOW_AI_HOST_RE = /^(easyflow-ai|loanops|autofill)\./i;
-const LOAN_FORM_PUBLIC_PATH_RE = /^\/(?:loan-form|client-info|apply)(?:\/[^/]+)?\/?$/;
+const LOAN_FORM_PUBLIC_PATH_RE = /^\/(?:loan-form|client-info|apply|start|home-loan|refinance|commercial-loan|business-loan|car-loan|personal-loan)(?:\/[^/]+)?\/?$/;
 const LOAN_FORM_PUBLIC_API_RE = /^\/api\/client-intake\/[^/]+\/?$/;
 const SHARED_BRAND_ASSET_RE = /^\/(?:elf-logo\.(?:png|svg)|favicon\.ico)$/i;
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -2079,7 +2079,7 @@ createServer(async (req, res) => {
     const hostname = requestHostname(req);
     processBookingReminders(requestOrigin(req)).catch((error) => console.warn(error.message));
     if (LOAN_FORM_HOST_RE.test(hostname)) {
-      if (req.method === "GET" && /^\/(?:loan-form|client-info|apply)?\/?$/.test(url.pathname)) {
+      if (req.method === "GET" && /^\/(?:loan-form|client-info|apply|start|home-loan|refinance|commercial-loan|business-loan|car-loan|personal-loan)?\/?$/.test(url.pathname)) {
         res.setHeader("Clear-Site-Data", "\"cache\", \"storage\"");
       }
       if (SHARED_BRAND_ASSET_RE.test(url.pathname)) return await handleStatic(req, res, url);
