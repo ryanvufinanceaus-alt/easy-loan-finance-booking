@@ -354,6 +354,12 @@ h2 {
   padding: 10px 12px;
 }
 
+.panel-helper {
+  color: #607069;
+  font-size: 13px;
+  margin: -2px 12px 10px;
+}
+
 .split-title {
   justify-content: space-between;
 }
@@ -571,6 +577,28 @@ h2 {
 .preset-grid {
   display: grid;
   gap: 12px;
+}
+
+.hem-tool {
+  display: grid;
+  gap: 8px;
+}
+
+.hem-row,
+.hem-template-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1.1fr 0.9fr;
+}
+
+.hem-tool small {
+  color: #65746c;
+  font-size: 12px;
+}
+
+.hem-template-row {
+  grid-template-columns: 1fr 96px 1.4fr;
+  margin-top: 8px;
 }
 
 .queued-files {
@@ -934,6 +962,16 @@ pre {
   color: #fff;
 }
 
+.optional-call-detail {
+  border-top: 1px solid #edf0ed;
+  margin: 0 12px 12px;
+  padding-top: 10px;
+}
+
+.optional-call-detail .note-form-grid {
+  padding: 10px 0 0;
+}
+
 .recent-note-list {
   display: grid;
   gap: 8px;
@@ -993,6 +1031,7 @@ pre {
   border: 1px solid rgba(198, 163, 89, 0.28);
   border-radius: 10px;
   box-shadow: 0 24px 70px rgba(8, 18, 14, 0.18);
+  font-size: 17px;
   margin: 0 auto;
   max-width: 1120px;
   overflow: hidden;
@@ -1052,7 +1091,7 @@ pre {
 
 .client-form-copy p {
   color: #dce7df;
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1.55;
   margin: 0;
   max-width: 780px;
@@ -1081,19 +1120,19 @@ pre {
 
 .client-intake-card section {
   border-top: 1px solid #edf0ed;
-  padding: 18px 20px 20px;
+  padding: 26px 30px 30px;
 }
 
 .client-intake-card section h2 {
   color: #13201a;
-  font-size: 18px;
+  font-size: 23px;
   letter-spacing: 0;
   margin-bottom: 2px;
 }
 
 .client-intake-grid {
   display: grid;
-  gap: 12px;
+  gap: 16px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 14px;
 }
@@ -1105,6 +1144,7 @@ pre {
 .client-wide-field textarea {
   border: 1px solid #cfd8d2;
   border-radius: 8px;
+  font-size: 16px;
   min-height: 90px;
   padding: 10px;
   resize: vertical;
@@ -1268,6 +1308,15 @@ select {
   padding: 8px 10px;
 }
 
+.client-intake-card input,
+.client-intake-card textarea,
+.client-intake-card select {
+  border-radius: 10px;
+  font-size: 16px;
+  min-height: 46px;
+  padding: 11px 12px;
+}
+
 @media (max-width: 980px) {
   .app-shell,
   .main-grid,
@@ -1349,12 +1398,12 @@ select {
   }
 
   .client-form-copy h1 {
-    font-size: 27px;
+    font-size: 31px;
     line-height: 1.14;
   }
 
   .client-form-copy p {
-    font-size: 14px;
+    font-size: 16px;
   }
 
   .client-form-support a {
@@ -1366,11 +1415,11 @@ select {
   }
 
   .client-intake-card section {
-    padding: 16px 14px 18px;
+    padding: 22px 16px 24px;
   }
 
   .client-intake-card section h2 {
-    font-size: 17px;
+    font-size: 22px;
   }
 
   .client-submit {

@@ -366,6 +366,26 @@ const redFlagOptions = [
   "Urgent settlement"
 ];
 
+const loanPurposeOptions = [
+  "Purchase owner occupied dwelling",
+  "Purchase investment property",
+  "Pre-approval - owner occupied",
+  "Pre-approval - investment",
+  "Refinance existing home loan",
+  "Refinance and cash out",
+  "Debt consolidation",
+  "Construction",
+  "Other purpose"
+];
+
+const defaultHemProfiles = {
+  singleLow: { label: "Single - lean", amount: 3000, note: "Use only when living expenses are clearly modest and supported." },
+  singleStandard: { label: "Single - standard", amount: 3450, note: "Good default for most single applicants before verified expenses." },
+  singleHigher: { label: "Single - higher buffer", amount: 4000, note: "Use when lifestyle, rent, insurance or transport costs look higher." },
+  coupleStandard: { label: "Couple - standard", amount: 4500, note: "Good default for two-adult households before verified expenses." },
+  coupleHigher: { label: "Couple - higher buffer", amount: 5200, note: "Use when dependants, rent or higher discretionary spend are likely." }
+};
+
 const maritalStatusOptions = ["Single", "Married", "Divorced", "Widowed"];
 const residentialStatusOptions = ["Own home", "Own home with mortgage", "Renting", "Boarding"];
 const residencyOptions = ["Australian Citizen", "Australian PR", "Australian TR", "NZ Citizen"];
@@ -607,29 +627,26 @@ function CallNotesPage({ onOpenAutofill }) {
               <label>Language<select value={form.preferredLanguage} onChange={(event) => updateField("preferredLanguage", event.target.value)}><option>Vietnamese / English</option><option>English</option><option>Vietnamese</option></select></label>
               <label>Source<input value={form.sourceChannel} onChange={(event) => updateField("sourceChannel", event.target.value)} placeholder="Referral, Facebook, website" /></label>
               <label>Loan type<select value={form.loanType} onChange={(event) => updateField("loanType", event.target.value)}><option>Purchase</option><option>Refinance</option><option>Pre-approval</option><option>Construction</option></select></label>
-              <label>Loan purpose<input value={form.loanPurpose} onChange={(event) => updateField("loanPurpose", event.target.value)} /></label>
+              <label>Loan purpose<select value={form.loanPurpose} onChange={(event) => updateField("loanPurpose", event.target.value)}>{loanPurposeOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
               <label>Loan amount<input value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>
               <label>Property value<input value={form.propertyValue} onChange={(event) => updateField("propertyValue", event.target.value)} /></label>
               <label>Deposit/equity<input value={form.depositEquity} onChange={(event) => updateField("depositEquity", event.target.value)} /></label>
               <label>Property/location<input value={form.propertyLocation} onChange={(event) => updateField("propertyLocation", event.target.value)} /></label>
+              <label>Timeline<input value={form.timeline} onChange={(event) => updateField("timeline", event.target.value)} placeholder="ASAP, 3 months, pre-approval" /></label>
             </div>
           </section>
 
           <section className="panel note-panel">
             <div className="panel-title"><ShieldCheck size={18} /><h2>Fact Find Snapshot</h2></div>
+            <p className="panel-helper">Only ask enough to triage borrowing path. Full fact-find belongs in the Loan Form.</p>
             <div className="note-form-grid">
-              <label>DOB<input value={form.dateOfBirth} onChange={(event) => updateField("dateOfBirth", event.target.value)} placeholder="YYYY-MM-DD" /></label>
-              <label>Address<input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
-              <label>Residency<input value={form.residencyStatus} onChange={(event) => updateField("residencyStatus", event.target.value)} /></label>
-              <label>Marital<select value={form.maritalStatus} onChange={(event) => updateField("maritalStatus", event.target.value)}><option>Single</option><option>Married</option><option>Defacto</option><option>Separated</option></select></label>
+              <label>Residency<select value={form.residencyStatus} onChange={(event) => updateField("residencyStatus", event.target.value)}>{residencyOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
               <label>Dependants<input value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)} /></label>
               <label>Employment<select value={form.employmentType} onChange={(event) => updateField("employmentType", event.target.value)}><option>PAYG</option><option>Self-employed</option><option>Casual</option><option>Contractor</option><option>Unemployed</option></select></label>
-              <label>Employer<input value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
-              <label>Occupation<input value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
-              <label>Income p.a.<input value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} /></label>
-              <label>Second income p.a.<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
-              <label>HEM monthly<input value={form.hemMonthly} onChange={(event) => updateField("hemMonthly", event.target.value)} placeholder="Auto if blank" /></label>
-              <label>Financial asset<input value={form.financialAssetBuffer} onChange={(event) => updateField("financialAssetBuffer", event.target.value)} /></label>
+              <label>Total income p.a.<input value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} placeholder="Main or combined rough income" /></label>
+              <label>Living expense monthly<input value={form.hemMonthly} onChange={(event) => updateField("hemMonthly", event.target.value)} placeholder="Only if known" /></label>
+              <label>Savings/assets<input value={form.financialAssetBuffer} onChange={(event) => updateField("financialAssetBuffer", event.target.value)} /></label>
+              <label>Credit issue<select value={form.creditIssue} onChange={(event) => updateField("creditIssue", event.target.value)}><option>Unknown</option><option>No</option><option>Unsure</option><option>Yes</option></select></label>
             </div>
             <div className="red-flag-row">
               {redFlagOptions.map((flag) => (
@@ -638,6 +655,17 @@ function CallNotesPage({ onOpenAutofill }) {
                 </button>
               ))}
             </div>
+            <details className="advanced-template optional-call-detail">
+              <summary>Optional details if already known</summary>
+              <div className="note-form-grid">
+                <label>DOB<input value={form.dateOfBirth} onChange={(event) => updateField("dateOfBirth", event.target.value)} placeholder="YYYY-MM-DD" /></label>
+                <label>Address<input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
+                <label>Marital<select value={form.maritalStatus} onChange={(event) => updateField("maritalStatus", event.target.value)}><option>Single</option><option>Married</option><option>Defacto</option><option>Separated</option></select></label>
+                <label>Employer<input value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
+                <label>Occupation<input value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
+                <label>Second income p.a.<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
+              </div>
+            </details>
           </section>
 
           <section className="panel note-panel note-text-panel">
@@ -924,7 +952,7 @@ function ClientIntakePage({ token, publicForm = false }) {
         <section>
           <h2>Loan Details</h2>
           <div className="client-intake-grid">
-            <label>Your loan purpose<input value={form.loanPurpose} onChange={(event) => updateField("loanPurpose", event.target.value)} /></label>
+            <label>Your loan purpose<select value={form.loanPurpose} onChange={(event) => updateField("loanPurpose", event.target.value)}><option value="">Please Select</option>{loanPurposeOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
             <label>Type of property<input value={form.propertyType} onChange={(event) => updateField("propertyType", event.target.value)} /></label>
             <label>How much would you like to borrow ($)<input value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>
             <label>Location (intended postcode OR address)<input value={form.propertyLocation} onChange={(event) => updateField("propertyLocation", event.target.value)} /></label>
@@ -971,6 +999,8 @@ export default function App() {
   const [manualIntake, setManualIntake] = useState({});
   const [incomeFormatText, setIncomeFormatText] = useState("");
   const [hemMonthly, setHemMonthly] = useState(4000);
+  const [hemProfileKey, setHemProfileKey] = useState("singleStandard");
+  const [hemProfiles, setHemProfiles] = useState(() => storageGet("easyflow-hem-profiles", defaultHemProfiles));
   const [financialAssetBuffer, setFinancialAssetBuffer] = useState(30000);
   const [documentDraft, setDocumentDraft] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -1016,6 +1046,7 @@ export default function App() {
     const intake = { ...initialManualIntake(caseData), ...saved };
     setManualIntake(intake);
     setHemMonthly(Number(saved.hemMonthly || caseData.expenses?.livingMonthly || recommendedHem(caseData)));
+    setHemProfileKey(saved.hemProfileKey || ((caseData.applicants?.length || 1) > 1 ? "coupleStandard" : "singleStandard"));
     setFinancialAssetBuffer(Number(saved.financialAssetBuffer || 30000));
   }, [caseData]);
 
@@ -1076,8 +1107,24 @@ export default function App() {
       primaryAnnualIncome: parseMoneyInput(manualIntake.primaryAnnualIncome),
       secondaryAnnualIncome: parseMoneyInput(manualIntake.secondaryAnnualIncome),
       hemMonthly,
+      hemProfileKey,
       financialAssetBuffer
     };
+  }
+
+  function updateHemProfile(profileKey, changes) {
+    setHemProfiles((current) => {
+      const next = { ...current, [profileKey]: { ...current[profileKey], ...changes } };
+      storageSet("easyflow-hem-profiles", next);
+      return next;
+    });
+  }
+
+  function applyHemProfile(profileKey) {
+    const profile = hemProfiles[profileKey];
+    if (!profile) return;
+    setHemProfileKey(profileKey);
+    setHemMonthly(Number(profile.amount || 0));
   }
 
   function selectCase(caseId) {
@@ -1607,15 +1654,38 @@ Financial asset: 30000`}
               </label>
 
               <div className="preset-grid">
-                <div>
-                  <span>HEM monthly</span>
+                <div className="hem-tool">
+                  <span>HEM / living expense monthly</span>
+                  <div className="hem-row">
+                    <select value={hemProfileKey} onChange={(event) => applyHemProfile(event.target.value)}>
+                      {Object.entries(hemProfiles).map(([key, profile]) => (
+                        <option key={key} value={key}>{profile.label}</option>
+                      ))}
+                    </select>
+                    <input
+                      value={hemMonthly || ""}
+                      onChange={(event) => setHemMonthly(Number(String(event.target.value).replace(/[$,\s]/g, "")) || 0)}
+                      placeholder="Manual e.g. 3450"
+                    />
+                  </div>
+                  <small>{hemProfiles[hemProfileKey]?.note || "Manual amount overrides the selected profile for this case."}</small>
                   <div className="segmented">
-                    {[recommendedHem(caseData), 3000, 4000, 5000].filter((value, index, arr) => arr.indexOf(value) === index).map((value) => (
+                    {[recommendedHem(caseData), 3000, 3450, 4000, 4500, 5200].filter((value, index, arr) => value && arr.indexOf(value) === index).map((value) => (
                       <button className={hemMonthly === value ? "selected" : ""} type="button" key={value} onClick={() => setHemMonthly(value)}>
                         {currency(value)}
                       </button>
                     ))}
                   </div>
+                  <details className="advanced-template hem-template-editor">
+                    <summary>HEM template settings</summary>
+                    {Object.entries(hemProfiles).map(([key, profile]) => (
+                      <div className="hem-template-row" key={key}>
+                        <input value={profile.label} onChange={(event) => updateHemProfile(key, { label: event.target.value })} />
+                        <input value={profile.amount} onChange={(event) => updateHemProfile(key, { amount: Number(String(event.target.value).replace(/[$,\s]/g, "")) || 0 })} />
+                        <input value={profile.note} onChange={(event) => updateHemProfile(key, { note: event.target.value })} />
+                      </div>
+                    ))}
+                  </details>
                 </div>
                 <div>
                   <span>Financial asset</span>
