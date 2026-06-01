@@ -729,6 +729,11 @@ const labelVi = {
   "DOB of Dependent 2": "Ngày sinh người phụ thuộc 2",
   "DOB of Dependent 3": "Ngày sinh người phụ thuộc 3",
   "DOB of Dependent 4": "Ngày sinh người phụ thuộc 4",
+  "date": "ngày tháng",
+  "Leave blank if there is no second applicant.": "Để trống nếu không có người vay thứ hai.",
+  "Leave blank if not applicable.": "Để trống nếu không áp dụng.",
+  "Leave blank if unsure.": "Để trống nếu chưa chắc.",
+  "Only enter previous address if current address is less than 3 years.": "Chỉ điền địa chỉ trước đây nếu bạn ở địa chỉ hiện tại chưa đủ 3 năm.",
   "Residential History Within The Last 3 Years": "Lịch sử địa chỉ trong 3 năm gần nhất",
   "Current residential address": "Địa chỉ hiện tại",
   "Suburb": "Suburb",
@@ -868,14 +873,25 @@ function purposeOptionsForLoanType(loanType) {
   return homeLoanPurposeOptions;
 }
 
-function SelectField({ label, value, onChange, options, language = "en" }) {
+function SelectField({ label, value, onChange, options, language = "en", required = false, help = "" }) {
   return (
     <label>
       {tx(label, language)}
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
+      <select required={required} value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">{clientFormCopy[language].select}</option>
         {options.map((option) => <option key={option} value={option}>{optionText(option, language)}</option>)}
       </select>
+      {help ? <span className="field-help">{tx(help, language)}</span> : null}
+    </label>
+  );
+}
+
+function DateField({ label, value, onChange, language = "en", required = false, help = "" }) {
+  return (
+    <label>
+      {tx(label, language)} <span className="field-label-note">({tx("date", language)})</span>
+      <input required={required} type="date" value={value} onChange={(event) => onChange(event.target.value)} />
+      {help ? <span className="field-help">{tx(help, language)}</span> : null}
     </label>
   );
 }
@@ -1422,6 +1438,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
   const isVehicle = /car loan/i.test(form.loanType);
   const isPersonal = /personal loan/i.test(form.loanType);
   const isRefinance = /refinance/i.test(`${form.loanPurpose} ${form.loanType}`);
+  const dependantCount = Math.min(Math.max(Number(form.dependants || 0), 0), 4);
   const L = (label) => tx(label, language);
 
   async function submitIntake(event) {
@@ -1509,72 +1526,72 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
           <h2>{L("Personal Details")}</h2>
           <div className="client-intake-grid">
             <label>{L("Full Name")}<input required value={form.clientName} onChange={(event) => updateField("clientName", event.target.value)} /></label>
-            <label>{L("Second applicant")}<input value={form.secondApplicantName} onChange={(event) => updateField("secondApplicantName", event.target.value)} /></label>
-            <label>{L("Date of birth")}<input value={form.dateOfBirth} onChange={(event) => updateField("dateOfBirth", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+            <label>{L("Second applicant")}<input value={form.secondApplicantName} onChange={(event) => updateField("secondApplicantName", event.target.value)} /><span className="field-help">{L("Leave blank if there is no second applicant.")}</span></label>
+            <DateField language={language} required label="Date of birth" value={form.dateOfBirth} onChange={(value) => updateField("dateOfBirth", value)} />
             <label>{L("Email")}<input required value={form.email} onChange={(event) => updateField("email", event.target.value)} placeholder="example@example.com" /></label>
             <label>{L("Mobile")}<input required value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
-            <SelectField language={language} label="Marital Status" value={form.maritalStatus} onChange={(value) => updateField("maritalStatus", value)} options={maritalStatusOptions} />
-            <SelectField language={language} label="Residential Status" value={form.residencyStatus} onChange={(value) => updateField("residencyStatus", value)} options={residencyOptions} />
-            <label>{L("Visa Sub-class")}<input value={form.visaSubclass || ""} onChange={(event) => updateField("visaSubclass", event.target.value)} /></label>
-            <label>{L("Number of Dependents")}<input value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)} /></label>
-            <label>{L("DOB of Dependent 1")}<input value={form.dependant1Dob} onChange={(event) => updateField("dependant1Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
-            <label>{L("DOB of Dependent 2")}<input value={form.dependant2Dob} onChange={(event) => updateField("dependant2Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
-            <label>{L("DOB of Dependent 3")}<input value={form.dependant3Dob} onChange={(event) => updateField("dependant3Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
-            <label>{L("DOB of Dependent 4")}<input value={form.dependant4Dob} onChange={(event) => updateField("dependant4Dob", event.target.value)} placeholder="DD/MM/YYYY" /></label>
+            <SelectField language={language} required label="Marital Status" value={form.maritalStatus} onChange={(value) => updateField("maritalStatus", value)} options={maritalStatusOptions} />
+            <SelectField language={language} required label="Residential Status" value={form.residencyStatus} onChange={(value) => updateField("residencyStatus", value)} options={residencyOptions} />
+            <label>{L("Visa Sub-class")}<input value={form.visaSubclass || ""} onChange={(event) => updateField("visaSubclass", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <label>{L("Number of Dependents")}<select required value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)}>{[0, 1, 2, 3, 4].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
+            {Array.from({ length: dependantCount }, (_, index) => {
+              const field = `dependant${index + 1}Dob`;
+              return <DateField key={field} language={language} label={`DOB of Dependent ${index + 1}`} value={form[field]} onChange={(value) => updateField(field, value)} />;
+            })}
           </div>
         </section>
 
         <section>
           <h2>{L("Residential History Within The Last 3 Years")}</h2>
           <div className="client-intake-grid">
-            <label>{L("Current residential address")}<input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
-            <label>{L("Suburb")}<input value={form.currentSuburb} onChange={(event) => updateField("currentSuburb", event.target.value)} /></label>
-            <label>{L("State")}<input value={form.currentState} onChange={(event) => updateField("currentState", event.target.value)} /></label>
-            <label>{L("From Date")}<input value={form.currentAddressFromDate} onChange={(event) => updateField("currentAddressFromDate", event.target.value)} placeholder="DD/MM/YYYY" /></label>
-            <SelectField language={language} label="Residential Status" value={form.currentResidentialStatus} onChange={(value) => updateField("currentResidentialStatus", value)} options={residentialStatusOptions} />
-            <label>{L("Previous residential address")}<input value={form.previousAddress} onChange={(event) => updateField("previousAddress", event.target.value)} /></label>
-            <label>{L("Previous suburb")}<input value={form.previousSuburb} onChange={(event) => updateField("previousSuburb", event.target.value)} /></label>
-            <label>{L("Previous state")}<input value={form.previousState} onChange={(event) => updateField("previousState", event.target.value)} /></label>
-            <label>{L("Previous postal code")}<input value={form.previousPostcode} onChange={(event) => updateField("previousPostcode", event.target.value)} /></label>
-            <SelectField language={language} label="Previous Residential Status" value={form.previousResidentialStatus} onChange={(value) => updateField("previousResidentialStatus", value)} options={residentialStatusOptions} />
+            <label>{L("Current residential address")}<input required value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
+            <label>{L("Suburb")}<input required value={form.currentSuburb} onChange={(event) => updateField("currentSuburb", event.target.value)} /></label>
+            <label>{L("State")}<input required value={form.currentState} onChange={(event) => updateField("currentState", event.target.value)} /></label>
+            <DateField language={language} required label="From Date" value={form.currentAddressFromDate} onChange={(value) => updateField("currentAddressFromDate", value)} />
+            <SelectField language={language} required label="Residential Status" value={form.currentResidentialStatus} onChange={(value) => updateField("currentResidentialStatus", value)} options={residentialStatusOptions} />
+            <label>{L("Previous residential address")}<input value={form.previousAddress} onChange={(event) => updateField("previousAddress", event.target.value)} /><span className="field-help">{L("Only enter previous address if current address is less than 3 years.")}</span></label>
+            <label>{L("Previous suburb")}<input value={form.previousSuburb} onChange={(event) => updateField("previousSuburb", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <label>{L("Previous state")}<input value={form.previousState} onChange={(event) => updateField("previousState", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <label>{L("Previous postal code")}<input value={form.previousPostcode} onChange={(event) => updateField("previousPostcode", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <SelectField language={language} label="Previous Residential Status" value={form.previousResidentialStatus} onChange={(value) => updateField("previousResidentialStatus", value)} options={residentialStatusOptions} help="Leave blank if not applicable." />
           </div>
         </section>
 
         <section>
           <h2>{L("Employment History Within The Last 3 Years")}</h2>
           <div className="client-intake-grid">
-            <SelectField language={language} label="Employment Type" value={form.employmentType} onChange={(value) => updateField("employmentType", value)} options={employmentTypeOptions} />
-            <label>{L("Business Name")}<input value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
+            <SelectField language={language} required label="Employment Type" value={form.employmentType} onChange={(value) => updateField("employmentType", value)} options={employmentTypeOptions} />
+            <label>{L("Business Name")}<input required value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
             <label>{L("Business Address")}<input value={form.businessAddress} onChange={(event) => updateField("businessAddress", event.target.value)} /></label>
-            <label>{L("Job Title")}<input value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
-            <SelectField language={language} label="Employment Basis" value={form.employmentBasis} onChange={(value) => updateField("employmentBasis", value)} options={employmentBasisOptions} />
-            <label>{L("From Date")}<input value={form.employmentFromDate} onChange={(event) => updateField("employmentFromDate", event.target.value)} placeholder="DD/MM/YYYY" /></label>
-            <label>{L("Contact Name")}<input value={form.employmentContactName} onChange={(event) => updateField("employmentContactName", event.target.value)} /></label>
-            <label>{L("Contact Number")}<input value={form.employmentContactNumber} onChange={(event) => updateField("employmentContactNumber", event.target.value)} /></label>
-            <label>{L("Main income p.a.")}<input value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} /></label>
-            <label>{L("Second income p.a.")}<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
-            <label>{L("Rental income p.a.")}<input value={form.rentalIncomeAnnual} onChange={(event) => updateField("rentalIncomeAnnual", event.target.value)} /></label>
-            <SelectField language={language} label="Previous Employment Type" value={form.previousEmploymentType} onChange={(value) => updateField("previousEmploymentType", value)} options={employmentBasisOptions} />
-            <label>{L("Previous Business Name")}<input value={form.previousBusinessName} onChange={(event) => updateField("previousBusinessName", event.target.value)} /></label>
-            <label>{L("Previous Job Title")}<input value={form.previousJobTitle} onChange={(event) => updateField("previousJobTitle", event.target.value)} /></label>
-            <SelectField language={language} label="Previous Employment Basis" value={form.previousEmploymentBasis} onChange={(value) => updateField("previousEmploymentBasis", value)} options={employmentBasisOptions} />
-            <label>{L("Previous From Date")}<input value={form.previousEmploymentFromDate} onChange={(event) => updateField("previousEmploymentFromDate", event.target.value)} /></label>
-            <label>{L("Previous To Date")}<input value={form.previousEmploymentToDate} onChange={(event) => updateField("previousEmploymentToDate", event.target.value)} /></label>
+            <label>{L("Job Title")}<input required value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
+            <SelectField language={language} required label="Employment Basis" value={form.employmentBasis} onChange={(value) => updateField("employmentBasis", value)} options={employmentBasisOptions} />
+            <DateField language={language} required label="From Date" value={form.employmentFromDate} onChange={(value) => updateField("employmentFromDate", value)} />
+            <label>{L("Contact Name")}<input value={form.employmentContactName} onChange={(event) => updateField("employmentContactName", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <label>{L("Contact Number")}<input value={form.employmentContactNumber} onChange={(event) => updateField("employmentContactNumber", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <label>{L("Main income p.a.")}<input required value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} /></label>
+            <label>{L("Second income p.a.")}<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /><span className="field-help">{L("Leave blank if there is no second applicant.")}</span></label>
+            <label>{L("Rental income p.a.")}<input value={form.rentalIncomeAnnual} onChange={(event) => updateField("rentalIncomeAnnual", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <SelectField language={language} label="Previous Employment Type" value={form.previousEmploymentType} onChange={(value) => updateField("previousEmploymentType", value)} options={employmentBasisOptions} help="Leave blank if not applicable." />
+            <label>{L("Previous Business Name")}<input value={form.previousBusinessName} onChange={(event) => updateField("previousBusinessName", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <label>{L("Previous Job Title")}<input value={form.previousJobTitle} onChange={(event) => updateField("previousJobTitle", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <SelectField language={language} label="Previous Employment Basis" value={form.previousEmploymentBasis} onChange={(value) => updateField("previousEmploymentBasis", value)} options={employmentBasisOptions} help="Leave blank if not applicable." />
+            <DateField language={language} label="Previous From Date" value={form.previousEmploymentFromDate} onChange={(value) => updateField("previousEmploymentFromDate", value)} help="Leave blank if not applicable." />
+            <DateField language={language} label="Previous To Date" value={form.previousEmploymentToDate} onChange={(value) => updateField("previousEmploymentToDate", value)} help="Leave blank if not applicable." />
           </div>
         </section>
 
         <section>
           <h2>{L("Living Expenses")}</h2>
           <div className="client-intake-grid">
-            <label>{L("Expenses")}<input value={form.generalExpenses} onChange={(event) => updateField("generalExpenses", event.target.value)} /></label>
+            <label>{L("Expenses")}<input required value={form.generalExpenses} onChange={(event) => updateField("generalExpenses", event.target.value)} /></label>
             <label>{L("AP 1 - Amount ($)")}<input value={form.applicant1Expenses} onChange={(event) => updateField("applicant1Expenses", event.target.value)} /></label>
-            <label>{L("AP 2 - Amount ($)")}<input value={form.applicant2Expenses} onChange={(event) => updateField("applicant2Expenses", event.target.value)} /></label>
+            <label>{L("AP 2 - Amount ($)")}<input value={form.applicant2Expenses} onChange={(event) => updateField("applicant2Expenses", event.target.value)} /><span className="field-help">{L("Leave blank if there is no second applicant.")}</span></label>
             <SelectField language={language} label="Private Health Insurance - Applicant 1" value={form.applicant1PrivateHealth} onChange={(value) => updateField("applicant1PrivateHealth", value)} options={yesNoOptions} />
             <label>{L("Applicant 1 Amount ($)/month")}<input value={form.applicant1PrivateHealthAmount} onChange={(event) => updateField("applicant1PrivateHealthAmount", event.target.value)} /></label>
             <SelectField language={language} label="Private Health Insurance - Applicant 2" value={form.applicant2PrivateHealth} onChange={(value) => updateField("applicant2PrivateHealth", value)} options={yesNoOptions} />
-            <label>{L("Applicant 2 Amount ($)/month")}<input value={form.applicant2PrivateHealthAmount} onChange={(event) => updateField("applicant2PrivateHealthAmount", event.target.value)} /></label>
+            <label>{L("Applicant 2 Amount ($)/month")}<input value={form.applicant2PrivateHealthAmount} onChange={(event) => updateField("applicant2PrivateHealthAmount", event.target.value)} /><span className="field-help">{L("Leave blank if there is no second applicant.")}</span></label>
             <SelectField language={language} label="Income protection or life insurance policies" value={form.insurancePolicies} onChange={(value) => updateField("insurancePolicies", value)} options={insurancePolicyOptions} />
-            <label>{L("Monthly living expense total")}<input value={form.hemMonthly} onChange={(event) => updateField("hemMonthly", event.target.value)} placeholder={language === "vi" ? "Để trống nếu chưa rõ" : "Leave blank if unsure"} /></label>
+            <label>{L("Monthly living expense total")}<input value={form.hemMonthly} onChange={(event) => updateField("hemMonthly", event.target.value)} /><span className="field-help">{L("Leave blank if unsure.")}</span></label>
           </div>
         </section>
 
@@ -1596,11 +1613,11 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
         <section>
           <h2>{L("Loan Details")}</h2>
           <div className="client-intake-grid">
-            <SelectField language={language} label="Your loan purpose" value={form.loanPurpose} onChange={(value) => updateField("loanPurpose", value)} options={purposeOptions} />
-            <label>{L("Type of property")}<input value={form.propertyType} onChange={(event) => updateField("propertyType", event.target.value)} /></label>
-            <label>{L("How much would you like to borrow ($)")}<input value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>
+            <SelectField language={language} required label="Your loan purpose" value={form.loanPurpose} onChange={(value) => updateField("loanPurpose", value)} options={purposeOptions} />
+            <label>{L("Type of property")}<input value={form.propertyType} onChange={(event) => updateField("propertyType", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <label>{L("How much would you like to borrow ($)")}<input required value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>
             <label>{L("Location (intended postcode OR address)")}<input value={form.propertyLocation} onChange={(event) => updateField("propertyLocation", event.target.value)} /></label>
-            <label>{L("Estimated property value ($)")}<input value={form.propertyValue} onChange={(event) => updateField("propertyValue", event.target.value)} /></label>
+            <label>{L("Estimated property value ($)")}<input value={form.propertyValue} onChange={(event) => updateField("propertyValue", event.target.value)} /><span className="field-help">{L("Leave blank if unsure.")}</span></label>
             <label>{L("Deposit/equity")}<input value={form.depositEquity} onChange={(event) => updateField("depositEquity", event.target.value)} /></label>
             <SelectField language={language} label="Are you first home buyer?" value={form.firstHomeBuyer} onChange={(value) => updateField("firstHomeBuyer", value)} options={yesNoOptions} />
             <SelectField language={language} label="Would you like fixed interest rate for a certain period?" value={form.fixedRatePreference} onChange={(value) => updateField("fixedRatePreference", value)} options={yesNoAdviseOptions} />

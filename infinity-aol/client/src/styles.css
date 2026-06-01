@@ -1410,6 +1410,18 @@ pre {
   gap: 7px;
 }
 
+.field-help,
+.field-label-note {
+  color: #68776e;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.field-label-note {
+  display: inline;
+}
+
 .client-intake-card input,
 .client-intake-card textarea,
 .client-intake-card select {
