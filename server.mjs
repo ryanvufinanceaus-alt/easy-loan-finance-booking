@@ -22,6 +22,7 @@ const LOAN_FORM_HOST_RE = /^loan-form\./i;
 const EASYFLOW_AI_HOST_RE = /^(easyflow-ai|loanops|autofill)\./i;
 const LOAN_FORM_PUBLIC_PATH_RE = /^\/(?:loan-form|client-info|apply)(?:\/[^/]+)?\/?$/;
 const LOAN_FORM_PUBLIC_API_RE = /^\/api\/client-intake\/[^/]+\/?$/;
+const SHARED_BRAND_ASSET_RE = /^\/(?:elf-logo\.(?:png|svg)|favicon\.ico)$/i;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
 const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
@@ -1939,11 +1940,13 @@ createServer(async (req, res) => {
       if (req.method === "GET" && /^\/(?:loan-form|client-info|apply)?\/?$/.test(url.pathname)) {
         res.setHeader("Clear-Site-Data", "\"cache\", \"storage\"");
       }
+      if (SHARED_BRAND_ASSET_RE.test(url.pathname)) return await handleStatic(req, res, url);
       if (!requireLoanFormHostPublicOnly(res, url)) return;
       forwardToInfinityAolApp(req, res, url);
       return;
     }
     if (CLIENT_CALL_HOST_RE.test(hostname) || EASYFLOW_AI_HOST_RE.test(hostname)) {
+      if (SHARED_BRAND_ASSET_RE.test(url.pathname)) return await handleStatic(req, res, url);
       forwardToInfinityAolApp(req, res, url);
       return;
     }

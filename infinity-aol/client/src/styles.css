@@ -40,6 +40,17 @@ textarea {
   margin-bottom: 14px;
 }
 
+.brand-logo {
+  background: #0c1712;
+  border: 1px solid rgba(215, 182, 111, 0.55);
+  border-radius: 8px;
+  flex: 0 0 auto;
+  height: 42px;
+  object-fit: contain;
+  padding: 5px;
+  width: 42px;
+}
+
 .brand-block span,
 .topbar span,
 .payload-meta span,

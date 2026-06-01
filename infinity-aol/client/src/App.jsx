@@ -28,6 +28,14 @@ const apiBase = isLoanFormHost
     : `${location.origin}/infinity-aol`;
 const appBasePath = !isLoanFormHost && !isClientCallHost && !isEasyFlowAiHost && location.pathname.startsWith("/infinity-aol") ? "/infinity-aol" : "";
 const mockAolPath = `${appBasePath}/mock-infinity-aol`;
+const brandLogoSrc = "/elf-logo.png";
+
+function pageTitle() {
+  if (isClientCallHost) return "Client Call Notes - Easy Loan Finance";
+  if (isLoanFormHost) return "Loan Form - Easy Loan Finance";
+  if (isEasyFlowAiHost) return "EasyFlow AI - Easy Loan Finance";
+  return "EasyFlow AI - Infinity & AOL Automation";
+}
 
 function currency(value) {
   return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(value || 0);
@@ -537,10 +545,10 @@ function CallNotesPage({ onOpenAutofill }) {
     <main className="notes-shell">
       <aside className="notes-sidebar">
         <div className="brand-block">
-          <ClipboardList size={24} />
+          <img className="brand-logo" src={brandLogoSrc} alt="Easy Loan Finance" />
           <div>
-          <span>Easy Loan Finance</span>
-          <strong>Client Call Notes</strong>
+            <span>Easy Loan Finance</span>
+            <strong>Client Call Notes</strong>
           </div>
         </div>
         <button className="ghost-button sidebar-action" type="button" onClick={onOpenAutofill}>
@@ -752,6 +760,10 @@ function ClientIntakePage({ token, publicForm = false }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    document.title = pageTitle();
+  }, []);
   const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
@@ -966,6 +978,10 @@ export default function App() {
   const [ocrRunning, setOcrRunning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    document.title = pageTitle();
+  }, []);
 
   const showMock = location.pathname === "/mock-infinity-aol" || location.pathname === "/infinity-aol/mock-infinity-aol";
   const intakeToken = location.pathname.match(/^\/(?:infinity-aol\/)?(?:client-info|loan-form|apply)\/([^/]+)/)?.[1] || "";
@@ -1295,7 +1311,7 @@ export default function App() {
     <main className="app-shell">
       <aside className="case-sidebar">
         <div className="brand-block">
-          <ShieldCheck size={24} />
+          <img className="brand-logo" src={brandLogoSrc} alt="Easy Loan Finance" />
           <div>
             <span>Easy Loan Finance</span>
             <strong>EasyFlow AI</strong>
