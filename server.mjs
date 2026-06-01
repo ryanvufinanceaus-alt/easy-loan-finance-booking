@@ -54,7 +54,7 @@ const ADMIN_EMAILS = Array.from(new Set([
 ].map(normalizeEmail).filter(Boolean)));
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || ADMIN_PASSWORD || "local-dev-secret-change-me";
-const SESSION_MAX_AGE_SECONDS = Number(process.env.SESSION_MAX_AGE_SECONDS || 8 * 60 * 60);
+const SESSION_MAX_AGE_SECONDS = Number(process.env.SESSION_MAX_AGE_SECONDS || 6 * 60 * 60);
 const PUBLIC_API_ROUTES = new Set(["/api/health", "/api/brokers", "/api/bookings"]);
 const PUBLIC_BOOKING_DURATION = 30;
 const BUSINESS_START = "09:30";
@@ -1605,7 +1605,10 @@ async function handleApi(req, res, url) {
       authenticated: !ADMIN_PASSWORD || Boolean(session),
       email: session?.email || (ADMIN_PASSWORD ? null : ADMIN_EMAIL),
       role: session?.role || (!ADMIN_PASSWORD ? "admin" : null),
-      brokerId: session?.brokerId || null
+      brokerId: session?.brokerId || null,
+      expiresAt: session?.exp || null,
+      maxAgeSeconds: SESSION_MAX_AGE_SECONDS,
+      secondsRemaining: session?.exp ? Math.max(0, Math.floor((session.exp - Date.now()) / 1000)) : null
     });
   }
 
@@ -1645,6 +1648,36 @@ async function handleApi(req, res, url) {
   }
 
   if (!requireAdmin(req, res, url)) return;
+
+  if (req.method === "POST" && url.pathname === "/api/auth/change-password") {
+    if (!session) return sendJson(res, 401, { error: "Login required" });
+    const body = await readBody(req);
+    const currentPassword = String(body.currentPassword || "");
+    const newPassword = String(body.newPassword || "");
+    if (newPassword.length < 6) return sendJson(res, 400, { error: "New access code must be at least 6 characters." });
+    if (isAdminSession(session)) {
+      const ok = ADMIN_PASSWORD && safeEqual(
+        createHash("sha256").update(currentPassword).digest("hex"),
+        createHash("sha256").update(ADMIN_PASSWORD).digest("hex")
+      );
+      if (!ok) return sendJson(res, 401, { error: "Current Ryan admin password is incorrect." });
+      return sendJson(res, 400, { error: "Ryan admin password is managed in Render env ADMIN_PASSWORD. Change it in Render, then redeploy/restart." });
+    }
+    const broker = brokers.find((item) => item.id === session.brokerId);
+    if (!broker || !brokerMatchesLogin(broker, session.email, currentPassword)) {
+      return sendJson(res, 401, { error: "Current access code is incorrect." });
+    }
+    const updated = await updateBroker(broker.id, { accessCode: newPassword });
+    const token = signSession({
+      role: "broker",
+      brokerId: updated.id,
+      email: updated.email,
+      name: updated.name,
+      exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000
+    });
+    setSessionCookie(req, res, token);
+    return sendJson(res, 200, { ok: true, message: "Access code changed.", expiresAt: Date.now() + SESSION_MAX_AGE_SECONDS * 1000 });
+  }
 
   if (req.method === "GET" && url.pathname === "/api/backup") {
     if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });

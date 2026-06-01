@@ -1901,6 +1901,70 @@ body:has(.native-widget-mode) {
   font-weight: 800;
 }
 
+.session-warning {
+  align-items: center;
+  background: #fff7df;
+  border: 1px solid #e4c66d;
+  border-radius: 10px;
+  color: #73530f;
+  display: flex;
+  font-size: 13px;
+  font-weight: 800;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+}
+
+.password-panel {
+  margin-bottom: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.password-panel summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 10px 12px;
+}
+
+.password-panel form {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.password-panel input {
+  min-width: 0;
+  border: 0;
+  border-radius: 7px;
+  padding: 9px 10px;
+}
+
+.password-panel button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 7px;
+  background: #f8e8bd;
+  color: #1f2017;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.password-panel small {
+  color: #c7d1ca;
+  font-size: 11px;
+}
+
+.password-panel .ok {
+  color: #77e0a4;
+}
+
+.password-panel .bad {
+  color: #ffb4aa;
+}
+
 .public-hero {
   max-width: 620px;
 }

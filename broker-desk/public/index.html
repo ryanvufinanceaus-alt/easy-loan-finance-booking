@@ -478,7 +478,7 @@ const LOAN_TYPES=['Variable','Fixed','Split','IO Variable','IO Fixed'];
 // Default commission rates \u2014 AU industry standard, editable per loan
 const DEFAULT_UPFRONT_RATE = 0.65;   // % of loan amount, paid once at settlement
 const DEFAULT_TRAIL_RATE   = 0.15;   // % per annum, paid monthly (\u00F7 12)
-const SESSION_SECONDS = 7200;        // must match backend (2h)
+const SESSION_SECONDS = 6 * 60 * 60; // must match backend (6h)
 const DOC_LIST=[
   {k:'payslips',    l:'Payslips (\u00D72)'},
   {k:'taxReturns',  l:'Tax Returns + NOAs (2 yrs)'},
@@ -11702,7 +11702,7 @@ function rActivity(){
     const lt=loginUsers[uid].timestamp;
     const out=logoutAfter[uid];
     if(out&&out>lt)return false;
-    // Consider "active" if last login within 2 hours (matches session)
+    // Consider "active" if last login is within the 6h session window.
     const age=(new Date()-new Date(lt))/1000;
     return age<SESSION_SECONDS;
   });

@@ -65,6 +65,44 @@ function storageSet(key, value) {
   }
 }
 
+function sessionTimeLabel(seconds) {
+  if (seconds === null || seconds === undefined) return "";
+  const safe = Math.max(0, Number(seconds) || 0);
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  if (hours) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function useSessionStatus() {
+  const [session, setSession] = useState(null);
+
+  async function refreshSession() {
+    const status = await api("/api/auth/status");
+    setSession(status);
+    return status;
+  }
+
+  useEffect(() => {
+    refreshSession().catch(() => {});
+    const timer = window.setInterval(() => refreshSession().catch(() => {}), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return { session, refreshSession };
+}
+
+function SessionWarning({ session }) {
+  if (!session?.required || !session?.authenticated || session.secondsRemaining === null) return null;
+  if (session.secondsRemaining > 15 * 60) return null;
+  return (
+    <div className="session-warning">
+      <AlertTriangle size={16} />
+      Session expires in {sessionTimeLabel(session.secondsRemaining)}. Save your work, then login again if needed.
+    </div>
+  );
+}
+
 function caseStorageKey(caseId) {
   return `infinity-aol-case-inputs:${caseId}`;
 }
@@ -177,19 +215,19 @@ function CaseFacts({ caseData }) {
 }
 
 function TeamSettingsPanel({ appName }) {
+  const { session: auth, refreshSession } = useSessionStatus();
   const [open, setOpen] = useState(false);
-  const [auth, setAuth] = useState(null);
   const [brokers, setBrokers] = useState([]);
   const [form, setForm] = useState({ name: "", email: "", phone: "", accessCode: "" });
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   async function refresh() {
-    const [authData, brokerData] = await Promise.all([
-      api("/api/auth/status"),
+    const [, brokerData] = await Promise.all([
+      refreshSession(),
       api("/api/brokers")
     ]);
-    setAuth(authData);
     setBrokers(brokerData);
   }
 
@@ -239,6 +277,27 @@ function TeamSettingsPanel({ appName }) {
     window.location.href = `/login?returnTo=${encodeURIComponent(location.pathname + location.search)}`;
   }
 
+  async function changePassword(event) {
+    event.preventDefault();
+    setMessage("");
+    setError("");
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setError("New access codes do not match.");
+      return;
+    }
+    try {
+      const result = await api("/api/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify(passwordForm)
+      });
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setMessage(result.message || "Access updated.");
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   const isAdmin = !auth?.required || auth?.role === "admin";
 
   return (
@@ -251,9 +310,18 @@ function TeamSettingsPanel({ appName }) {
         <div className="team-session-card">
           <span>{appName}</span>
           <strong>{auth?.email || "Local admin"}</strong>
+          <small>{auth?.secondsRemaining !== null && auth?.secondsRemaining !== undefined ? `Session: ${sessionTimeLabel(auth.secondsRemaining)} remaining` : "Session: local admin mode"}</small>
           <small>{isAdmin ? "Ryan admin can add broker users and access codes here." : "Broker users can use assigned internal tools only."}</small>
           <button type="button" onClick={logout}>Logout</button>
         </div>
+        <SessionWarning session={auth} />
+        <form className="team-user-form" onSubmit={changePassword}>
+          <label>Current password/access code<input value={passwordForm.currentPassword} onChange={(event) => setPasswordForm({ ...passwordForm, currentPassword: event.target.value })} type="password" required /></label>
+          <label>New password/access code<input value={passwordForm.newPassword} onChange={(event) => setPasswordForm({ ...passwordForm, newPassword: event.target.value })} type="password" minLength={6} required /></label>
+          <label>Confirm new<input value={passwordForm.confirmPassword} onChange={(event) => setPasswordForm({ ...passwordForm, confirmPassword: event.target.value })} type="password" minLength={6} required /></label>
+          <button type="submit">Change access code</button>
+          {isAdmin && <small className="settings-note">Ryan admin password is controlled by Render env ADMIN_PASSWORD. This button checks the current password, then tells you to change it in Render for safety.</small>}
+        </form>
         {isAdmin ? (
           <>
             <form className="team-user-form" onSubmit={createBrokerUser}>
@@ -624,6 +692,7 @@ function ClientLoanFormHeader({ title, description }) {
 }
 
 function CallNotesPage({ onOpenAutofill }) {
+  const { session } = useSessionStatus();
   const [form, setForm] = useState(emptyCallNote);
   const [notes, setNotes] = useState([]);
   const [intakes, setIntakes] = useState([]);
@@ -839,6 +908,7 @@ function CallNotesPage({ onOpenAutofill }) {
         </header>
         {error && <div className="error-banner">{error}</div>}
         {message && <div className="success-banner">{message}</div>}
+        <SessionWarning session={session} />
 
         <div className="notes-grid">
           <section className="panel note-panel">
@@ -1229,6 +1299,7 @@ function ClientIntakePage({ token, publicForm = false }) {
 }
 
 export default function App() {
+  const { session } = useSessionStatus();
   const [view, setView] = useState(() => (isClientCallHost || location.pathname.includes("call-notes") || location.pathname.includes("client-call") ? "notes" : "autofill"));
   const [cases, setCases] = useState([]);
   const [caseSearch, setCaseSearch] = useState("");
@@ -1695,6 +1766,7 @@ export default function App() {
         </header>
 
         {error && <div className="error-banner">{error}</div>}
+        <SessionWarning session={session} />
 
         <CaseFacts caseData={caseData} />
         <WorkflowGuide selectedCaseId={selectedCaseId} prepared={prepared} documentDraft={documentDraft} />

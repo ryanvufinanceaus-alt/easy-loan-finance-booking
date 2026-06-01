@@ -224,6 +224,65 @@ function classNames(...values) {
   return values.filter(Boolean).join(" ");
 }
 
+function sessionTimeLabel(seconds) {
+  if (seconds === null || seconds === undefined) return "";
+  const safe = Math.max(0, Number(seconds) || 0);
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  return hours ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
+function SessionWarning({ auth }) {
+  if (!auth?.required || !auth?.authenticated || auth.secondsRemaining === null || auth.secondsRemaining === undefined) return null;
+  if (auth.secondsRemaining > 15 * 60) return null;
+  return <p className="session-warning">Session expires in {sessionTimeLabel(auth.secondsRemaining)}. Save changes, then login again if needed.</p>;
+}
+
+function PasswordPanel({ auth, onChanged }) {
+  const [form, setForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  async function submit(event) {
+    event.preventDefault();
+    setMessage("");
+    setError("");
+    if (form.newPassword !== form.confirmPassword) {
+      setError("New passwords do not match.");
+      return;
+    }
+    const res = await fetch("/api/auth/change-password", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(form)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || "Could not change access.");
+      return;
+    }
+    setForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    setMessage(data.message || "Access updated.");
+    onChanged?.();
+  }
+
+  if (!auth?.required || !auth?.authenticated) return null;
+  return (
+    <details className="password-panel">
+      <summary>Security</summary>
+      <form onSubmit={submit}>
+        <input type="password" value={form.currentPassword} onChange={(event) => setForm({ ...form, currentPassword: event.target.value })} placeholder="Current password/code" />
+        <input type="password" value={form.newPassword} onChange={(event) => setForm({ ...form, newPassword: event.target.value })} placeholder="New password/code" minLength={6} />
+        <input type="password" value={form.confirmPassword} onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })} placeholder="Confirm new" minLength={6} />
+        <button type="submit">Change access code</button>
+        {auth.role === "admin" && <small>Ryan admin password is controlled by Render env ADMIN_PASSWORD.</small>}
+        {message && <small className="ok">{message}</small>}
+        {error && <small className="bad">{error}</small>}
+      </form>
+    </details>
+  );
+}
+
 function bookingTemplate(brokerId = "ryan-vu") {
   const start = new Date();
   start.setDate(start.getDate() + 1);
@@ -418,6 +477,22 @@ function App() {
         }
       })
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      fetch("/api/auth/status")
+        .then((res) => res.json())
+        .then((status) => {
+          if (status.required && !status.authenticated) {
+            window.location.href = "/login";
+            return;
+          }
+          setAuth(status);
+        })
+        .catch(() => {});
+    }, 60_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   async function refreshBookings({ quiet = false } = {}) {
@@ -740,9 +815,13 @@ function App() {
 
         <div className="admin-identity">
           <ShieldCheck size={16} />
-          <span>{auth.required ? `${auth.role === "broker" ? "Broker" : "Ryan admin"} - ${auth.email || ""}` : "Local admin mode"}</span>
+          <span>{auth.required ? `${auth.role === "broker" ? "Broker" : "Ryan admin"} - ${auth.email || ""} - ${sessionTimeLabel(auth.secondsRemaining)} left` : "Local admin mode"}</span>
           {auth.required && <button onClick={() => fetch("/api/auth/logout", { method: "POST" }).then(() => { window.location.href = "/login"; })}>Logout</button>}
         </div>
+        <PasswordPanel
+          auth={auth}
+          onChanged={() => fetch("/api/auth/status").then((res) => res.json()).then(setAuth).catch(() => {})}
+        />
 
         <div className="metric-grid">
           <Metric icon={CalendarDays} label="Next 7 days" value={metrics.week} />
@@ -874,6 +953,8 @@ function App() {
           </div>
           {lastSyncedAt && <p className="sync-stamp">Live refresh · {displayTime(lastSyncedAt)}</p>}
         </header>
+
+        <SessionWarning auth={auth} />
 
         <div className="main-grid">
           <section className="calendar-panel">

@@ -217,6 +217,27 @@ textarea {
   padding: 9px 10px;
 }
 
+.session-warning {
+  align-items: center;
+  background: #fff7df;
+  border: 1px solid #edd28a;
+  border-radius: 8px;
+  color: #72520f;
+  display: flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+}
+
+.settings-note {
+  color: #a9b7ad;
+  display: block;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .internal-login-shell {
   align-items: center;
   background:
