@@ -971,40 +971,101 @@ pre {
 
 .client-intake-shell {
   background:
-    linear-gradient(180deg, #eef4f0 0, #f8faf8 260px),
-    #f8faf8;
+    radial-gradient(circle at top left, rgba(198, 163, 89, 0.18), transparent 300px),
+    linear-gradient(135deg, #08120e 0, #14251d 38%, #f7f5ef 38.2%, #faf9f5 100%);
   min-height: 100vh;
-  padding: 24px;
+  padding: 28px;
 }
 
 .client-intake-card {
-  background: #fff;
-  border: 1px solid #d8e1dc;
-  border-radius: 8px;
-  box-shadow: 0 18px 60px rgba(18, 32, 26, 0.12);
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(198, 163, 89, 0.28);
+  border-radius: 10px;
+  box-shadow: 0 24px 70px rgba(8, 18, 14, 0.18);
   margin: 0 auto;
   max-width: 1120px;
   overflow: hidden;
 }
 
-.client-intake-card header {
-  background: #10231b;
+.client-form-hero {
+  background:
+    linear-gradient(135deg, rgba(8, 18, 14, 0.96), rgba(22, 40, 31, 0.96)),
+    #10231b;
   color: #fff;
-  padding: 26px 28px;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: 1.05fr 1.6fr;
+  padding: 28px;
 }
 
-.client-intake-card header span {
-  color: #a9b7ad;
+.client-form-brand {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+}
+
+.client-form-brand img {
+  background: #0f3328;
+  border: 1px solid rgba(198, 163, 89, 0.45);
+  border-radius: 12px;
+  height: 62px;
+  object-fit: contain;
+  padding: 8px;
+  width: 62px;
+}
+
+.client-form-brand span,
+.client-form-kicker {
+  color: #d7bd77;
   display: block;
   font-size: 12px;
   font-weight: 800;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.client-intake-card header p {
-  color: #d9e5de;
-  margin: 6px 0 0;
+.client-form-brand strong {
+  color: #fff;
+  display: block;
+  font-size: 15px;
+  margin-top: 4px;
+}
+
+.client-form-copy h1 {
+  color: #fff;
+  font-size: 34px;
+  letter-spacing: 0;
+  line-height: 1.08;
+  margin: 6px 0 8px;
+}
+
+.client-form-copy p {
+  color: #dce7df;
+  font-size: 15px;
+  line-height: 1.55;
+  margin: 0;
   max-width: 780px;
+}
+
+.client-form-support {
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  grid-column: 1 / -1;
+  padding-top: 14px;
+}
+
+.client-form-support a {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  color: #f5ead1;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 12px;
+  text-decoration: none;
 }
 
 .client-intake-card section {
@@ -1223,6 +1284,10 @@ select {
     .client-intake-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .client-form-hero {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 680px) {
@@ -1230,6 +1295,22 @@ select {
   .mock-shell,
   .notes-workspace {
     padding: 14px;
+  }
+
+  .client-intake-shell {
+    padding: 12px;
+  }
+
+  .client-form-hero {
+    padding: 22px 18px;
+  }
+
+  .client-form-copy h1 {
+    font-size: 28px;
+  }
+
+  .client-form-support a {
+    width: 100%;
   }
 
   .topbar,

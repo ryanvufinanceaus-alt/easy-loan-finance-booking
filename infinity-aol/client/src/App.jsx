@@ -379,6 +379,29 @@ function SelectField({ label, value, onChange, options }) {
   );
 }
 
+function ClientLoanFormHeader({ title, description }) {
+  return (
+    <header className="client-form-hero">
+      <div className="client-form-brand">
+        <img src="/elf-logo.png" alt="Easy Loan Finance" />
+        <div>
+          <span>Easy Loan Finance</span>
+          <strong>Quick Loan, Easy Life</strong>
+        </div>
+      </div>
+      <div className="client-form-copy">
+        <p className="client-form-kicker">Secure client information</p>
+        <h1>{title}</h1>
+        <p>{description}</p>
+      </div>
+      <div className="client-form-support">
+        <a href="https://easyloanfinance.com.au" target="_blank" rel="noreferrer">easyloanfinance.com.au</a>
+        <a href="mailto:hello@easyloanfinance.com.au">hello@easyloanfinance.com.au</a>
+      </div>
+    </header>
+  );
+}
+
 function CallNotesPage({ onOpenAutofill }) {
   const [form, setForm] = useState(emptyCallNote);
   const [notes, setNotes] = useState([]);
@@ -770,11 +793,10 @@ function ClientIntakePage({ token, publicForm = false }) {
     return (
       <main className="client-intake-shell">
         <section className="client-intake-card client-thank-you-card">
-          <header>
-            <span>Easy Loan Finance</span>
-            <h1>Thank you. We have received your loan form.</h1>
-            <p>Your information has been sent securely to Easy Loan Finance. A broker will review your details and contact you as soon as practical.</p>
-          </header>
+          <ClientLoanFormHeader
+            title="Thank you. We have received your loan form."
+            description="Your information has been sent securely to Easy Loan Finance. A broker will review your details and contact you as soon as practical."
+          />
           <div className="client-thank-you-body">
             <CheckCircle2 size={42} />
             <div>
@@ -791,11 +813,10 @@ function ClientIntakePage({ token, publicForm = false }) {
   return (
     <main className="client-intake-shell">
       <form className="client-intake-card" onSubmit={submitIntake}>
-        <header>
-          <span>Easy Loan Finance Loan Form</span>
-          <h1>Loan Form / Thong tin vay</h1>
-          <p>This is the full client information form. It links with any phone call note we already have, and your broker will review everything before any application submission.</p>
-        </header>
+        <ClientLoanFormHeader
+          title="Loan Form / Thong tin vay"
+          description="This is the full client information form. It links with any phone call note we already have, and your broker will review everything before any application submission."
+        />
         {error && <div className="error-banner">{error}</div>}
         {message && <div className="success-banner">{message}</div>}
         {meta?.status === "submitted" && !message ? <div className="success-banner">This form has already been submitted. You can submit again if you need to update details.</div> : null}
