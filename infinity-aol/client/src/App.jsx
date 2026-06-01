@@ -33,7 +33,7 @@ const mockAolPath = `${appBasePath}/mock-infinity-aol`;
 const brandLogoSrc = "/elf-logo.png";
 
 function pageTitle() {
-  if (isClientCallHost) return "Client Call Notes - Easy Loan Finance";
+  if (isClientCallHost || location.pathname.includes("client-call")) return "Client Call Intake - Easy Loan Finance";
   if (isLoanFormHost) return "Loan Form - Easy Loan Finance";
   if (isEasyFlowAiHost) return "EasyFlow AI - Easy Loan Finance";
   return "EasyFlow AI - Infinity & AOL Automation";
@@ -149,12 +149,36 @@ function initialManualIntake(caseData) {
 }
 
 async function api(path, options) {
+  const { headers, ...fetchOptions } = options || {};
   const response = await fetch(`${apiBase}${path}`, {
-    headers: { "content-type": "application/json" },
-    ...options
+    ...fetchOptions,
+    headers: { accept: "application/json", "content-type": "application/json", ...(headers || {}) }
   });
-  if (!response.ok) throw new Error((await response.json()).error || response.statusText);
-  return response.json();
+  const contentType = response.headers.get("content-type") || "";
+  const text = await response.text();
+  let data = null;
+  if (contentType.includes("application/json") && text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error("API returned broken JSON. Please refresh and try again.");
+    }
+  }
+
+  if (!contentType.includes("application/json")) {
+    console.error("Expected JSON API response", {
+      url: `${apiBase}${path}`,
+      status: response.status,
+      contentType,
+      body: text.slice(0, 300)
+    });
+    throw new Error(response.status === 401
+      ? "Your session has expired. Please log in again."
+      : "API connection issue. The server returned a web page instead of data.");
+  }
+
+  if (!response.ok) throw new Error(data?.error || response.statusText || "API request failed.");
+  return data;
 }
 
 function IssueList({ issues }) {
@@ -365,7 +389,7 @@ function InternalLoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const appName = isClientCallHost ? "Client Call Notes" : "EasyFlow AI";
+  const appName = isClientCallHost ? "Client Call Intake" : "EasyFlow AI";
   const appCopy = isClientCallHost
     ? "Secure staff access for phone intake, quick notes, and loan form links."
     : "Secure staff access for Infinity & AOL automation, case payloads, and autofill preparation.";
@@ -1011,26 +1035,43 @@ function CallNotesPage({ onOpenAutofill }) {
     setRedFlags((items) => (items.includes(flag) ? items.filter((item) => item !== flag) : [...items, flag]));
   }
 
+  function validateDraftCase() {
+    const missing = [];
+    if (!form.clientName.trim()) missing.push("Client name");
+    if (!form.mobile.trim() && !form.email.trim()) missing.push("Mobile or email");
+    if (!form.loanType.trim()) missing.push("Loan type");
+    if (!form.loanPurpose.trim()) missing.push("Loan purpose");
+    if (!String(form.loanAmount || "").trim()) missing.push("Loan amount");
+    if (!form.sourceChannel.trim()) missing.push("Lead source");
+    if (!form.nextAction.trim()) missing.push("Next action");
+    return missing;
+  }
+
   async function saveCallNote({ convert = false } = {}) {
     setSaving(true);
     setError("");
     setMessage("");
     try {
-      const saved = await api("/api/call-notes", {
-        method: "POST",
+      const missing = convert ? validateDraftCase() : [];
+      if (missing.length) {
+        throw new Error(`Cannot create draft case yet. Missing: ${missing.join(", ")}.`);
+      }
+
+      const saved = await api(selectedId ? `/api/call-notes/${selectedId}` : "/api/call-notes", {
+        method: selectedId ? "PATCH" : "POST",
         body: JSON.stringify({ ...form, redFlags })
       });
       let output = saved;
       if (convert) {
         const converted = await api(`/api/call-notes/${saved.id}/convert-to-case`, { method: "POST", body: "{}" });
         output = converted.note;
-        setMessage(`Draft case created: ${converted.case.id}. You can now prepare it in EasyFlow AI.`);
+        setMessage(`Draft case created: ${converted.case.id}. This client is now searchable in EasyFlow and ready for Loan Form / Infinity workflow.`);
       } else {
-        setMessage(`Call note saved: ${saved.id}`);
+        setMessage(`Call note saved: ${saved.id}. No draft case was created yet.`);
       }
       setSelectedId(output.id);
-      setForm(emptyCallNote);
-      setRedFlags([]);
+      setForm({ ...emptyCallNote, ...output });
+      setRedFlags(output.redFlags || []);
       await refreshNotes();
       await refreshIntakes();
     } catch (err) {
@@ -1100,14 +1141,14 @@ function CallNotesPage({ onOpenAutofill }) {
           <img className="brand-logo" src={brandLogoSrc} alt="Easy Loan Finance" />
           <div>
             <span>Easy Loan Finance</span>
-            <strong>Client Call Notes</strong>
+            <strong>Client Call Intake</strong>
           </div>
         </div>
         <button className="ghost-button sidebar-action" type="button" onClick={onOpenAutofill}>
           <ExternalLink size={16} />
           EasyFlow AI
         </button>
-        <TeamSettingsPanel appName="Client Call Notes" />
+        <TeamSettingsPanel appName="Client Call Intake" />
         <label className="note-search">
           Search clients
           <div className="search-input">
@@ -1130,19 +1171,28 @@ function CallNotesPage({ onOpenAutofill }) {
         <header className="topbar">
           <div>
             <span>Quick phone intake only</span>
-            <h1>Client Call Notes</h1>
-            <p>Use this for a short call summary. Send the Loan Form when the client needs to provide full application details.</p>
+            <h1>Client Call Intake</h1>
+            <p className="topbar-helper">Call note is the short phone record. Create case turns it into the internal client file used by Loan Form and EasyFlow AI.</p>
           </div>
           <div className="actions call-actions">
-            <button className="ghost-button" type="button" onClick={() => { setForm(emptyCallNote); setRedFlags([]); setSelectedId(""); }}>
-              New
+            <button className="ghost-button quiet-action" type="button" onClick={() => {
+              if ((form.clientName || form.mobile || form.email || form.quickNotes) && !window.confirm("Clear the current call intake? Unsaved changes will be lost.")) return;
+              setForm(emptyCallNote);
+              setRedFlags([]);
+              setSelectedId("");
+              setMessage("");
+              setError("");
+            }}>
+              New call
             </button>
             <button className="ghost-button" type="button" disabled={saving} onClick={() => saveCallNote()}>
-              Save Note
+              Save call note
+              <small>Phone note only</small>
             </button>
             <button className="primary-button" type="button" disabled={saving || !form.clientName.trim()} onClick={() => saveCallNote({ convert: true })}>
               {saving ? <RefreshCw size={17} className="spin" /> : <Play size={17} />}
-              Save + Draft Case
+              Save & create case
+              <small>For Loan Form / EasyFlow</small>
             </button>
           </div>
         </header>
@@ -1214,7 +1264,7 @@ function CallNotesPage({ onOpenAutofill }) {
           <section className="panel note-panel recent-note-panel">
             <div className="panel-title"><History size={18} /><h2>Recent / Search Results</h2></div>
             <div className="recent-note-list">
-              {filteredNotes.map((note) => (
+              {filteredNotes.length ? filteredNotes.map((note) => (
                 <div key={`row-${note.id}`}>
                   <button type="button" onClick={() => loadNote(note)}>
                     <strong>{[note.clientName, note.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
@@ -1227,12 +1277,13 @@ function CallNotesPage({ onOpenAutofill }) {
                     <button type="button" className="danger-link" onClick={() => deleteNote(note)}>Delete</button>
                   </div>
                 </div>
-              ))}
+              )) : <div className="case-search-empty">No matching call notes yet.</div>}
             </div>
           </section>
 
           <section className="panel note-panel recent-note-panel">
-            <div className="panel-title"><FileJson size={18} /><h2>Loan Forms</h2></div>
+            <div className="panel-title"><FileJson size={18} /><h2>Loan Form Inbox</h2></div>
+            <p className="panel-helper inbox-helper">This is the internal place to review full Loan Form submissions. EasyFlow AI uses these linked client records for Infinity/AOL preparation.</p>
             <div className="recent-note-list">
               {filteredIntakes.length ? filteredIntakes.map((intake) => (
                 <div key={intake.id}>
@@ -1252,7 +1303,7 @@ function CallNotesPage({ onOpenAutofill }) {
                     {intake.convertedCaseId && <button type="button" onClick={onOpenAutofill}>Open EasyFlow</button>}
                   </div>
                 </div>
-              )) : <div className="case-search-empty">No loan forms yet.</div>}
+              )) : <div className="case-search-empty">No matching loan forms yet.</div>}
             </div>
           </section>
         </div>

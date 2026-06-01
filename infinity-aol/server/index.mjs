@@ -790,6 +790,7 @@ app.get("/api/client-intakes", (request, response) => {
       secondApplicantName: note.secondApplicantName || intake.submission?.secondApplicantName || "",
       mobile: note.mobile || intake.submission?.mobile || "",
       email: note.email || intake.submission?.email || "",
+      loanType: note.loanType || intake.submission?.loanType || "",
       loanPurpose: note.loanPurpose || intake.submission?.loanPurpose || "",
       loanAmount: note.loanAmount || intake.submission?.loanAmount || 0,
       convertedCaseId: note.convertedCaseId || null,
@@ -1246,6 +1247,16 @@ app.get("/api/audit-log", (_request, response) => {
 app.get("/api/backup", (_request, response) => {
   response.setHeader("content-disposition", `attachment; filename="infinity-aol-backup-${new Date().toISOString().slice(0, 10)}.json"`);
   response.json(buildInfinityAolBackup());
+});
+
+app.use("/api", (request, response) => {
+  response.status(404).json({ error: `API route not found: ${request.method} ${request.originalUrl}` });
+});
+
+app.use((error, _request, response, _next) => {
+  console.error(error);
+  if (response.headersSent) return;
+  response.status(500).json({ error: "Internal server error", detail: error.message });
 });
 
 if (fs.existsSync(distPath)) {

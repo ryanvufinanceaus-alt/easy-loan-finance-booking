@@ -456,6 +456,10 @@ h2 {
   flex-wrap: wrap;
 }
 
+.call-actions {
+  align-items: stretch;
+}
+
 .primary-button,
 .ghost-button,
 .push-button {
@@ -469,6 +473,33 @@ h2 {
   min-height: 36px;
   padding: 0 12px;
   text-decoration: none;
+}
+
+.primary-button small,
+.ghost-button small {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  opacity: 0.74;
+}
+
+.call-actions .primary-button,
+.call-actions .ghost-button {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+  justify-content: center;
+  min-height: 48px;
+  min-width: 132px;
+}
+
+.call-actions .primary-button {
+  min-width: 178px;
+}
+
+.call-actions .quiet-action {
+  min-width: 92px;
 }
 
 .primary-button,
@@ -1132,6 +1163,14 @@ pre {
   width: 100%;
 }
 
+.topbar-helper {
+  color: #55635b;
+  font-size: 14px;
+  line-height: 1.45;
+  margin: 6px 0 0;
+  max-width: 720px;
+}
+
 .notes-grid {
   display: grid;
   gap: 10px;
@@ -1147,6 +1186,10 @@ pre {
   gap: 8px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 10px;
+}
+
+.inbox-helper {
+  padding: 0 12px;
 }
 
 .note-text-panel,
