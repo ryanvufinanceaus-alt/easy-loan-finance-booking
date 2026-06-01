@@ -1133,7 +1133,7 @@ function CallNotesPage({ onOpenAutofill }) {
             <h1>Client Call Notes</h1>
             <p>Use this for a short call summary. Send the Loan Form when the client needs to provide full application details.</p>
           </div>
-          <div className="actions">
+          <div className="actions call-actions">
             <button className="ghost-button" type="button" onClick={() => { setForm(emptyCallNote); setRedFlags([]); setSelectedId(""); }}>
               New
             </button>
