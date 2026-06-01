@@ -1936,6 +1936,9 @@ createServer(async (req, res) => {
     const hostname = requestHostname(req);
     processBookingReminders(requestOrigin(req)).catch((error) => console.warn(error.message));
     if (LOAN_FORM_HOST_RE.test(hostname)) {
+      if (req.method === "GET" && /^\/(?:loan-form|client-info|apply)?\/?$/.test(url.pathname)) {
+        res.setHeader("Clear-Site-Data", "\"cache\", \"storage\"");
+      }
       if (!requireLoanFormHostPublicOnly(res, url)) return;
       forwardToInfinityAolApp(req, res, url);
       return;
