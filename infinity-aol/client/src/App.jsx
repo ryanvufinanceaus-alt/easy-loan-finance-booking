@@ -10,8 +10,10 @@ import {
   Play,
   RefreshCw,
   Search,
+  Settings,
   ShieldCheck,
-  Trash2
+  Trash2,
+  UserPlus
 } from "lucide-react";
 
 const isLoanFormHost = /^loan-form\./i.test(location.hostname);
@@ -171,6 +173,122 @@ function CaseFacts({ caseData }) {
         </strong>
       </div>
     </div>
+  );
+}
+
+function TeamSettingsPanel({ appName }) {
+  const [open, setOpen] = useState(false);
+  const [auth, setAuth] = useState(null);
+  const [brokers, setBrokers] = useState([]);
+  const [form, setForm] = useState({ name: "", email: "", phone: "", accessCode: "" });
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  async function refresh() {
+    const [authData, brokerData] = await Promise.all([
+      api("/api/auth/status"),
+      api("/api/brokers")
+    ]);
+    setAuth(authData);
+    setBrokers(brokerData);
+  }
+
+  useEffect(() => {
+    refresh().catch(() => {});
+  }, []);
+
+  async function createBrokerUser(event) {
+    event.preventDefault();
+    setMessage("");
+    setError("");
+    try {
+      const saved = await api("/api/brokers", {
+        method: "POST",
+        body: JSON.stringify({
+          ...form,
+          title: "Finance Broker",
+          location: "Adelaide, SA",
+          services: ["Home loan consultation", "Refinance", "Pre-approval"]
+        })
+      });
+      setMessage(`User created: ${saved.name}`);
+      setForm({ name: "", email: "", phone: "", accessCode: "" });
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function saveAccessCode(broker, accessCode) {
+    setMessage("");
+    setError("");
+    try {
+      await api(`/api/brokers/${broker.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ accessCode })
+      });
+      setMessage(`Access updated for ${broker.name}`);
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function logout() {
+    await api("/api/auth/logout", { method: "POST" }).catch(() => {});
+    window.location.href = `/login?returnTo=${encodeURIComponent(location.pathname + location.search)}`;
+  }
+
+  const isAdmin = !auth?.required || auth?.role === "admin";
+
+  return (
+    <details className="team-settings" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>
+        <span><Settings size={16} /> Settings</span>
+        <small>{auth?.role === "broker" ? "Broker access" : "Admin access"}</small>
+      </summary>
+      <div className="team-settings-body">
+        <div className="team-session-card">
+          <span>{appName}</span>
+          <strong>{auth?.email || "Local admin"}</strong>
+          <small>{isAdmin ? "Ryan admin can add broker users and access codes here." : "Broker users can use assigned internal tools only."}</small>
+          <button type="button" onClick={logout}>Logout</button>
+        </div>
+        {isAdmin ? (
+          <>
+            <form className="team-user-form" onSubmit={createBrokerUser}>
+              <label>Name<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Broker / staff name" required /></label>
+              <label>Email<input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="user@easyloanfinance.com.au" required /></label>
+              <label>Phone<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="04..." /></label>
+              <label>Access code<input value={form.accessCode} onChange={(event) => setForm({ ...form, accessCode: event.target.value })} placeholder="Private login code" required /></label>
+              <button type="submit"><UserPlus size={15} /> Add user</button>
+            </form>
+            <div className="team-user-list">
+              {brokers.map((broker) => (
+                <div key={broker.id} className="team-user-row">
+                  <div>
+                    <strong>{broker.name}</strong>
+                    <small>{broker.email || "No email set"}</small>
+                  </div>
+                  <input
+                    defaultValue={broker.accessCode || ""}
+                    placeholder="Access code"
+                    onBlur={(event) => {
+                      if (event.target.value !== (broker.accessCode || "")) saveAccessCode(broker, event.target.value);
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+            <a className="settings-link" href="https://portal.easyloanfinance.com.au" target="_blank" rel="noreferrer">Open BrokerDesk Team & Users for full CRM roles</a>
+          </>
+        ) : (
+          <p className="panel-helper">Ask Ryan admin to change your access code, role, or CRM permissions.</p>
+        )}
+        {message && <div className="success-banner compact">{message}</div>}
+        {error && <div className="error-banner compact">{error}</div>}
+      </div>
+    </details>
   );
 }
 
@@ -605,6 +723,7 @@ function CallNotesPage({ onOpenAutofill }) {
           <ExternalLink size={16} />
           EasyFlow AI
         </button>
+        <TeamSettingsPanel appName="Client Call Notes" />
         <label className="note-search">
           Search clients
           <div className="search-input">
@@ -1423,6 +1542,7 @@ export default function App() {
           <ClipboardList size={16} />
           Client Call
         </button>
+        <TeamSettingsPanel appName="EasyFlow AI" />
         <div className="case-search">
           <label>
             Search

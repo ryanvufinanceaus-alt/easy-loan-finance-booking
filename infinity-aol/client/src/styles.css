@@ -88,6 +88,135 @@ textarea {
   width: 100%;
 }
 
+.team-settings {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.team-settings summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  list-style: none;
+  padding: 10px 12px;
+}
+
+.team-settings summary::-webkit-details-marker {
+  display: none;
+}
+
+.team-settings summary span {
+  align-items: center;
+  color: #f8fbf8;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 7px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.team-settings summary small,
+.team-session-card small,
+.team-user-row small,
+.settings-link {
+  color: #a9b7ad;
+  font-size: 12px;
+}
+
+.team-settings-body {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.team-session-card,
+.team-user-row {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+}
+
+.team-session-card span {
+  color: #d7b66f;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.team-session-card button,
+.team-user-form button {
+  background: #f8fbf8;
+  border: 0;
+  border-radius: 7px;
+  color: #13201a;
+  cursor: pointer;
+  font-weight: 800;
+  min-height: 32px;
+}
+
+.team-user-form {
+  display: grid;
+  gap: 8px;
+}
+
+.team-user-form label {
+  color: #f8fbf8;
+  font-size: 12px;
+}
+
+.team-user-form input,
+.team-user-row input {
+  border: 1px solid #d8ded9;
+  border-radius: 7px;
+  min-width: 0;
+  padding: 8px 9px;
+  width: 100%;
+}
+
+.team-user-form button {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.team-user-list {
+  display: grid;
+  gap: 8px;
+  max-height: 230px;
+  overflow: auto;
+}
+
+.team-user-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.team-user-row strong {
+  color: #fff;
+  display: block;
+  font-size: 13px;
+}
+
+.settings-link {
+  text-decoration: none;
+}
+
+.compact {
+  margin-bottom: 0;
+  padding: 9px 10px;
+}
+
 .case-search label {
   color: #f8fbf8;
 }
