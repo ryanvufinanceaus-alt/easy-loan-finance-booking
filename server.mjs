@@ -1109,6 +1109,37 @@ async function sendAdminPasswordResetEmail(email, tempPassword, origin) {
   });
 }
 
+async function sendBrokerAccessResetEmail(adminEmail, broker, tempAccessCode, origin) {
+  if (!emailDeliveryReady()) {
+    throw new Error("Email delivery is not configured. Set GOOGLE_APPS_SCRIPT_EMAIL_URL/TOKEN or SMTP settings first.");
+  }
+  const loginUrl = `${origin || "https://client-call.easyloanfinance.com.au"}/login`;
+  await sendEmail({
+    to: adminEmail,
+    from: senderFrom(),
+    subject: `Easy Loan Finance user access reset - ${broker.name}`,
+    text: [
+      "Hi Ryan,",
+      "",
+      "A temporary access code was generated for an Easy Loan Finance internal user.",
+      "",
+      `User: ${broker.name}`,
+      `Email: ${broker.email}`,
+      `Temporary access code: ${tempAccessCode}`,
+      `Login: ${loginUrl}`,
+      "",
+      "Share this code only with the intended team member, then ask them to change it after login."
+    ].join("\n"),
+    html: [
+      "<p>Hi Ryan,</p>",
+      "<p>A temporary access code was generated for an Easy Loan Finance internal user.</p>",
+      `<p><strong>User:</strong> ${escapeHtml(broker.name)}<br><strong>Email:</strong> ${escapeHtml(broker.email)}<br><strong>Temporary access code:</strong> <code>${escapeHtml(tempAccessCode)}</code></p>`,
+      `<p><a href="${escapeHtml(loginUrl)}">Open internal login</a></p>`,
+      "<p>Share this code only with the intended team member, then ask them to change it after login.</p>"
+    ].join("")
+  });
+}
+
 function internalNotificationRecipients(broker) {
   return Array.from(new Set([
     NOTIFY_EMAIL,
@@ -1629,6 +1660,10 @@ function infinityAolPath(url) {
 
 function forwardToInfinityAolApp(req, res, url, forwardedPrefix = "") {
   req.headers["x-forwarded-prefix"] = forwardedPrefix;
+  const session = sessionForRequest(req);
+  if (session?.role) req.headers["x-elf-role"] = session.role;
+  if (session?.accessLevel) req.headers["x-elf-access-level"] = session.accessLevel;
+  if (session?.email) req.headers["x-elf-user-email"] = session.email;
   const pathname = url.pathname.startsWith(`${INFINITY_AOL_BASE}/`)
     ? url.pathname.slice(INFINITY_AOL_BASE.length) || "/"
     : url.pathname === INFINITY_AOL_BASE
@@ -1687,6 +1722,7 @@ async function handleApi(req, res, url) {
       authenticated: !ADMIN_PASSWORD || Boolean(session),
       email: session?.email || (ADMIN_PASSWORD ? null : ADMIN_EMAIL),
       role: session?.role || (!ADMIN_PASSWORD ? "admin" : null),
+      accessLevel: session?.accessLevel || (session?.role === "broker" ? "broker" : null),
       brokerId: session?.brokerId || null,
       mustChangePassword: Boolean(session?.mustChangePassword),
       expiresAt: session?.exp || null,
@@ -1728,13 +1764,14 @@ async function handleApi(req, res, url) {
       if (!broker) return sendJson(res, 401, { error: "Wrong email or access code" });
       const token = signSession({
         role: "broker",
+        accessLevel: broker.accessLevel || "broker",
         brokerId: broker.id,
         email: broker.email,
         name: broker.name,
         exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000
       });
       setSessionCookie(req, res, token);
-      return sendJson(res, 200, { ok: true, role: "broker", brokerId: broker.id, email: broker.email });
+      return sendJson(res, 200, { ok: true, role: "broker", accessLevel: broker.accessLevel || "broker", brokerId: broker.id, email: broker.email });
     }
     const adminEmail = isAdminEmail(loginEmail) ? loginEmail : ADMIN_EMAIL;
     const token = signSession({
@@ -1779,6 +1816,7 @@ async function handleApi(req, res, url) {
     const updated = await updateBroker(broker.id, { accessCode: newPassword });
     const token = signSession({
       role: "broker",
+      accessLevel: updated.accessLevel || "broker",
       brokerId: updated.id,
       email: updated.email,
       name: updated.name,
@@ -1914,12 +1952,34 @@ async function handleApi(req, res, url) {
       email: body.email || "",
       phone: body.phone || "",
       color: body.color || "#b89044",
+      accessLevel: body.accessLevel === "staff" ? "staff" : "broker",
       accessCode: body.accessCode || "",
       services: Array.isArray(body.services) ? body.services : ["First home buyer", "Refinance"],
       hours: body.hours || { start: "09:00", end: "17:00" }
     };
     const saved = await createBroker(next);
     return sendJson(res, 201, saved);
+  }
+
+  const brokerResetMatch = url.pathname.match(/^\/api\/brokers\/([^/]+)\/reset-access$/);
+  if (brokerResetMatch && req.method === "POST") {
+    if (!isAdminSession(session)) return sendJson(res, 403, { error: "Admin only" });
+    const id = brokerResetMatch[1];
+    const broker = brokers.find((item) => item.id === id);
+    if (!broker) return sendJson(res, 404, { error: "Broker not found" });
+    const tempAccessCode = `ELF-${randomBytes(4).toString("hex").toUpperCase()}`;
+    const updated = await updateBroker(id, { accessCode: tempAccessCode });
+    if (emailDeliveryReady()) {
+      await sendBrokerAccessResetEmail(ADMIN_EMAIL, updated, tempAccessCode, requestOrigin(req));
+    }
+    return sendJson(res, 200, {
+      ok: true,
+      broker: updated,
+      sentTo: emailDeliveryReady() ? ADMIN_EMAIL : null,
+      message: emailDeliveryReady()
+        ? `Temporary access code sent to ${ADMIN_EMAIL}.`
+        : `Temporary access code generated. Email is not configured: ${tempAccessCode}`
+    });
   }
 
   const brokerMatch = url.pathname.match(/^\/api\/brokers\/([^/]+)$/);

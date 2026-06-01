@@ -176,6 +176,8 @@ textarea {
 }
 
 .team-user-form input,
+.team-user-form select,
+.team-user-row select,
 .team-user-row input {
   border: 1px solid #d8ded9;
   border-radius: 7px;
@@ -206,6 +208,32 @@ textarea {
   color: #fff;
   display: block;
   font-size: 13px;
+}
+
+.team-user-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.team-user-actions button {
+  align-items: center;
+  background: #f8fbf8;
+  border: 0;
+  border-radius: 7px;
+  color: #13201a;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 9px;
+}
+
+.team-user-actions .danger-mini-button {
+  background: #fff1ee;
+  color: #9f241a;
 }
 
 .settings-link {
@@ -1292,6 +1320,36 @@ pre {
   background: #fff5f3;
   border-color: #f1c5bd;
   color: #8b2018;
+}
+
+.recent-note-list button svg {
+  flex: 0 0 auto;
+}
+
+.recent-note-list > div > div button {
+  align-items: center;
+  display: inline-flex;
+  gap: 5px;
+  justify-content: center;
+}
+
+.locked-data-panel {
+  align-items: center;
+  color: #5b675f;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  padding: 28px 14px 32px;
+  text-align: center;
+}
+
+.locked-data-panel strong {
+  color: #14211a;
+  font-size: 16px;
+}
+
+.locked-data-panel span {
+  max-width: 560px;
 }
 
 .client-intake-shell {

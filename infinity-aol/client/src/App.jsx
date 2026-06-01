@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   ClipboardList,
+  Download,
   ExternalLink,
   FileJson,
   History,
@@ -242,7 +243,7 @@ function TeamSettingsPanel({ appName }) {
   const { session: auth, refreshSession } = useSessionStatus();
   const [open, setOpen] = useState(false);
   const [brokers, setBrokers] = useState([]);
-  const [form, setForm] = useState({ name: "", email: "", phone: "", accessCode: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", accessLevel: "staff", accessCode: "" });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -274,7 +275,7 @@ function TeamSettingsPanel({ appName }) {
         })
       });
       setMessage(`User created: ${saved.name}`);
-      setForm({ name: "", email: "", phone: "", accessCode: "" });
+      setForm({ name: "", email: "", phone: "", accessLevel: "staff", accessCode: "" });
       await refresh();
     } catch (err) {
       setError(err.message);
@@ -290,6 +291,52 @@ function TeamSettingsPanel({ appName }) {
         body: JSON.stringify({ accessCode })
       });
       setMessage(`Access updated for ${broker.name}`);
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function saveAccessLevel(broker, accessLevel) {
+    setMessage("");
+    setError("");
+    try {
+      await api(`/api/brokers/${broker.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ accessLevel })
+      });
+      setMessage(`Access level updated for ${broker.name}`);
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function resetAccessCode(broker) {
+    if (!window.confirm(`Reset access code for ${broker.name}? The temporary code will be emailed to Ryan admin.`)) return;
+    setMessage("");
+    setError("");
+    try {
+      const result = await api(`/api/brokers/${broker.id}/reset-access`, {
+        method: "POST",
+        body: "{}"
+      });
+      setMessage(result.message || `Access reset for ${broker.name}.`);
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function deleteBrokerUser(broker) {
+    const expected = `DELETE ${broker.id}`;
+    const typed = window.prompt(`Remove this user from internal tools.\n\nType ${expected} to confirm.`);
+    if (typed !== expected) return;
+    setMessage("");
+    setError("");
+    try {
+      await api(`/api/brokers/${broker.id}`, { method: "DELETE" });
+      setMessage(`User removed: ${broker.name}`);
       await refresh();
     } catch (err) {
       setError(err.message);
@@ -352,6 +399,7 @@ function TeamSettingsPanel({ appName }) {
               <label>Name<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Broker / staff name" required /></label>
               <label>Email<input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="user@easyloanfinance.com.au" required /></label>
               <label>Phone<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="04..." /></label>
+              <label>Access level<select value={form.accessLevel} onChange={(event) => setForm({ ...form, accessLevel: event.target.value })}><option value="staff">Staff - call intake only</option><option value="broker">Broker - submissions + EasyFlow</option></select></label>
               <label>Access code<input value={form.accessCode} onChange={(event) => setForm({ ...form, accessCode: event.target.value })} placeholder="Private login code" required /></label>
               <button type="submit"><UserPlus size={15} /> Add user</button>
             </form>
@@ -360,8 +408,15 @@ function TeamSettingsPanel({ appName }) {
                 <div key={broker.id} className="team-user-row">
                   <div>
                     <strong>{broker.name}</strong>
-                    <small>{broker.email || "No email set"}</small>
+                    <small>{broker.email || "No email set"} | {(broker.accessLevel || "broker").toUpperCase()}</small>
                   </div>
+                  <select
+                    defaultValue={broker.accessLevel || "broker"}
+                    onChange={(event) => saveAccessLevel(broker, event.target.value)}
+                  >
+                    <option value="staff">Staff</option>
+                    <option value="broker">Broker</option>
+                  </select>
                   <input
                     defaultValue={broker.accessCode || ""}
                     placeholder="Access code"
@@ -369,6 +424,10 @@ function TeamSettingsPanel({ appName }) {
                       if (event.target.value !== (broker.accessCode || "")) saveAccessCode(broker, event.target.value);
                     }}
                   />
+                  <div className="team-user-actions">
+                    <button type="button" onClick={() => resetAccessCode(broker)}>Reset</button>
+                    <button type="button" className="danger-mini-button" onClick={() => deleteBrokerUser(broker)}><Trash2 size={13} /> Remove</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -966,6 +1025,7 @@ function CallNotesPage({ onOpenAutofill }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const canViewLoanSubmissions = Boolean(session && (!session.required || session.role === "admin" || session.accessLevel === "broker"));
 
   async function refreshNotes() {
     const result = await api("/api/call-notes");
@@ -979,8 +1039,11 @@ function CallNotesPage({ onOpenAutofill }) {
 
   useEffect(() => {
     refreshNotes().catch((err) => setError(err.message));
-    refreshIntakes().catch((err) => setError(err.message));
   }, []);
+
+  useEffect(() => {
+    if (canViewLoanSubmissions) refreshIntakes().catch((err) => setError(err.message));
+  }, [canViewLoanSubmissions]);
 
   const filteredNotes = useMemo(() => {
     const terms = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -1073,7 +1136,7 @@ function CallNotesPage({ onOpenAutofill }) {
       setForm({ ...emptyCallNote, ...output });
       setRedFlags(output.redFlags || []);
       await refreshNotes();
-      await refreshIntakes();
+      if (canViewLoanSubmissions) await refreshIntakes();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1088,7 +1151,7 @@ function CallNotesPage({ onOpenAutofill }) {
       const converted = await api(`/api/call-notes/${note.id}/convert-to-case`, { method: "POST", body: "{}" });
       setMessage(`Draft case ready: ${converted.case.id}`);
       await refreshNotes();
-      await refreshIntakes();
+      if (canViewLoanSubmissions) await refreshIntakes();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1104,7 +1167,7 @@ function CallNotesPage({ onOpenAutofill }) {
       await navigator.clipboard?.writeText(intake.url).catch(() => {});
       setMessage(`Loan Form link copied: ${intake.url}`);
       await refreshNotes();
-      await refreshIntakes();
+      if (canViewLoanSubmissions) await refreshIntakes();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1126,12 +1189,16 @@ function CallNotesPage({ onOpenAutofill }) {
       if (selectedId === note.id) setSelectedId("");
       setMessage(`Deleted ${note.id}`);
       await refreshNotes();
-      await refreshIntakes();
+      if (canViewLoanSubmissions) await refreshIntakes();
     } catch (err) {
       setError(err.message);
     } finally {
       setSaving(false);
     }
+  }
+
+  function downloadFactFind(intake) {
+    window.open(`${apiBase}/api/client-intakes/${encodeURIComponent(intake.id)}/fact-find`, "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -1262,7 +1329,8 @@ function CallNotesPage({ onOpenAutofill }) {
           </section>
 
           <section className="panel note-panel recent-note-panel">
-            <div className="panel-title"><History size={18} /><h2>Recent / Search Results</h2></div>
+            <div className="panel-title"><History size={18} /><h2>Call Intake Data</h2></div>
+            <p className="panel-helper inbox-helper">Short phone notes for team visibility. Use this to search calls, copy the Loan Form link, or create the draft internal case.</p>
             <div className="recent-note-list">
               {filteredNotes.length ? filteredNotes.map((note) => (
                 <div key={`row-${note.id}`}>
@@ -1282,29 +1350,38 @@ function CallNotesPage({ onOpenAutofill }) {
           </section>
 
           <section className="panel note-panel recent-note-panel">
-            <div className="panel-title"><FileJson size={18} /><h2>Loan Form Inbox</h2></div>
-            <p className="panel-helper inbox-helper">This is the internal place to review full Loan Form submissions. EasyFlow AI uses these linked client records for Infinity/AOL preparation.</p>
-            <div className="recent-note-list">
-              {filteredIntakes.length ? filteredIntakes.map((intake) => (
-                <div key={intake.id}>
-                  <button type="button" onClick={() => {
-                    const linked = notes.find((note) => note.id === intake.callNoteId);
-                    if (linked) loadNote(linked);
-                  }}>
-                    <strong>{[intake.clientName, intake.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
-                    <span>{intake.status} | {intake.submittedAt ? `Submitted ${new Date(intake.submittedAt).toLocaleDateString()}` : `Sent ${new Date(intake.createdAt).toLocaleDateString()}`}</span>
-                    <small>{intake.convertedCaseId || intake.callNoteId} | {intake.loanPurpose || "Purpose not set"}</small>
-                  </button>
-                  <div>
-                    <button type="button" onClick={async () => {
-                      await navigator.clipboard?.writeText(intake.url).catch(() => {});
-                      setMessage(`Loan Form link copied: ${intake.url}`);
-                    }}>Copy link</button>
-                    {intake.convertedCaseId && <button type="button" onClick={onOpenAutofill}>Open EasyFlow</button>}
+            <div className="panel-title"><FileJson size={18} /><h2>Loan Form Submissions</h2></div>
+            <p className="panel-helper inbox-helper">Full client-submitted fact-find data. Broker/admin only. EasyFlow AI uses these linked records for Infinity/AOL preparation.</p>
+            {canViewLoanSubmissions ? (
+              <div className="recent-note-list">
+                {filteredIntakes.length ? filteredIntakes.map((intake) => (
+                  <div key={intake.id}>
+                    <button type="button" onClick={() => {
+                      const linked = notes.find((note) => note.id === intake.callNoteId);
+                      if (linked) loadNote(linked);
+                    }}>
+                      <strong>{[intake.clientName, intake.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
+                      <span>{intake.status} | {intake.submittedAt ? `Submitted ${new Date(intake.submittedAt).toLocaleDateString()}` : `Sent ${new Date(intake.createdAt).toLocaleDateString()}`}</span>
+                      <small>{intake.convertedCaseId || intake.callNoteId} | {intake.loanPurpose || "Purpose not set"}</small>
+                    </button>
+                    <div>
+                      <button type="button" onClick={async () => {
+                        await navigator.clipboard?.writeText(intake.url).catch(() => {});
+                        setMessage(`Loan Form link copied: ${intake.url}`);
+                      }}>Copy link</button>
+                      <button type="button" onClick={() => downloadFactFind(intake)}><Download size={13} /> Fact Find</button>
+                      {intake.convertedCaseId && <button type="button" onClick={onOpenAutofill}>Open EasyFlow</button>}
+                    </div>
                   </div>
-                </div>
-              )) : <div className="case-search-empty">No matching loan forms yet.</div>}
-            </div>
+                )) : <div className="case-search-empty">No matching loan forms yet.</div>}
+              </div>
+            ) : (
+              <div className="locked-data-panel">
+                <ShieldCheck size={20} />
+                <strong>Broker access required</strong>
+                <span>Loan Form Submissions contain full client fact-find details. Ask Ryan admin to upgrade this user if they need broker access.</span>
+              </div>
+            )}
           </section>
         </div>
       </section>

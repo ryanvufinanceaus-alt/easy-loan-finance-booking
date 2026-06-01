@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
+import nodemailer from "nodemailer";
 import { cases } from "./data/sampleCases.mjs";
 import { buildInfinityPayload, getMapping } from "./lib/mapper.mjs";
 import { validateInfinityPayload } from "./lib/validation.mjs";
@@ -38,6 +39,8 @@ let clientIntakes = [];
 let preparedArchive = [];
 const auditLog = [];
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 12 } });
+const notificationEmail = process.env.EASYFLOW_NOTIFY_EMAIL || process.env.BOOKING_NOTIFY_EMAIL || process.env.NOTIFY_EMAIL || "hello@easyloanfinance.com.au";
+const notificationFrom = process.env.EASYFLOW_FROM_EMAIL || "Easy Loan Finance <ryan.vufinanceaus@gmail.com>";
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
@@ -212,6 +215,262 @@ function loanFormBaseUrl(request) {
   const configured = process.env.LOAN_FORM_BASE_URL || process.env.CLIENT_LOAN_FORM_BASE_URL;
   if (configured) return configured.replace(/\/$/, "");
   return publicBaseUrl(request);
+}
+
+function canReadLoanSubmissions(request) {
+  const role = String(request.get("x-elf-role") || "").toLowerCase();
+  const accessLevel = String(request.get("x-elf-access-level") || "").toLowerCase();
+  if (!role && !accessLevel) return true;
+  return role === "admin" || accessLevel === "broker";
+}
+
+function smtpConfigured() {
+  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+}
+
+function mailTransporter(overrides = {}) {
+  if (!smtpConfigured()) return null;
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: process.env.SMTP_SECURE === "true",
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    },
+    ...overrides
+  });
+}
+
+async function sendEasyFlowMail(mailOptions) {
+  const transporter = mailTransporter();
+  if (!transporter || !notificationEmail) return false;
+  try {
+    await transporter.sendMail(mailOptions);
+    return true;
+  } catch (error) {
+    const host = String(process.env.SMTP_HOST || "").toLowerCase();
+    const port = Number(process.env.SMTP_PORT || 587);
+    if (!host.includes("smtp.gmail.com") || port === 465) throw error;
+    const fallback = mailTransporter({ port: 465, secure: true });
+    if (!fallback) throw error;
+    await fallback.sendMail(mailOptions);
+    return true;
+  }
+}
+
+function escapeHtml(value = "") {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function moneyLabel(value) {
+  const number = Number(value || 0);
+  if (!number) return "";
+  return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 }).format(number);
+}
+
+function factValue(value) {
+  if (typeof value === "number") return value ? moneyLabel(value) : "";
+  return value || "";
+}
+
+function factRows(rows) {
+  return rows
+    .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== "")
+    .map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(factValue(value))}</td></tr>`)
+    .join("");
+}
+
+function factSection(title, rows) {
+  const body = factRows(rows);
+  if (!body) return "";
+  return `<h2>${escapeHtml(title)}</h2><table>${body}</table>`;
+}
+
+function intakeFactFindDocument(intake, note = {}) {
+  const data = { ...(note || {}), ...(intake?.submission || {}) };
+  const clientName = [data.clientName, data.secondApplicantName].filter(Boolean).join(" & ") || "Client";
+  const sections = [
+    factSection("Applicant Details", [
+      ["Client name", data.clientName],
+      ["Second applicant", data.secondApplicantName],
+      ["Date of birth", data.dateOfBirth],
+      ["Mobile", data.mobile],
+      ["Email", data.email],
+      ["Preferred language", data.preferredLanguage],
+      ["Residency status", data.residencyStatus],
+      ["Visa subclass", data.visaSubclass],
+      ["Marital status", data.maritalStatus],
+      ["Dependants", data.dependants],
+      ["Dependent 1 DOB", data.dependant1Dob],
+      ["Dependent 2 DOB", data.dependant2Dob],
+      ["Dependent 3 DOB", data.dependant3Dob],
+      ["Dependent 4 DOB", data.dependant4Dob]
+    ]),
+    factSection("Loan Proposal", [
+      ["Loan type", data.loanType],
+      ["Loan purpose", data.loanPurpose],
+      ["Loan amount required", data.loanAmount],
+      ["Property value", data.propertyValue],
+      ["Deposit/equity", data.depositEquity],
+      ["Property/location", data.propertyLocation],
+      ["Timeline", data.timeline],
+      ["Loan term years", data.loanTermYears],
+      ["Repayment type", data.repaymentType],
+      ["Rate preference", data.ratePreference],
+      ["Offset requested", data.offsetRequested ? "Yes" : ""]
+    ]),
+    factSection("Residential History", [
+      ["Current address", data.address],
+      ["Suburb", data.currentSuburb],
+      ["State", data.currentState],
+      ["From date", data.currentAddressFromDate],
+      ["Residential status", data.currentResidentialStatus],
+      ["Previous address", data.previousAddress],
+      ["Previous suburb", data.previousSuburb],
+      ["Previous state", data.previousState],
+      ["Previous postcode", data.previousPostcode],
+      ["Previous residential status", data.previousResidentialStatus]
+    ]),
+    factSection("Employment And Income", [
+      ["Employment type", data.employmentType],
+      ["Employer/business", data.employerName],
+      ["Occupation", data.occupation],
+      ["Employment basis", data.employmentBasis],
+      ["Employment from date", data.employmentFromDate],
+      ["Business address", data.businessAddress],
+      ["Contact name", data.employmentContactName],
+      ["Contact number", data.employmentContactNumber],
+      ["Annual income", data.annualIncome],
+      ["Second applicant income", data.secondAnnualIncome],
+      ["Rental income annual", data.rentalIncomeAnnual],
+      ["Previous employer/business", data.previousBusinessName],
+      ["Previous job title", data.previousJobTitle]
+    ]),
+    factSection("Assets", [
+      ["Cash savings", data.cashSavingsAmount],
+      ["Cash savings bank", data.cashSavingsBank],
+      ["Real estate address", data.realEstateAssetAddress],
+      ["Real estate value", data.realEstateAssetValue],
+      ["Motor vehicle", data.motorVehicleModelYear],
+      ["Motor vehicle value", data.motorVehicleValue],
+      ["Home contents item", data.homeContentsItem],
+      ["Home contents value", data.homeContentsValue],
+      ["Financial asset buffer", data.financialAssetBuffer]
+    ]),
+    factSection("Liabilities And Expenses", [
+      ["Existing debts summary", data.existingDebtsSummary],
+      ["Credit issue", data.creditIssue],
+      ["General monthly expenses", data.generalExpenses || data.hemMonthly],
+      ["Applicant 1 expenses", data.applicant1Expenses],
+      ["Applicant 2 expenses", data.applicant2Expenses],
+      ["Private health applicant 1", data.applicant1PrivateHealthAmount],
+      ["Private health applicant 2", data.applicant2PrivateHealthAmount],
+      ["Insurance policies", data.insurancePolicies]
+    ]),
+    factSection("Commercial / Business", [
+      ["Commercial property use", data.commercialPropertyUse],
+      ["Business trading name", data.businessTradingName],
+      ["ABN/ACN", data.businessAbnAcn],
+      ["Business structure", data.businessStructure],
+      ["Annual turnover", data.annualBusinessTurnover],
+      ["Net profit before tax", data.netProfitBeforeTax],
+      ["Commercial security address", data.commercialSecurityAddress],
+      ["Commercial lease income", data.commercialLeaseIncome],
+      ["Funds purpose", data.commercialFundsPurpose],
+      ["GST registered", data.gstRegistered],
+      ["Years trading", data.yearsTrading],
+      ["Monthly turnover", data.monthlyTurnover]
+    ]),
+    factSection("Broker Notes", [
+      ["Client notes", data.clientNotes],
+      ["Quick call notes", note.quickNotes],
+      ["Broker assessment", note.brokerAssessment],
+      ["Next action", note.nextAction],
+      ["Source URL", data.sourceUrl],
+      ["Submitted at", intake?.submittedAt]
+    ])
+  ].filter(Boolean).join("");
+
+  return Buffer.from(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Fact Find - ${escapeHtml(clientName)}</title>
+  <style>
+    body { color: #16221b; font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.35; }
+    h1 { color: #063f2f; font-size: 22pt; margin-bottom: 4px; }
+    h2 { border-bottom: 1px solid #b89044; color: #063f2f; font-size: 14pt; margin-top: 20px; padding-bottom: 4px; }
+    .meta { color: #59675f; margin-bottom: 18px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #d8ded9; padding: 7px 9px; text-align: left; vertical-align: top; }
+    th { background: #f4f0e6; width: 34%; }
+  </style>
+</head>
+<body>
+  <h1>Easy Loan Finance Fact Find</h1>
+  <div class="meta">Generated from Loan Form Submission for ${escapeHtml(clientName)} on ${escapeHtml(new Date().toLocaleString("en-AU"))}</div>
+  ${sections}
+</body>
+</html>`);
+}
+
+function factFindFilename(intake, note = {}) {
+  const name = (note.clientName || intake?.submission?.clientName || "client").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "client";
+  return `Easy-Loan-Finance-Fact-Find-${name}.doc`;
+}
+
+async function notifyCallIntake(note) {
+  await sendEasyFlowMail({
+    to: notificationEmail,
+    from: notificationFrom,
+    replyTo: note.email || notificationEmail,
+    subject: `New Call Intake - ${note.clientName || "Unnamed client"}`,
+    text: [
+      "New Client Call Intake saved.",
+      "",
+      `Client: ${note.clientName || ""}`,
+      `Second applicant: ${note.secondApplicantName || ""}`,
+      `Phone: ${note.mobile || ""}`,
+      `Email: ${note.email || ""}`,
+      `Loan: ${note.loanPurpose || note.loanType || ""} ${moneyLabel(note.loanAmount)}`,
+      `Next action: ${note.nextAction || ""}`
+    ].join("\n"),
+    html: `<p>New Client Call Intake saved.</p>${factSection("Call Intake", [["Client", note.clientName], ["Second applicant", note.secondApplicantName], ["Phone", note.mobile], ["Email", note.email], ["Loan", `${note.loanPurpose || note.loanType || ""} ${moneyLabel(note.loanAmount)}`], ["Next action", note.nextAction]])}`
+  });
+}
+
+async function notifyLoanFormSubmission(intake, note) {
+  const attachment = intakeFactFindDocument(intake, note);
+  await sendEasyFlowMail({
+    to: notificationEmail,
+    from: notificationFrom,
+    replyTo: intake?.submission?.email || note?.email || notificationEmail,
+    subject: `Loan Form Submitted - ${note?.clientName || intake?.submission?.clientName || "Client"}`,
+    text: [
+      "A client has submitted a Loan Form.",
+      "",
+      `Client: ${note?.clientName || intake?.submission?.clientName || ""}`,
+      `Second applicant: ${note?.secondApplicantName || intake?.submission?.secondApplicantName || ""}`,
+      `Phone: ${note?.mobile || intake?.submission?.mobile || ""}`,
+      `Email: ${note?.email || intake?.submission?.email || ""}`,
+      `Loan purpose: ${note?.loanPurpose || intake?.submission?.loanPurpose || ""}`,
+      `Loan amount: ${moneyLabel(note?.loanAmount || intake?.submission?.loanAmount)}`,
+      "",
+      "A Fact Find document is attached."
+    ].join("\n"),
+    html: `<p>A client has submitted a Loan Form.</p>${factSection("Loan Form Summary", [["Client", note?.clientName || intake?.submission?.clientName], ["Second applicant", note?.secondApplicantName || intake?.submission?.secondApplicantName], ["Phone", note?.mobile || intake?.submission?.mobile], ["Email", note?.email || intake?.submission?.email], ["Loan purpose", note?.loanPurpose || intake?.submission?.loanPurpose], ["Loan amount", note?.loanAmount || intake?.submission?.loanAmount]])}<p>A Fact Find document is attached.</p>`,
+    attachments: [{
+      filename: factFindFilename(intake, note),
+      content: attachment,
+      contentType: "application/msword"
+    }]
+  });
 }
 
 function buildInfinityAolBackup() {
@@ -776,6 +1035,7 @@ app.get("/api/call-notes/:noteId", (request, response) => {
 });
 
 app.get("/api/client-intakes", (request, response) => {
+  if (!canReadLoanSubmissions(request)) return response.status(403).json({ error: "Broker access required for Loan Form Submissions." });
   const rows = clientIntakes.map((intake) => {
     const note = callNotes.find((item) => item.id === intake.callNoteId) || {};
     return {
@@ -799,6 +1059,18 @@ app.get("/api/client-intakes", (request, response) => {
     };
   });
   response.json(rows.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0)));
+});
+
+app.get("/api/client-intakes/:intakeId/fact-find", (request, response) => {
+  if (!canReadLoanSubmissions(request)) return response.status(403).json({ error: "Broker access required for Fact Find export." });
+  const intake = clientIntakes.find((item) => item.id === request.params.intakeId || item.token === request.params.intakeId);
+  if (!intake) return response.status(404).json({ error: "Loan form submission not found" });
+  const note = callNotes.find((item) => item.id === intake.callNoteId) || {};
+  const document = intakeFactFindDocument(intake, note);
+  response.setHeader("content-type", "application/msword; charset=utf-8");
+  response.setHeader("cache-control", "no-store");
+  response.setHeader("content-disposition", `attachment; filename="${factFindFilename(intake, note)}"`);
+  response.send(document);
 });
 
 app.post("/api/call-notes", (request, response) => {
@@ -852,6 +1124,7 @@ app.post("/api/call-notes", (request, response) => {
   callNotes.unshift(note);
   persistCallNotes();
   auditLog.push({ type: "call-note", timestamp: now, brokerUser: note.brokerUser, caseId: note.id, clientName: note.clientName });
+  notifyCallIntake(note).catch((error) => console.warn(`Call intake email failed: ${error.message}`));
   response.status(201).json(note);
 });
 
@@ -1032,6 +1305,7 @@ app.post("/api/client-intake/public", (request, response) => {
     caseId: note.id,
     clientName: note.clientName
   });
+  notifyLoanFormSubmission(intake, callNotes[0]).catch((error) => console.warn(`Loan form email failed: ${error.message}`));
   response.status(201).json({ ok: true, status: "submitted", callNoteId: note.id, caseId: localCase?.id || null, token: intake.token });
 });
 
@@ -1068,6 +1342,7 @@ app.post("/api/client-intake/:token", (request, response) => {
     caseId: localCase?.id || callNotes[noteIndex].id,
     clientName: callNotes[noteIndex].clientName
   });
+  notifyLoanFormSubmission(clientIntakes[intakeIndex], callNotes[noteIndex]).catch((error) => console.warn(`Loan form email failed: ${error.message}`));
   response.status(201).json({ ok: true, status: "submitted", caseId: localCase?.id || null });
 });
 
