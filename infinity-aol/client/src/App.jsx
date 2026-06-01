@@ -433,6 +433,7 @@ function ClientLoanFormHeader({ title, description }) {
 function CallNotesPage({ onOpenAutofill }) {
   const [form, setForm] = useState(emptyCallNote);
   const [notes, setNotes] = useState([]);
+  const [intakes, setIntakes] = useState([]);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [redFlags, setRedFlags] = useState([]);
@@ -445,8 +446,14 @@ function CallNotesPage({ onOpenAutofill }) {
     setNotes(result);
   }
 
+  async function refreshIntakes() {
+    const result = await api("/api/client-intakes");
+    setIntakes(result);
+  }
+
   useEffect(() => {
     refreshNotes().catch((err) => setError(err.message));
+    refreshIntakes().catch((err) => setError(err.message));
   }, []);
 
   const filteredNotes = useMemo(() => {
@@ -467,6 +474,25 @@ function CallNotesPage({ onOpenAutofill }) {
       : notes.slice(0, 6);
     return source.slice(0, 12);
   }, [notes, search]);
+
+  const filteredIntakes = useMemo(() => {
+    const terms = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const source = terms.length
+      ? intakes.filter((intake) => {
+          const haystack = [
+            intake.clientName,
+            intake.secondApplicantName,
+            intake.mobile,
+            intake.email,
+            intake.loanPurpose,
+            intake.convertedCaseId,
+            intake.status
+          ].join(" ").toLowerCase();
+          return terms.every((term) => haystack.includes(term));
+        })
+      : intakes.slice(0, 8);
+    return source.slice(0, 12);
+  }, [intakes, search]);
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -504,6 +530,7 @@ function CallNotesPage({ onOpenAutofill }) {
       setForm(emptyCallNote);
       setRedFlags([]);
       await refreshNotes();
+      await refreshIntakes();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -518,6 +545,7 @@ function CallNotesPage({ onOpenAutofill }) {
       const converted = await api(`/api/call-notes/${note.id}/convert-to-case`, { method: "POST", body: "{}" });
       setMessage(`Draft case ready: ${converted.case.id}`);
       await refreshNotes();
+      await refreshIntakes();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -533,6 +561,7 @@ function CallNotesPage({ onOpenAutofill }) {
       await navigator.clipboard?.writeText(intake.url).catch(() => {});
       setMessage(`Loan Form link copied: ${intake.url}`);
       await refreshNotes();
+      await refreshIntakes();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -554,6 +583,7 @@ function CallNotesPage({ onOpenAutofill }) {
       if (selectedId === note.id) setSelectedId("");
       setMessage(`Deleted ${note.id}`);
       await refreshNotes();
+      await refreshIntakes();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -694,6 +724,31 @@ function CallNotesPage({ onOpenAutofill }) {
                   </div>
                 </div>
               ))}
+            </div>
+          </section>
+
+          <section className="panel note-panel recent-note-panel">
+            <div className="panel-title"><FileJson size={18} /><h2>Loan Forms</h2></div>
+            <div className="recent-note-list">
+              {filteredIntakes.length ? filteredIntakes.map((intake) => (
+                <div key={intake.id}>
+                  <button type="button" onClick={() => {
+                    const linked = notes.find((note) => note.id === intake.callNoteId);
+                    if (linked) loadNote(linked);
+                  }}>
+                    <strong>{[intake.clientName, intake.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
+                    <span>{intake.status} | {intake.submittedAt ? `Submitted ${new Date(intake.submittedAt).toLocaleDateString()}` : `Sent ${new Date(intake.createdAt).toLocaleDateString()}`}</span>
+                    <small>{intake.convertedCaseId || intake.callNoteId} | {intake.loanPurpose || "Purpose not set"}</small>
+                  </button>
+                  <div>
+                    <button type="button" onClick={async () => {
+                      await navigator.clipboard?.writeText(intake.url).catch(() => {});
+                      setMessage(`Loan Form link copied: ${intake.url}`);
+                    }}>Copy link</button>
+                    {intake.convertedCaseId && <button type="button" onClick={onOpenAutofill}>Open EasyFlow</button>}
+                  </div>
+                </div>
+              )) : <div className="case-search-empty">No loan forms yet.</div>}
             </div>
           </section>
         </div>

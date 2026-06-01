@@ -743,6 +743,31 @@ app.get("/api/call-notes/:noteId", (request, response) => {
   response.json(note);
 });
 
+app.get("/api/client-intakes", (request, response) => {
+  const rows = clientIntakes.map((intake) => {
+    const note = callNotes.find((item) => item.id === intake.callNoteId) || {};
+    return {
+      id: intake.id,
+      token: intake.token,
+      callNoteId: intake.callNoteId,
+      brokerUser: intake.brokerUser || note.brokerUser || "",
+      status: intake.status,
+      createdAt: intake.createdAt,
+      submittedAt: intake.submittedAt,
+      clientName: note.clientName || intake.submission?.clientName || "",
+      secondApplicantName: note.secondApplicantName || intake.submission?.secondApplicantName || "",
+      mobile: note.mobile || intake.submission?.mobile || "",
+      email: note.email || intake.submission?.email || "",
+      loanPurpose: note.loanPurpose || intake.submission?.loanPurpose || "",
+      loanAmount: note.loanAmount || intake.submission?.loanAmount || 0,
+      convertedCaseId: note.convertedCaseId || null,
+      url: `${loanFormBaseUrl(request)}/loan-form/${intake.token}`,
+      updatedAt: intake.submittedAt || note.updatedAt || intake.createdAt
+    };
+  });
+  response.json(rows.sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0)));
+});
+
 app.post("/api/call-notes", (request, response) => {
   const now = new Date().toISOString();
   const note = {
