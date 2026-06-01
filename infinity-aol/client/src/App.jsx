@@ -292,6 +292,81 @@ function TeamSettingsPanel({ appName }) {
   );
 }
 
+function InternalLoginPage() {
+  const [email, setEmail] = useState("ryan.vufinanceaus@gmail.com");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const appName = isClientCallHost ? "Client Call Notes" : "EasyFlow AI";
+  const appCopy = isClientCallHost
+    ? "Secure staff access for phone intake, quick notes, and loan form links."
+    : "Secure staff access for Infinity & AOL automation, case payloads, and autofill preparation.";
+
+  useEffect(() => {
+    document.title = `${appName} Login - Easy Loan Finance`;
+    api("/api/auth/status")
+      .then((status) => {
+        if (!status.required || status.authenticated) {
+          const returnTo = new URLSearchParams(window.location.search).get("returnTo") || "/";
+          window.location.href = returnTo.startsWith("/") ? returnTo : "/";
+        }
+      })
+      .catch(() => {});
+  }, [appName]);
+
+  async function submitLogin(event) {
+    event.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      await api("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password })
+      });
+      const returnTo = new URLSearchParams(window.location.search).get("returnTo") || "/";
+      window.location.href = returnTo.startsWith("/") ? returnTo : "/";
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="internal-login-shell">
+      <section className="internal-login-card">
+        <div className="internal-login-brand">
+          <img className="brand-logo" src={brandLogoSrc} alt="Easy Loan Finance" />
+          <div>
+            <span>Easy Loan Finance</span>
+            <strong>{appName}</strong>
+          </div>
+        </div>
+        <div className="internal-login-copy">
+          <span>Staff only</span>
+          <h1>Sign in to {appName}</h1>
+          <p>{appCopy}</p>
+        </div>
+        <form className="internal-login-form" onSubmit={submitLogin}>
+          <label>
+            Email
+            <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" />
+          </label>
+          <label>
+            Password or broker access code
+            <input autoFocus value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="Enter secure access" />
+          </label>
+          {error && <div className="error-banner compact">{error}</div>}
+          <button className="primary-button" type="submit" disabled={loading}>
+            {loading ? <RefreshCw size={17} className="spin" /> : <ShieldCheck size={17} />}
+            {loading ? "Checking..." : "Login"}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
 function WorkflowGuide({ selectedCaseId, prepared, documentDraft }) {
   const steps = [
     {
@@ -1188,15 +1263,16 @@ export default function App() {
   }, []);
 
   const showMock = location.pathname === "/mock-infinity-aol" || location.pathname === "/infinity-aol/mock-infinity-aol";
+  const internalLogin = (isClientCallHost || isEasyFlowAiHost) && location.pathname === "/login";
   const intakeToken = location.pathname.match(/^\/(?:infinity-aol\/)?(?:client-info|loan-form|apply)\/([^/]+)/)?.[1] || "";
   const publicLoanForm = /^\/(?:infinity-aol\/)?(?:client-info|loan-form|apply)\/?$/.test(location.pathname) || (isLoanFormHost && location.pathname === "/");
 
   useEffect(() => {
-    if (showMock) return;
+    if (showMock || internalLogin) return;
     api("/api/cases").then(setCases).catch((err) => setError(err.message));
     api("/api/templates").then(setTemplates).catch((err) => setError(err.message));
     api("/api/audit-log").then(setAuditLog).catch(() => {});
-  }, [showMock]);
+  }, [showMock, internalLogin]);
 
   useEffect(() => {
     if (showMock || !selectedCaseId) return;
@@ -1525,6 +1601,7 @@ export default function App() {
   ];
 
   if (showMock) return <MockInfinity />;
+  if (internalLogin) return <InternalLoginPage />;
   if (intakeToken || publicLoanForm) return <ClientIntakePage token={intakeToken} publicForm={!intakeToken} />;
   if (view === "notes") return <CallNotesPage onOpenAutofill={() => setView("autofill")} />;
 
