@@ -1901,6 +1901,37 @@ body:has(.native-widget-mode) {
   font-weight: 800;
 }
 
+.login-success {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(24, 116, 73, 0.22);
+  border-radius: 8px;
+  background: rgba(24, 116, 73, 0.08);
+  color: #187449;
+  font-weight: 800;
+}
+
+.login-link-button {
+  border: 0;
+  background: transparent;
+  color: #0e5b50;
+  cursor: pointer;
+  font-weight: 900;
+  padding: 4px 0;
+  text-align: left;
+}
+
+.login-link-button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.login-help {
+  color: #6d6a60;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .session-warning {
   align-items: center;
   background: #fff7df;

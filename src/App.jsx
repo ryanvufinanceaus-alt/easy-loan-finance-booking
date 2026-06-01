@@ -275,7 +275,7 @@ function PasswordPanel({ auth, onChanged }) {
         <input type="password" value={form.newPassword} onChange={(event) => setForm({ ...form, newPassword: event.target.value })} placeholder="New password/code" minLength={6} />
         <input type="password" value={form.confirmPassword} onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })} placeholder="Confirm new" minLength={6} />
         <button type="submit">Change access code</button>
-        {auth.role === "admin" && <small>Ryan admin password is controlled by Render env ADMIN_PASSWORD.</small>}
+        {auth.role === "admin" && <small>Ryan admin can reset by email. New password here overrides the Render env fallback.</small>}
         {message && <small className="ok">{message}</small>}
         {error && <small className="bad">{error}</small>}
       </form>
@@ -1456,6 +1456,8 @@ function LoginPage() {
   const [email, setEmail] = useState("ryan.vufinanceaus@gmail.com");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -1486,6 +1488,26 @@ function LoginPage() {
     }
     const returnTo = new URLSearchParams(window.location.search).get("returnTo") || "/";
     window.location.href = returnTo.startsWith("/") ? returnTo : "/";
+  }
+
+  async function requestPasswordReset() {
+    setError("");
+    setResetMessage("");
+    setResetLoading(true);
+    try {
+      const res = await fetch("/api/auth/request-password-reset", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not send temporary password");
+      setResetMessage(data.message || "Temporary password sent.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setResetLoading(false);
+    }
   }
 
   return (
@@ -1519,10 +1541,15 @@ function LoginPage() {
             />
           </label>
           {error && <p className="login-error">{error}</p>}
+          {resetMessage && <p className="login-success">{resetMessage}</p>}
           <button className="primary-button" type="submit" disabled={loading}>
             <ShieldCheck size={17} />
             {loading ? "Checking..." : "Login"}
           </button>
+          <button className="login-link-button" type="button" onClick={requestPasswordReset} disabled={resetLoading}>
+            {resetLoading ? "Sending temporary password..." : "Forgot password? Send temp password"}
+          </button>
+          <small className="login-help">Ryan admin reset goes to ryan.vufinanceaus@gmail.com. Login with the temporary password, then open Security to set a new password.</small>
         </form>
       </section>
     </main>

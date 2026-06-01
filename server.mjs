@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { createHash, createHmac, createSign, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, createSign, randomBytes, timingSafeEqual } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -55,6 +55,7 @@ const ADMIN_EMAILS = Array.from(new Set([
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || ADMIN_PASSWORD || "local-dev-secret-change-me";
 const SESSION_MAX_AGE_SECONDS = Number(process.env.SESSION_MAX_AGE_SECONDS || 6 * 60 * 60);
+const PASSWORD_RESET_TTL_SECONDS = Number(process.env.PASSWORD_RESET_TTL_SECONDS || 30 * 60);
 const PUBLIC_API_ROUTES = new Set(["/api/health", "/api/brokers", "/api/bookings"]);
 const PUBLIC_BOOKING_DURATION = 30;
 const BUSINESS_START = "09:30";
@@ -463,6 +464,54 @@ function brokerMatchesLogin(broker, email, password) {
     && safeEqual(String(broker.accessCode), String(password || ""));
 }
 
+function passwordHash(value = "") {
+  return createHash("sha256").update(String(value || "")).digest("hex");
+}
+
+async function readAdminAuth() {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  try {
+    return JSON.parse(await fs.readFile(path.join(DATA_DIR, "admin-auth.json"), "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+async function writeAdminAuth(value) {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(path.join(DATA_DIR, "admin-auth.json"), JSON.stringify(value, null, 2));
+}
+
+async function matchAdminPassword(password, { allowTemporary = true } = {}) {
+  const enteredHash = passwordHash(password);
+  const auth = await readAdminAuth();
+  const storedHash = auth.passwordHash || (ADMIN_PASSWORD ? passwordHash(ADMIN_PASSWORD) : "");
+  if (storedHash && safeEqual(enteredHash, storedHash)) {
+    return { ok: true, temporary: false };
+  }
+  if (
+    allowTemporary
+    && auth.tempPasswordHash
+    && Number(auth.tempExpiresAt || 0) > Date.now()
+    && safeEqual(enteredHash, auth.tempPasswordHash)
+  ) {
+    return { ok: true, temporary: true };
+  }
+  return { ok: false, temporary: false };
+}
+
+async function setAdminPassword(newPassword) {
+  const auth = await readAdminAuth();
+  await writeAdminAuth({
+    ...auth,
+    passwordHash: passwordHash(newPassword),
+    passwordUpdatedAt: new Date().toISOString(),
+    tempPasswordHash: null,
+    tempExpiresAt: null,
+    tempIssuedAt: null
+  });
+}
+
 function sessionForRequest(req) {
   if (!ADMIN_PASSWORD) return { role: "admin", email: ADMIN_EMAIL };
   return normalizeSession(adminSession(req));
@@ -603,7 +652,7 @@ function clearSessionCookie(req, res) {
 function isPublicRequest(req, url) {
   if (url.pathname.startsWith("/book")) return true;
   if (url.pathname.startsWith("/calendar/")) return true;
-  if (url.pathname === "/api/auth/login" || url.pathname === "/api/auth/status" || url.pathname === "/api/auth/logout") return true;
+  if (url.pathname === "/api/auth/login" || url.pathname === "/api/auth/status" || url.pathname === "/api/auth/logout" || url.pathname === "/api/auth/request-password-reset") return true;
   if (url.pathname === "/api/availability" && req.method === "GET") return true;
   if (url.pathname === "/api/bookings" && req.method === "POST") return true;
   if (url.pathname === "/api/brokers" && req.method === "GET") return true;
@@ -1025,6 +1074,39 @@ function appsScriptEmailConfigured() {
 
 function emailDeliveryReady() {
   return appsScriptEmailConfigured() || smtpConfigured();
+}
+
+async function sendAdminPasswordResetEmail(email, tempPassword, origin) {
+  if (!emailDeliveryReady()) {
+    throw new Error("Email delivery is not configured. Set GOOGLE_APPS_SCRIPT_EMAIL_URL/TOKEN or SMTP settings first.");
+  }
+  const loginUrl = `${origin || "https://booking.easyloanfinance.com.au"}/login`;
+  await sendEmail({
+    to: email,
+    from: senderFrom(),
+    subject: "Easy Loan Finance admin temporary password",
+    text: [
+      "Hi Ryan,",
+      "",
+      "A temporary admin password was requested for Easy Loan Finance.",
+      "",
+      `Temporary password: ${tempPassword}`,
+      `Login: ${loginUrl}`,
+      "",
+      `This temporary password expires in ${Math.round(PASSWORD_RESET_TTL_SECONDS / 60)} minutes.`,
+      "After logging in, open Security and set a new password.",
+      "",
+      "If you did not request this, ignore this email."
+    ].join("\n"),
+    html: [
+      "<p>Hi Ryan,</p>",
+      "<p>A temporary admin password was requested for Easy Loan Finance.</p>",
+      `<p><strong>Temporary password:</strong> <code>${escapeHtml(tempPassword)}</code></p>`,
+      `<p><a href="${escapeHtml(loginUrl)}">Open Easy Loan Finance login</a></p>`,
+      `<p>This temporary password expires in ${Math.round(PASSWORD_RESET_TTL_SECONDS / 60)} minutes. After logging in, open Security and set a new password.</p>`,
+      "<p>If you did not request this, ignore this email.</p>"
+    ].join("")
+  });
 }
 
 function internalNotificationRecipients(broker) {
@@ -1606,17 +1688,39 @@ async function handleApi(req, res, url) {
       email: session?.email || (ADMIN_PASSWORD ? null : ADMIN_EMAIL),
       role: session?.role || (!ADMIN_PASSWORD ? "admin" : null),
       brokerId: session?.brokerId || null,
+      mustChangePassword: Boolean(session?.mustChangePassword),
       expiresAt: session?.exp || null,
       maxAgeSeconds: SESSION_MAX_AGE_SECONDS,
       secondsRemaining: session?.exp ? Math.max(0, Math.floor((session.exp - Date.now()) / 1000)) : null
     });
   }
 
+  if (req.method === "POST" && url.pathname === "/api/auth/request-password-reset") {
+    const body = await readBody(req);
+    const resetEmail = normalizeEmail(body.email);
+    if (!isAdminEmail(resetEmail)) {
+      return sendJson(res, 200, { ok: true, message: "If this admin email exists, a temporary password will be sent." });
+    }
+    if (!emailDeliveryReady()) {
+      return sendJson(res, 500, { error: "Email delivery is not configured. Set the email provider first, then retry password reset." });
+    }
+    const tempPassword = `ELF-${randomBytes(4).toString("hex").toUpperCase()}`;
+    const auth = await readAdminAuth();
+    await writeAdminAuth({
+      ...auth,
+      tempPasswordHash: passwordHash(tempPassword),
+      tempExpiresAt: Date.now() + PASSWORD_RESET_TTL_SECONDS * 1000,
+      tempIssuedAt: new Date().toISOString()
+    });
+    await sendAdminPasswordResetEmail(resetEmail, tempPassword, requestOrigin(req));
+    return sendJson(res, 200, { ok: true, message: `Temporary password sent to ${resetEmail}.` });
+  }
+
   if (req.method === "POST" && url.pathname === "/api/auth/login") {
     const body = await readBody(req);
     const loginEmail = normalizeEmail(body.email);
-    const passwordOk = ADMIN_PASSWORD && createHash("sha256").update(String(body.password || "")).digest("hex") === createHash("sha256").update(ADMIN_PASSWORD).digest("hex");
-    if (!passwordOk) {
+    const adminPasswordMatch = ADMIN_PASSWORD ? await matchAdminPassword(body.password) : { ok: false, temporary: false };
+    if (!adminPasswordMatch.ok) {
       if (isAdminEmail(loginEmail)) {
         return sendJson(res, 401, { error: "Use the Ryan admin password for this email." });
       }
@@ -1636,10 +1740,11 @@ async function handleApi(req, res, url) {
     const token = signSession({
       role: "admin",
       email: adminEmail,
+      mustChangePassword: adminPasswordMatch.temporary,
       exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000
     });
     setSessionCookie(req, res, token);
-    return sendJson(res, 200, { ok: true, role: "admin", email: adminEmail });
+    return sendJson(res, 200, { ok: true, role: "admin", email: adminEmail, mustChangePassword: adminPasswordMatch.temporary });
   }
 
   if (req.method === "POST" && url.pathname === "/api/auth/logout") {
@@ -1656,12 +1761,16 @@ async function handleApi(req, res, url) {
     const newPassword = String(body.newPassword || "");
     if (newPassword.length < 6) return sendJson(res, 400, { error: "New access code must be at least 6 characters." });
     if (isAdminSession(session)) {
-      const ok = ADMIN_PASSWORD && safeEqual(
-        createHash("sha256").update(currentPassword).digest("hex"),
-        createHash("sha256").update(ADMIN_PASSWORD).digest("hex")
-      );
-      if (!ok) return sendJson(res, 401, { error: "Current Ryan admin password is incorrect." });
-      return sendJson(res, 400, { error: "Ryan admin password is managed in Render env ADMIN_PASSWORD. Change it in Render, then redeploy/restart." });
+      const ok = await matchAdminPassword(currentPassword);
+      if (!ok.ok) return sendJson(res, 401, { error: "Current Ryan admin password or temporary password is incorrect." });
+      await setAdminPassword(newPassword);
+      const token = signSession({
+        role: "admin",
+        email: session.email || ADMIN_EMAIL,
+        exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000
+      });
+      setSessionCookie(req, res, token);
+      return sendJson(res, 200, { ok: true, message: "Ryan admin password changed.", expiresAt: Date.now() + SESSION_MAX_AGE_SECONDS * 1000 });
     }
     const broker = brokers.find((item) => item.id === session.brokerId);
     if (!broker || !brokerMatchesLogin(broker, session.email, currentPassword)) {

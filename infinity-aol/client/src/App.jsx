@@ -320,7 +320,7 @@ function TeamSettingsPanel({ appName }) {
           <label>New password/access code<input value={passwordForm.newPassword} onChange={(event) => setPasswordForm({ ...passwordForm, newPassword: event.target.value })} type="password" minLength={6} required /></label>
           <label>Confirm new<input value={passwordForm.confirmPassword} onChange={(event) => setPasswordForm({ ...passwordForm, confirmPassword: event.target.value })} type="password" minLength={6} required /></label>
           <button type="submit">Change access code</button>
-          {isAdmin && <small className="settings-note">Ryan admin password is controlled by Render env ADMIN_PASSWORD. This button checks the current password, then tells you to change it in Render for safety.</small>}
+          {isAdmin && <small className="settings-note">Ryan admin can reset by email. New password here overrides the Render env fallback.</small>}
         </form>
         {isAdmin ? (
           <>
