@@ -1947,6 +1947,7 @@ createServer(async (req, res) => {
     }
     if (CLIENT_CALL_HOST_RE.test(hostname) || EASYFLOW_AI_HOST_RE.test(hostname)) {
       if (SHARED_BRAND_ASSET_RE.test(url.pathname)) return await handleStatic(req, res, url);
+      if (url.pathname.startsWith("/assets/") || url.pathname === "/favicon.ico") return await handleStatic(req, res, url);
       if (url.pathname === "/login") return await handleStatic(req, res, url);
       if (url.pathname.startsWith("/api/auth/")) return await handleApi(req, res, url);
       if (/^\/api\/brokers(?:\/|$)/.test(url.pathname)) {

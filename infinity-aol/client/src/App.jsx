@@ -1146,7 +1146,7 @@ function ClientIntakePage({ token, publicForm = false }) {
 
         <button className="primary-button client-submit" type="submit" disabled={saving}>
           {saving ? <RefreshCw size={17} className="spin" /> : <CheckCircle2 size={17} />}
-          Submit to Broker
+          Submit to Easy Loan Finance
         </button>
       </form>
     </main>
