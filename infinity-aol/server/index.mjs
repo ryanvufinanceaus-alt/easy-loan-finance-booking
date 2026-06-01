@@ -450,6 +450,50 @@ function buildLocalCaseFromCallNote(note) {
   };
 }
 
+function upsertLocalCaseFromCallNote(noteIndex, historyType = "client-intake-synced") {
+  const note = callNotes[noteIndex];
+  if (!note) return null;
+  const existingCaseId = note.convertedCaseId;
+  const nextCase = buildLocalCaseFromCallNote(note);
+
+  if (existingCaseId) {
+    const caseIndex = localCases.findIndex((item) => item.id === existingCaseId);
+    const updatedCase = {
+      ...nextCase,
+      id: existingCaseId,
+      status: "Updated from client information",
+      sourceCallNoteId: note.id
+    };
+    if (caseIndex >= 0) localCases[caseIndex] = updatedCase;
+    else localCases.unshift(updatedCase);
+    pushCaseHistory(existingCaseId, {
+      type: historyType,
+      brokerUser: note.brokerUser,
+      sourceCallNoteId: note.id,
+      clientName: note.clientName
+    });
+    persistLocalCases();
+    return updatedCase;
+  }
+
+  localCases.unshift(nextCase);
+  callNotes[noteIndex] = {
+    ...note,
+    convertedCaseId: nextCase.id,
+    status: "Draft case created from client information",
+    updatedAt: new Date().toISOString()
+  };
+  persistLocalCases();
+  persistCallNotes();
+  pushCaseHistory(nextCase.id, {
+    type: historyType,
+    brokerUser: nextCase.brokerUser,
+    sourceCallNoteId: note.id,
+    clientName: note.clientName
+  });
+  return nextCase;
+}
+
 function normalizeCompare(value) {
   if (typeof value === "boolean") return value ? "yes" : "no";
   return String(value ?? "")
@@ -905,6 +949,8 @@ app.post("/api/client-intake/public", (request, response) => {
     updatedAt: now
   };
   const note = applyClientIntakeToNote(baseNote, submission);
+  const noteForCase = { ...note, intakeStatus: "submitted" };
+  callNotes.unshift(noteForCase);
   const intake = {
     id: `INTAKE-${Date.now().toString(36).toUpperCase()}`,
     token: crypto.randomBytes(18).toString("hex"),
@@ -916,7 +962,8 @@ app.post("/api/client-intake/public", (request, response) => {
     submission
   };
 
-  callNotes.unshift({ ...note, intakeToken: intake.token, intakeStatus: "submitted" });
+  const localCase = upsertLocalCaseFromCallNote(0, "public-loan-form-submitted");
+  callNotes[0] = { ...callNotes[0], intakeToken: intake.token, intakeStatus: "submitted", convertedCaseId: localCase?.id || callNotes[0].convertedCaseId };
   clientIntakes.unshift(intake);
   persistCallNotes();
   persistClientIntakes();
@@ -927,7 +974,7 @@ app.post("/api/client-intake/public", (request, response) => {
     caseId: note.id,
     clientName: note.clientName
   });
-  response.status(201).json({ ok: true, status: "submitted", callNoteId: note.id, token: intake.token });
+  response.status(201).json({ ok: true, status: "submitted", callNoteId: note.id, caseId: localCase?.id || null, token: intake.token });
 });
 
 app.get("/api/client-intake/:token", (request, response) => {
@@ -939,13 +986,31 @@ app.get("/api/client-intake/:token", (request, response) => {
     status: intake.status,
     submittedAt: intake.submittedAt,
     callNoteId: intake.callNoteId,
-    clientName: note?.clientName || "",
-    secondApplicantName: note?.secondApplicantName || "",
-    mobile: note?.mobile || "",
-    email: note?.email || "",
-    loanPurpose: note?.loanPurpose || "",
-    loanAmount: note?.loanAmount || "",
-    preferredLanguage: note?.preferredLanguage || "Vietnamese / English"
+    ...Object.fromEntries([
+      "clientName",
+      "secondApplicantName",
+      "mobile",
+      "email",
+      "preferredLanguage",
+      "loanType",
+      "loanPurpose",
+      "loanAmount",
+      "propertyValue",
+      "depositEquity",
+      "propertyLocation",
+      "timeline",
+      "dateOfBirth",
+      "address",
+      "residencyStatus",
+      "maritalStatus",
+      "dependants",
+      "employmentType",
+      "annualIncome",
+      "secondAnnualIncome",
+      "hemMonthly",
+      "financialAssetBuffer",
+      "creditIssue"
+    ].map((field) => [field, note?.[field] ?? ""]))
   });
 });
 
@@ -959,16 +1024,17 @@ app.post("/api/client-intake/:token", (request, response) => {
   const submission = normalizeClientIntakeSubmission(request.body || {});
   clientIntakes[intakeIndex] = { ...clientIntakes[intakeIndex], status: "submitted", submittedAt: now, submission };
   callNotes[noteIndex] = applyClientIntakeToNote(callNotes[noteIndex], submission);
+  const localCase = upsertLocalCaseFromCallNote(noteIndex, "loan-form-submitted");
   persistClientIntakes();
   persistCallNotes();
   auditLog.push({
     type: "client-intake",
     timestamp: now,
     brokerUser: callNotes[noteIndex].brokerUser,
-    caseId: callNotes[noteIndex].id,
+    caseId: localCase?.id || callNotes[noteIndex].id,
     clientName: callNotes[noteIndex].clientName
   });
-  response.status(201).json({ ok: true, status: "submitted" });
+  response.status(201).json({ ok: true, status: "submitted", caseId: localCase?.id || null });
 });
 
 app.get("/api/templates/:templateId", (request, response) => {
