@@ -388,7 +388,6 @@ function CallNotesPage({ onOpenAutofill }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [submitted, setSubmitted] = useState(false);
 
   async function refreshNotes() {
     const result = await api("/api/call-notes");
@@ -730,6 +729,7 @@ function ClientIntakePage({ token, publicForm = false }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
     const endpointToken = publicForm ? "public" : token;
