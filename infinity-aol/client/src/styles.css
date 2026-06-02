@@ -1276,6 +1276,32 @@ pre {
   padding: 10px 0 0;
 }
 
+.call-key-detail {
+  border-top: 1px solid #edf0ed;
+  margin: 0 12px 12px;
+  padding-top: 10px;
+}
+
+.call-key-detail > div:first-child {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.call-key-detail strong {
+  color: #0f2018;
+  font-size: 13px;
+}
+
+.call-key-detail span {
+  color: #59675f;
+  font-size: 12px;
+}
+
+.call-key-detail .note-form-grid {
+  padding: 0;
+}
+
 .recent-note-list {
   display: grid;
   gap: 8px;

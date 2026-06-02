@@ -1306,8 +1306,11 @@ function CallNotesPage({ onOpenAutofill }) {
                 </button>
               ))}
             </div>
-            <details className="advanced-template optional-call-detail">
-              <summary>Optional details if already known</summary>
+            <div className="call-key-detail">
+              <div>
+                <strong>Key client details</strong>
+                <span>Ask these when the call allows. The full fact-find still belongs in the Loan Form.</span>
+              </div>
               <div className="note-form-grid">
                 <label>DOB<input value={form.dateOfBirth} onChange={(event) => updateField("dateOfBirth", event.target.value)} placeholder="YYYY-MM-DD" /></label>
                 <label>Address<input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
@@ -1316,7 +1319,7 @@ function CallNotesPage({ onOpenAutofill }) {
                 <label>Occupation<input value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
                 <label>Second income p.a.<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
               </div>
-            </details>
+            </div>
           </section>
 
           <section className="panel note-panel note-text-panel">
