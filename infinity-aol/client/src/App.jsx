@@ -1894,7 +1894,10 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
 
   useEffect(() => {
     if (publicForm) {
-      const routeDefaults = entry ? { loanType: entry.type, loanPurpose: entry.purpose } : {};
+      const routeDefaults = {
+        loanType: entry?.type || "Home loan",
+        loanPurpose: entry?.purpose || "Purchase owner occupied dwelling"
+      };
       const draft = readDraft();
       setMeta({
         token: "public",
@@ -1945,6 +1948,14 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateMaritalStatus(value) {
+    setForm((current) => ({
+      ...current,
+      maritalStatus: value,
+      hasSecondApplicant: /married|defacto/i.test(value) ? "Yes" : current.hasSecondApplicant
+    }));
   }
 
   const txt = clientFormCopy[language];
