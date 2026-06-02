@@ -1043,8 +1043,6 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   const [notes, setNotes] = useState([]);
   const [intakes, setIntakes] = useState([]);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
-  const [loanTypeFilter, setLoanTypeFilter] = useState("All");
   const [activePanel, setActivePanel] = useState(initialPanel);
   const [selectedId, setSelectedId] = useState("");
   const [selectedIntakeId, setSelectedIntakeId] = useState("");
@@ -1096,9 +1094,6 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   const filteredIntakes = useMemo(() => {
     const terms = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const source = intakes.filter((intake) => {
-      const matchesStatus = statusFilter === "All" || String(intake.status || "New").toLowerCase() === statusFilter.toLowerCase();
-      const matchesLoanType = loanTypeFilter === "All" || String(intake.loanType || "").toLowerCase() === loanTypeFilter.toLowerCase();
-      if (!matchesStatus || !matchesLoanType) return false;
       if (!terms.length) return true;
           const haystack = [
             intake.clientName,
@@ -1114,17 +1109,18 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
           return terms.every((term) => haystack.includes(term));
         });
     return source.slice(0, 12);
-  }, [intakes, loanTypeFilter, search, statusFilter]);
+  }, [intakes, search]);
   const selectedIntake = useMemo(() => intakes.find((intake) => intake.id === selectedIntakeId) || null, [intakes, selectedIntakeId]);
-  const statusOptions = useMemo(() => ["All", ...Array.from(new Set(intakes.map((intake) => intake.status || "New")))], [intakes]);
-  const loanTypeOptions = useMemo(() => ["All", ...Array.from(new Set(intakes.map((intake) => intake.loanType).filter(Boolean)))], [intakes]);
-  const intakeMetrics = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    return {
-      total: intakes.length,
-      submitted: intakes.filter((intake) => Boolean(intake.submittedAt)).length,
-      editedToday: intakes.filter((intake) => String(intake.lastSavedAt || "").startsWith(today)).length,
-    };
+  const newlyAddedIntakes = useMemo(() => {
+    return [...intakes]
+      .sort((a, b) => new Date(b.submittedAt || b.createdAt || 0) - new Date(a.submittedAt || a.createdAt || 0))
+      .slice(0, 3);
+  }, [intakes]);
+  const recentlyEditedIntakes = useMemo(() => {
+    return [...intakes]
+      .filter((intake) => intake.lastSavedAt || intake.updatedAt)
+      .sort((a, b) => new Date(b.lastSavedAt || b.updatedAt || 0) - new Date(a.lastSavedAt || a.updatedAt || 0))
+      .slice(0, 3);
   }, [intakes]);
   const submissionDirty = selectedIntake && JSON.stringify(submissionEdit) !== JSON.stringify(savedSubmissionEdit);
 
@@ -1319,32 +1315,15 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, phone, case" />
           </div>
         </label>
-        {activePanel === "submissions" && <div className="submission-filter-rail">
-          <div className="submission-counts">
-            <span><strong>{intakeMetrics.total}</strong>Total</span>
-            <span><strong>{intakeMetrics.submitted}</strong>Submitted</span>
-            <span><strong>{intakeMetrics.editedToday}</strong>Edited today</span>
-          </div>
-          <label>Status
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              {statusOptions.map((option) => <option key={option}>{option}</option>)}
-            </select>
-          </label>
-          <label>Loan type
-            <select value={loanTypeFilter} onChange={(event) => setLoanTypeFilter(event.target.value)}>
-              {loanTypeOptions.map((option) => <option key={option}>{option}</option>)}
-            </select>
-          </label>
-        </div>}
         <div className="note-list">
           {activePanel === "submissions" && !canViewLoanSubmissions ? (
             <div className="case-search-empty">Broker access required.</div>
           ) : activePanel === "submissions" ? (
             filteredIntakes.length ? filteredIntakes.map((intake) => (
               <button className={intake.id === selectedIntakeId ? "active" : ""} key={intake.id} type="button" onClick={() => loadIntake(intake)}>
-                <span className={`status-badge status-${String(intake.status || "new").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>{intake.status || "New"}</span>
+                <span>{intake.convertedCaseId || intake.callNoteId || intake.id}</span>
                 <strong>{[intake.clientName, intake.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
-                <small>{intake.submittedAt ? `Submitted ${new Date(intake.submittedAt).toLocaleDateString()}` : "Not submitted yet"}</small>
+                <small>{intake.submittedAt ? `Added ${new Date(intake.submittedAt).toLocaleDateString()}` : "Form link sent"}</small>
               </button>
             )) : <div className="case-search-empty">No loan forms yet.</div>
           ) : (
@@ -1374,6 +1353,9 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
             <span>Last updated {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
             <strong>{session?.email || "Broker user"}</strong>
             <button className="ghost-button" type="button" onClick={() => refreshIntakes().catch((err) => setError(err.message))}>Refresh</button>
+            <button className="primary-button" type="button" disabled={!selectedIntake} onClick={() => onOpenAutofill?.()}>
+              <Play size={16} /> Prepare EasyFlow
+            </button>
             <button className="ghost-button" type="button" onClick={async () => {
               await api("/api/auth/logout", { method: "POST", body: "{}" }).catch(() => {});
               window.location.href = "/login";
@@ -1409,8 +1391,33 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
           <div className="submission-management">
             <section className="panel note-panel recent-note-panel">
               <div className="panel-title"><FileJson size={18} /><h2>Loan Form Records</h2></div>
-              <p className="panel-helper inbox-helper">A broker-only data store linked with Client Call Intake and EasyFlow AI. Search by client name, phone, email, case ID, or loan purpose.</p>
+              <p className="panel-helper inbox-helper">Broker-only data store linked with Client Call Intake and EasyFlow AI. Review client data, export files, and prepare clean payloads for Infinity/AOL.</p>
               {canViewLoanSubmissions ? (
+                <>
+                {!search.trim() && <div className="submission-smart-groups">
+                  <section>
+                    <h3>Newly added</h3>
+                    <div>
+                      {newlyAddedIntakes.length ? newlyAddedIntakes.map((intake) => (
+                        <button key={`new-${intake.id}`} type="button" onClick={() => loadIntake(intake)}>
+                          <strong>{[intake.clientName, intake.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
+                          <span>{intake.submittedAt ? new Date(intake.submittedAt).toLocaleString() : "Form link sent"}</span>
+                        </button>
+                      )) : <span>No records yet.</span>}
+                    </div>
+                  </section>
+                  <section>
+                    <h3>Recently edited</h3>
+                    <div>
+                      {recentlyEditedIntakes.length ? recentlyEditedIntakes.map((intake) => (
+                        <button key={`edit-${intake.id}`} type="button" onClick={() => loadIntake(intake)}>
+                          <strong>{[intake.clientName, intake.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
+                          <span>{intake.lastSavedAt ? `Edited ${new Date(intake.lastSavedAt).toLocaleString()}` : `Updated ${new Date(intake.updatedAt).toLocaleString()}`}</span>
+                        </button>
+                      )) : <span>No edits yet.</span>}
+                    </div>
+                  </section>
+                </div>}
                 <div className="recent-note-list submission-list">
                   {filteredIntakes.length ? filteredIntakes.map((intake) => (
                     <div className={intake.id === selectedIntakeId ? "selected-submission" : ""} key={intake.id}>
@@ -1429,8 +1436,8 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                           <small>{intake.loanType || "Loan type not set"} | {currency(Number(intake.loanAmount || 0))}</small>
                         </span>
                         <span>
-                          <span className={`status-badge status-${String(intake.status || "new").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>{intake.status || "New"}</span>
-                          <small>{intake.submittedAt ? new Date(intake.submittedAt).toLocaleString() : `Sent ${new Date(intake.createdAt).toLocaleString()}`}</small>
+                          <strong>{intake.lastSavedAt ? "Edited" : "Added"}</strong>
+                          <small>{intake.lastSavedAt ? new Date(intake.lastSavedAt).toLocaleString() : intake.submittedAt ? new Date(intake.submittedAt).toLocaleString() : `Sent ${new Date(intake.createdAt).toLocaleString()}`}</small>
                         </span>
                       </button>
                       <div>
@@ -1440,10 +1447,15 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                           setMessage(`Loan Form link copied: ${intake.url}`);
                         }}>Copy link</button>
                         <button type="button" onClick={() => downloadFactFind(intake)}><Download size={13} /> Fact Find</button>
+                        <button type="button" onClick={() => {
+                          loadIntake(intake);
+                          onOpenAutofill?.();
+                        }}><Play size={13} /> EasyFlow</button>
                       </div>
                     </div>
                   )) : <div className="case-search-empty"><strong>No loan form submissions found.</strong><span>When clients submit the loan form, their fact-find details will appear here for broker review.</span></div>}
                 </div>
+                </>
               ) : (
                 <div className="locked-data-panel">
                   <ShieldCheck size={20} />

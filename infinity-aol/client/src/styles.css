@@ -1213,53 +1213,6 @@ pre {
   color: #55635b;
 }
 
-.submission-filter-rail {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  display: grid;
-  gap: 10px;
-  margin: 10px 0;
-  padding: 12px 0;
-}
-
-.submission-counts {
-  display: grid;
-  gap: 7px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.submission-counts span {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  color: #cbd8d0;
-  display: grid;
-  font-size: 11px;
-  gap: 2px;
-  padding: 8px;
-}
-
-.submission-counts strong {
-  color: #f7d97c;
-  font-size: 17px;
-}
-
-.submission-filter-rail label {
-  color: #dce7df;
-  display: grid;
-  font-size: 12px;
-  font-weight: 800;
-  gap: 5px;
-}
-
-.submission-filter-rail select {
-  background: #f8fbf8;
-  border: 1px solid #d7e2dc;
-  border-radius: 8px;
-  min-height: 38px;
-  padding: 0 9px;
-}
-
 .notes-workspace {
   margin: 0 auto;
   max-width: 1180px;
@@ -1598,6 +1551,56 @@ pre {
   display: grid;
   gap: 8px;
   padding: 12px;
+}
+
+.submission-smart-groups {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 12px 12px 0;
+}
+
+.submission-smart-groups section {
+  background: #f9fbf8;
+  border: 1px solid #dce5df;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.submission-smart-groups h3 {
+  color: #102019;
+  font-size: 13px;
+  margin: 0;
+}
+
+.submission-smart-groups section > div {
+  display: grid;
+  gap: 6px;
+}
+
+.submission-smart-groups button {
+  align-items: start;
+  background: #fff;
+  border: 1px solid #dce5df;
+  border-radius: 7px;
+  display: grid;
+  justify-items: start;
+  min-height: 0;
+  padding: 8px;
+  text-align: left;
+}
+
+.submission-smart-groups button strong {
+  color: #102019;
+  font-size: 13px;
+}
+
+.submission-smart-groups button span,
+.submission-smart-groups section > div > span {
+  color: #66746c;
+  font-size: 12px;
 }
 
 .recent-note-list > div {
@@ -2125,6 +2128,10 @@ select {
   }
 
   .submission-management {
+    grid-template-columns: 1fr;
+  }
+
+  .submission-smart-groups {
     grid-template-columns: 1fr;
   }
 
