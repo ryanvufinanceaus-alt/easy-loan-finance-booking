@@ -27,6 +27,30 @@ textarea {
   min-height: 100vh;
 }
 
+.theme-easyflow.app-shell {
+  background: linear-gradient(135deg, #eef7f5 0%, #f8faf6 42%, #e9f2ef 100%);
+}
+
+.theme-easyflow .case-sidebar {
+  background: linear-gradient(180deg, #09251f, #153c34);
+}
+
+.theme-call.notes-shell {
+  background: linear-gradient(135deg, #f5f8f3 0%, #eef5eb 48%, #faf8f1 100%);
+}
+
+.theme-call .notes-sidebar {
+  background: linear-gradient(180deg, #173021, #274a35);
+}
+
+.theme-records.notes-shell {
+  background: linear-gradient(135deg, #f8faf7 0%, #edf2ef 55%, #f7f4eb 100%);
+}
+
+.theme-records .notes-sidebar {
+  background: linear-gradient(180deg, #0e251c, #123427);
+}
+
 .case-sidebar {
   background: #13201a;
   color: #f8fbf8;
@@ -1680,6 +1704,12 @@ pre {
   padding: clamp(14px, 3vw, 32px);
 }
 
+.theme-loan-form.client-intake-shell {
+  background:
+    radial-gradient(circle at 18% 10%, rgba(196, 163, 89, 0.16), transparent 28%),
+    linear-gradient(135deg, #071711 0%, #0f2b20 34%, #f6f2e7 34.1%, #fbfaf7 100%);
+}
+
 .client-intake-card {
   background: rgba(255, 255, 255, 0.98);
   border: 1px solid rgba(198, 163, 89, 0.28);
@@ -1852,6 +1882,13 @@ pre {
   line-height: 1.5;
   margin: 6px 0 0;
   max-width: 760px;
+}
+
+.income-summary-grid {
+  background: #fbfaf5;
+  border: 1px solid #e2d6ba;
+  border-radius: 8px;
+  padding: 14px;
 }
 
 .client-intake-card label {

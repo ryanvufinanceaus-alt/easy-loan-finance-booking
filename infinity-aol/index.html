@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#13201a" />
+    <link rel="icon" type="image/png" href="/elf-logo.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>Easy Loan Finance</title>
     <script>
@@ -13,9 +14,11 @@
           ? "Client Call Notes - Easy Loan Finance"
           : /^loan-form\./i.test(host)
             ? "Loan Form - Easy Loan Finance"
-            : /^(easyflow-ai|loanops|autofill)\./i.test(host)
-              ? "EasyFlow AI - Easy Loan Finance"
-              : "EasyFlow AI - Infinity & AOL Automation";
+            : /^(loan-submissions-management|loan-submissions|submissions)\./i.test(host)
+              ? "Loan Records - Easy Loan Finance"
+              : /^(easyflow-ai|loanops|autofill)\./i.test(host)
+                ? "EasyFlow AI - Easy Loan Finance"
+                : "EasyFlow AI - Infinity & AOL Automation";
         document.title = title;
       })();
     </script>

@@ -37,11 +37,19 @@ const mockAolPath = `${appBasePath}/mock-infinity-aol`;
 const brandLogoSrc = "/elf-logo.png";
 
 function pageTitle() {
-  if (isLoanSubmissionsRoute) return "Loan Form Submissions Management - Easy Loan Finance";
-  if (isClientCallHost || location.pathname.includes("client-call")) return "Client Call Intake - Easy Loan Finance";
+  if (isLoanSubmissionsRoute) return "Loan Records - Easy Loan Finance";
+  if (isClientCallHost || location.pathname.includes("client-call")) return "Client Call - Easy Loan Finance";
   if (isLoanFormHost) return "Loan Form - Easy Loan Finance";
   if (isEasyFlowAiHost) return "EasyFlow AI - Easy Loan Finance";
   return "EasyFlow AI - Infinity & AOL Automation";
+}
+
+function appThemeClass() {
+  if (isLoanSubmissionsRoute) return "theme-records";
+  if (isClientCallHost || location.pathname.includes("client-call")) return "theme-call";
+  if (isLoanFormHost) return "theme-loan-form";
+  if (isEasyFlowAiHost) return "theme-easyflow";
+  return "theme-easyflow";
 }
 
 function currency(value) {
@@ -1033,9 +1041,29 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     secondApplicantVisaSubclass: "",
     secondApplicantMaritalStatus: "",
     secondApplicantDependants: "",
+    secondApplicantAddress: "",
+    secondApplicantCurrentSuburb: "",
+    secondApplicantCurrentState: "",
+    secondApplicantCurrentAddressFromDate: "",
+    secondApplicantCurrentResidentialStatus: "",
+    secondApplicantPreviousAddress: "",
+    secondApplicantPreviousSuburb: "",
+    secondApplicantPreviousState: "",
+    secondApplicantPreviousPostcode: "",
+    secondApplicantPreviousResidentialStatus: "",
     secondApplicantEmploymentType: "",
     secondApplicantEmployerName: "",
-    secondApplicantOccupation: "",
+    secondApplicantBusinessAddress: "",
+    secondApplicantJobTitle: "",
+    secondApplicantEmploymentBasis: "",
+    secondApplicantEmploymentFromDate: "",
+    secondApplicantEmploymentContactName: "",
+    secondApplicantEmploymentContactNumber: "",
+    secondApplicantPreviousBusinessName: "",
+    secondApplicantPreviousJobTitle: "",
+    secondApplicantPreviousEmploymentBasis: "",
+    secondApplicantPreviousEmploymentFromDate: "",
+    secondApplicantPreviousEmploymentToDate: "",
     mobile: "",
     email: "",
     loanType: "",
@@ -1136,6 +1164,14 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateMaritalStatus(value) {
+    setForm((current) => ({
+      ...current,
+      maritalStatus: value,
+      hasSecondApplicant: /married|defacto/i.test(value) ? "Yes" : current.hasSecondApplicant
+    }));
   }
 
   function loadNote(note) {
@@ -1265,9 +1301,29 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
       secondApplicantVisaSubclass: intake.secondApplicantVisaSubclass || "",
       secondApplicantMaritalStatus: intake.secondApplicantMaritalStatus || "",
       secondApplicantDependants: intake.secondApplicantDependants || "",
+      secondApplicantAddress: intake.secondApplicantAddress || "",
+      secondApplicantCurrentSuburb: intake.secondApplicantCurrentSuburb || "",
+      secondApplicantCurrentState: intake.secondApplicantCurrentState || "",
+      secondApplicantCurrentAddressFromDate: intake.secondApplicantCurrentAddressFromDate || "",
+      secondApplicantCurrentResidentialStatus: intake.secondApplicantCurrentResidentialStatus || "",
+      secondApplicantPreviousAddress: intake.secondApplicantPreviousAddress || "",
+      secondApplicantPreviousSuburb: intake.secondApplicantPreviousSuburb || "",
+      secondApplicantPreviousState: intake.secondApplicantPreviousState || "",
+      secondApplicantPreviousPostcode: intake.secondApplicantPreviousPostcode || "",
+      secondApplicantPreviousResidentialStatus: intake.secondApplicantPreviousResidentialStatus || "",
       secondApplicantEmploymentType: intake.secondApplicantEmploymentType || "",
       secondApplicantEmployerName: intake.secondApplicantEmployerName || "",
-      secondApplicantOccupation: intake.secondApplicantOccupation || "",
+      secondApplicantBusinessAddress: intake.secondApplicantBusinessAddress || "",
+      secondApplicantJobTitle: intake.secondApplicantJobTitle || "",
+      secondApplicantEmploymentBasis: intake.secondApplicantEmploymentBasis || "",
+      secondApplicantEmploymentFromDate: intake.secondApplicantEmploymentFromDate || "",
+      secondApplicantEmploymentContactName: intake.secondApplicantEmploymentContactName || "",
+      secondApplicantEmploymentContactNumber: intake.secondApplicantEmploymentContactNumber || "",
+      secondApplicantPreviousBusinessName: intake.secondApplicantPreviousBusinessName || "",
+      secondApplicantPreviousJobTitle: intake.secondApplicantPreviousJobTitle || "",
+      secondApplicantPreviousEmploymentBasis: intake.secondApplicantPreviousEmploymentBasis || "",
+      secondApplicantPreviousEmploymentFromDate: intake.secondApplicantPreviousEmploymentFromDate || "",
+      secondApplicantPreviousEmploymentToDate: intake.secondApplicantPreviousEmploymentToDate || "",
       mobile: intake.mobile || "",
       email: intake.email || "",
       loanType: intake.loanType || "",
@@ -1318,7 +1374,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   }, [submissionDirty]);
 
   return (
-    <main className={`notes-shell ${isLoanSubmissionsRoute ? "submissions-shell" : ""}`}>
+    <main className={`notes-shell ${appThemeClass()} ${isLoanSubmissionsRoute ? "submissions-shell" : ""}`}>
       <aside className="notes-sidebar">
         <div className="brand-block">
           <img className="brand-logo" src={brandLogoSrc} alt="Easy Loan Finance" />
@@ -1523,7 +1579,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                           <label>Second visa<input value={submissionEdit.secondApplicantVisaSubclass} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantVisaSubclass: event.target.value })} /></label>
                           <label>Second employment<input value={submissionEdit.secondApplicantEmploymentType} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantEmploymentType: event.target.value })} /></label>
                           <label>Second employer<input value={submissionEdit.secondApplicantEmployerName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantEmployerName: event.target.value })} /></label>
-                          <label>Second occupation<input value={submissionEdit.secondApplicantOccupation} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantOccupation: event.target.value })} /></label>
+                          <label>Second job title<input value={submissionEdit.secondApplicantJobTitle} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantJobTitle: event.target.value })} /></label>
                         </>}
                       </div>
                     </section>
@@ -1684,9 +1740,29 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
     secondApplicantVisaSubclass: "",
     secondApplicantMaritalStatus: "Single",
     secondApplicantDependants: "0",
+    secondApplicantAddress: "",
+    secondApplicantCurrentSuburb: "",
+    secondApplicantCurrentState: "",
+    secondApplicantCurrentAddressFromDate: "",
+    secondApplicantCurrentResidentialStatus: "",
+    secondApplicantPreviousAddress: "",
+    secondApplicantPreviousSuburb: "",
+    secondApplicantPreviousState: "",
+    secondApplicantPreviousPostcode: "",
+    secondApplicantPreviousResidentialStatus: "",
     secondApplicantEmploymentType: "PAYG",
     secondApplicantEmployerName: "",
-    secondApplicantOccupation: "",
+    secondApplicantBusinessAddress: "",
+    secondApplicantJobTitle: "",
+    secondApplicantEmploymentBasis: "",
+    secondApplicantEmploymentFromDate: "",
+    secondApplicantEmploymentContactName: "",
+    secondApplicantEmploymentContactNumber: "",
+    secondApplicantPreviousBusinessName: "",
+    secondApplicantPreviousJobTitle: "",
+    secondApplicantPreviousEmploymentBasis: "",
+    secondApplicantPreviousEmploymentFromDate: "",
+    secondApplicantPreviousEmploymentToDate: "",
     mobile: "",
     email: "",
     preferredLanguage: "Vietnamese / English",
@@ -1795,6 +1871,8 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
 
   useEffect(() => {
     document.title = pageTitle();
+    document.body.classList.remove("theme-call", "theme-easyflow", "theme-loan-form", "theme-records");
+    document.body.classList.add(appThemeClass());
   }, []);
   const [submitted, setSubmitted] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
@@ -1859,7 +1937,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
   const isPersonal = /personal loan/i.test(form.loanType);
   const isRefinance = /refinance/i.test(`${form.loanPurpose} ${form.loanType}`);
   const dependantCount = Math.min(Math.max(Number(form.dependants || 0), 0), 4);
-  const hasSecondApplicant = form.hasSecondApplicant === "Yes" || Boolean(form.secondApplicantName?.trim());
+  const hasSecondApplicant = /married|defacto/i.test(form.maritalStatus) || form.hasSecondApplicant === "Yes" || Boolean(form.secondApplicantName?.trim());
   const L = (label) => tx(label, language);
 
   async function submitIntake(event) {
@@ -1882,10 +1960,10 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
     }
   }
 
-  if (loading) return <main className="client-intake-shell"><div className="empty-state">Loading loan form...</div></main>;
+  if (loading) return <main className={`client-intake-shell ${appThemeClass()}`}><div className="empty-state">Loading loan form...</div></main>;
   if (submitted) {
     return (
-      <main className="client-intake-shell">
+      <main className={`client-intake-shell ${appThemeClass()}`}>
         <section className="client-intake-card client-thank-you-card">
           <ClientLoanFormHeader
             title={txt.receivedTitle}
@@ -1906,7 +1984,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
   }
 
   return (
-    <main className="client-intake-shell">
+    <main className={`client-intake-shell ${appThemeClass()}`}>
       <form className="client-intake-card" onSubmit={submitIntake}>
         <ClientLoanFormHeader
           title={currentTitle}
@@ -1958,7 +2036,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
             <DateField language={language} required label="Date of birth" value={form.dateOfBirth} onChange={(value) => updateField("dateOfBirth", value)} />
             <label>{L("Email")}<input required value={form.email} onChange={(event) => updateField("email", event.target.value)} placeholder="example@example.com" /></label>
             <label>{L("Mobile")}<input required value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
-            <SelectField language={language} required label="Marital Status" value={form.maritalStatus} onChange={(value) => updateField("maritalStatus", value)} options={maritalStatusOptions} />
+            <SelectField language={language} required label="Marital Status" value={form.maritalStatus} onChange={updateMaritalStatus} options={maritalStatusOptions} />
             <SelectField language={language} required label="Residential Status" value={form.residencyStatus} onChange={(value) => updateField("residencyStatus", value)} options={residencyOptions} />
             <label>{L("Visa Sub-class")}<input value={form.visaSubclass || ""} onChange={(event) => updateField("visaSubclass", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             <label>{L("Number of Dependents")}<select required value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)}>{[0, 1, 2, 3, 4].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
@@ -1981,10 +2059,17 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
               <label>{L("Number of Dependents")}<select value={form.secondApplicantDependants} onChange={(event) => updateField("secondApplicantDependants", event.target.value)}>{[0, 1, 2, 3, 4].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
               <SelectField language={language} label="Second applicant employment" value={form.secondApplicantEmploymentType} onChange={(value) => updateField("secondApplicantEmploymentType", value)} options={employmentTypeOptions} />
               <label>{L("Employer Name")}<input value={form.secondApplicantEmployerName} onChange={(event) => updateField("secondApplicantEmployerName", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
-              <label>{L("Occupation")}<input value={form.secondApplicantOccupation} onChange={(event) => updateField("secondApplicantOccupation", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
-              <label>{L("Second income p.a.")}<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
             </div>
           </div>}
+        </section>
+
+        <section>
+          <h2>{L("Income Summary")}</h2>
+          <div className="client-intake-grid income-summary-grid">
+            <label>{L("Main income p.a.")}<input required value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} /></label>
+            {hasSecondApplicant && <label>{L("Second income p.a.")}<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>}
+            <label>{L("Rental income p.a.")}<input value={form.rentalIncomeAnnual} onChange={(event) => updateField("rentalIncomeAnnual", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+          </div>
         </section>
 
         <section>
@@ -2002,6 +2087,21 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
             <SelectField language={language} label="Previous Residential Status" value={form.previousResidentialStatus} onChange={(value) => updateField("previousResidentialStatus", value)} options={residentialStatusOptions} help="Leave blank if not applicable." />
           </div>
         </section>
+        {hasSecondApplicant && <section>
+          <h2>{L("Second Applicant Residential History")}</h2>
+          <div className="client-intake-grid">
+            <label>{L("Current residential address")}<input value={form.secondApplicantAddress} onChange={(event) => updateField("secondApplicantAddress", event.target.value)} placeholder="Leave blank if same as main applicant" /></label>
+            <label>{L("Suburb")}<input value={form.secondApplicantCurrentSuburb} onChange={(event) => updateField("secondApplicantCurrentSuburb", event.target.value)} /></label>
+            <label>{L("State")}<input value={form.secondApplicantCurrentState} onChange={(event) => updateField("secondApplicantCurrentState", event.target.value)} /></label>
+            <DateField language={language} label="From Date" value={form.secondApplicantCurrentAddressFromDate} onChange={(value) => updateField("secondApplicantCurrentAddressFromDate", value)} help="Leave blank if same as main applicant." />
+            <SelectField language={language} label="Residential Status" value={form.secondApplicantCurrentResidentialStatus} onChange={(value) => updateField("secondApplicantCurrentResidentialStatus", value)} options={residentialStatusOptions} help="Leave blank if same as main applicant." />
+            <label>{L("Previous residential address")}<input value={form.secondApplicantPreviousAddress} onChange={(event) => updateField("secondApplicantPreviousAddress", event.target.value)} /><span className="field-help">{L("Only enter previous address if current address is less than 3 years.")}</span></label>
+            <label>{L("Previous suburb")}<input value={form.secondApplicantPreviousSuburb} onChange={(event) => updateField("secondApplicantPreviousSuburb", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <label>{L("Previous state")}<input value={form.secondApplicantPreviousState} onChange={(event) => updateField("secondApplicantPreviousState", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <label>{L("Previous postal code")}<input value={form.secondApplicantPreviousPostcode} onChange={(event) => updateField("secondApplicantPreviousPostcode", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <SelectField language={language} label="Previous Residential Status" value={form.secondApplicantPreviousResidentialStatus} onChange={(value) => updateField("secondApplicantPreviousResidentialStatus", value)} options={residentialStatusOptions} help="Leave blank if not applicable." />
+          </div>
+        </section>}
 
         <section>
           <h2>{L("Employment History Within The Last 3 Years")}</h2>
@@ -2014,8 +2114,6 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
             <DateField language={language} required label="From Date" value={form.employmentFromDate} onChange={(value) => updateField("employmentFromDate", value)} />
             <label>{L("Contact Name")}<input value={form.employmentContactName} onChange={(event) => updateField("employmentContactName", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             <label>{L("Contact Number")}<input value={form.employmentContactNumber} onChange={(event) => updateField("employmentContactNumber", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
-            <label>{L("Main income p.a.")}<input required value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} /></label>
-            <label>{L("Rental income p.a.")}<input value={form.rentalIncomeAnnual} onChange={(event) => updateField("rentalIncomeAnnual", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             <SelectField language={language} label="Previous Employment Type" value={form.previousEmploymentType} onChange={(value) => updateField("previousEmploymentType", value)} options={employmentBasisOptions} help="Leave blank if not applicable." />
             <label>{L("Previous Business Name")}<input value={form.previousBusinessName} onChange={(event) => updateField("previousBusinessName", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             <label>{L("Previous Job Title")}<input value={form.previousJobTitle} onChange={(event) => updateField("previousJobTitle", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
@@ -2024,6 +2122,24 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
             <DateField language={language} label="Previous To Date" value={form.previousEmploymentToDate} onChange={(value) => updateField("previousEmploymentToDate", value)} help="Leave blank if not applicable." />
           </div>
         </section>
+        {hasSecondApplicant && <section>
+          <h2>{L("Second Applicant Employment History")}</h2>
+          <div className="client-intake-grid">
+            <SelectField language={language} label="Employment Type" value={form.secondApplicantEmploymentType} onChange={(value) => updateField("secondApplicantEmploymentType", value)} options={employmentTypeOptions} />
+            <label>{L("Business Name")}<input value={form.secondApplicantEmployerName} onChange={(event) => updateField("secondApplicantEmployerName", event.target.value)} /></label>
+            <label>{L("Business Address")}<input value={form.secondApplicantBusinessAddress} onChange={(event) => updateField("secondApplicantBusinessAddress", event.target.value)} /></label>
+            <label>{L("Job Title")}<input value={form.secondApplicantJobTitle} onChange={(event) => updateField("secondApplicantJobTitle", event.target.value)} /></label>
+            <SelectField language={language} label="Employment Basis" value={form.secondApplicantEmploymentBasis} onChange={(value) => updateField("secondApplicantEmploymentBasis", value)} options={employmentBasisOptions} help="Leave blank if not applicable." />
+            <DateField language={language} label="From Date" value={form.secondApplicantEmploymentFromDate} onChange={(value) => updateField("secondApplicantEmploymentFromDate", value)} help="Leave blank if not applicable." />
+            <label>{L("Contact Name")}<input value={form.secondApplicantEmploymentContactName} onChange={(event) => updateField("secondApplicantEmploymentContactName", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <label>{L("Contact Number")}<input value={form.secondApplicantEmploymentContactNumber} onChange={(event) => updateField("secondApplicantEmploymentContactNumber", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <label>{L("Previous Business Name")}<input value={form.secondApplicantPreviousBusinessName} onChange={(event) => updateField("secondApplicantPreviousBusinessName", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <label>{L("Previous Job Title")}<input value={form.secondApplicantPreviousJobTitle} onChange={(event) => updateField("secondApplicantPreviousJobTitle", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <SelectField language={language} label="Previous Employment Basis" value={form.secondApplicantPreviousEmploymentBasis} onChange={(value) => updateField("secondApplicantPreviousEmploymentBasis", value)} options={employmentBasisOptions} help="Leave blank if not applicable." />
+            <DateField language={language} label="Previous From Date" value={form.secondApplicantPreviousEmploymentFromDate} onChange={(value) => updateField("secondApplicantPreviousEmploymentFromDate", value)} help="Leave blank if not applicable." />
+            <DateField language={language} label="Previous To Date" value={form.secondApplicantPreviousEmploymentToDate} onChange={(value) => updateField("secondApplicantPreviousEmploymentToDate", value)} help="Leave blank if not applicable." />
+          </div>
+        </section>}
 
         <section>
           <h2>{L("Living Expenses")}</h2>
@@ -2175,6 +2291,8 @@ export default function App() {
 
   useEffect(() => {
     document.title = pageTitle();
+    document.body.classList.remove("theme-call", "theme-easyflow", "theme-loan-form", "theme-records");
+    document.body.classList.add(appThemeClass());
   }, []);
 
   const showMock = location.pathname === "/mock-infinity-aol" || location.pathname === "/infinity-aol/mock-infinity-aol";
@@ -2523,7 +2641,7 @@ export default function App() {
   if (view === "notes") return <CallNotesPage initialPanel={isLoanSubmissionsRoute ? "submissions" : "call"} onOpenAutofill={() => setView("autofill")} />;
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${appThemeClass()}`}>
       <aside className="case-sidebar">
         <div className="brand-block">
           <img className="brand-logo" src={brandLogoSrc} alt="Easy Loan Finance" />
