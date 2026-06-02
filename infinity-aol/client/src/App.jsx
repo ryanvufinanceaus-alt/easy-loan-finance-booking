@@ -1020,6 +1020,7 @@ function CallNotesPage({ onOpenAutofill }) {
   const [notes, setNotes] = useState([]);
   const [intakes, setIntakes] = useState([]);
   const [search, setSearch] = useState("");
+  const [activePanel, setActivePanel] = useState("call");
   const [selectedId, setSelectedId] = useState("");
   const [redFlags, setRedFlags] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -1215,6 +1216,16 @@ function CallNotesPage({ onOpenAutofill }) {
           <ExternalLink size={16} />
           EasyFlow AI
         </button>
+        <div className="module-nav">
+          <button className={activePanel === "call" ? "active" : ""} type="button" onClick={() => setActivePanel("call")}>
+            <ClipboardList size={15} />
+            Call Intake
+          </button>
+          <button className={activePanel === "submissions" ? "active" : ""} type="button" onClick={() => setActivePanel("submissions")}>
+            <FileJson size={15} />
+            Loan Form Submissions
+          </button>
+        </div>
         <TeamSettingsPanel appName="Client Call Intake" />
         <label className="note-search">
           Search clients
@@ -1224,24 +1235,43 @@ function CallNotesPage({ onOpenAutofill }) {
           </div>
         </label>
         <div className="note-list">
-          {filteredNotes.length ? filteredNotes.map((note) => (
-            <button className={note.id === selectedId ? "active" : ""} key={note.id} type="button" onClick={() => loadNote(note)}>
-              <span>{note.convertedCaseId || note.id}</span>
-              <strong>{[note.clientName, note.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
-              <small>{note.mobile || note.email || note.status}</small>
-            </button>
-          )) : <div className="case-search-empty">No call notes yet.</div>}
+          {activePanel === "submissions" && !canViewLoanSubmissions ? (
+            <div className="case-search-empty">Broker access required.</div>
+          ) : activePanel === "submissions" ? (
+            filteredIntakes.length ? filteredIntakes.map((intake) => (
+              <button key={intake.id} type="button" onClick={() => {
+                const linked = notes.find((note) => note.id === intake.callNoteId);
+                if (linked) loadNote(linked);
+              }}>
+                <span>{intake.status}</span>
+                <strong>{[intake.clientName, intake.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
+                <small>{intake.submittedAt ? `Submitted ${new Date(intake.submittedAt).toLocaleDateString()}` : "Not submitted yet"}</small>
+              </button>
+            )) : <div className="case-search-empty">No loan forms yet.</div>
+          ) : (
+            filteredNotes.length ? filteredNotes.map((note) => (
+              <button className={note.id === selectedId ? "active" : ""} key={note.id} type="button" onClick={() => loadNote(note)}>
+                <span>{note.convertedCaseId || note.id}</span>
+                <strong>{[note.clientName, note.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
+                <small>{note.mobile || note.email || note.status}</small>
+              </button>
+            )) : <div className="case-search-empty">No call notes yet.</div>
+          )}
         </div>
       </aside>
 
       <section className="notes-workspace">
         <header className="topbar">
           <div>
-            <span>Quick phone intake only</span>
-            <h1>Client Call Intake</h1>
-            <p className="topbar-helper">Call note is the short phone record. Create case turns it into the internal client file used by Loan Form and EasyFlow AI.</p>
+            <span>{activePanel === "submissions" ? "Broker submission management" : "Quick phone intake only"}</span>
+            <h1>{activePanel === "submissions" ? "Loan Form Submissions" : "Client Call Intake"}</h1>
+            <p className="topbar-helper">
+              {activePanel === "submissions"
+                ? "Review full client-submitted fact-find data, download Fact Find documents, and open linked EasyFlow cases."
+                : "Call note is the short phone record. Create case turns it into the internal client file used by Loan Form and EasyFlow AI."}
+            </p>
           </div>
-          <div className="actions call-actions">
+          {activePanel === "call" && <div className="actions call-actions">
             <button className="ghost-button quiet-action" type="button" onClick={() => {
               if ((form.clientName || form.mobile || form.email || form.quickNotes) && !window.confirm("Clear the current call intake? Unsaved changes will be lost.")) return;
               setForm(emptyCallNote);
@@ -1261,12 +1291,50 @@ function CallNotesPage({ onOpenAutofill }) {
               Save & create case
               <small>For Loan Form / EasyFlow</small>
             </button>
-          </div>
+          </div>}
         </header>
         {error && <div className="error-banner">{error}</div>}
         {message && <div className="success-banner">{message}</div>}
         <SessionWarning session={session} />
 
+        {activePanel === "submissions" ? (
+          <div className="submission-management">
+            <section className="panel note-panel recent-note-panel">
+              <div className="panel-title"><FileJson size={18} /><h2>Loan Form Submissions</h2></div>
+              <p className="panel-helper inbox-helper">Full client-submitted fact-find data. Broker/admin only. Search by client name, phone, email, case ID, or loan purpose.</p>
+              {canViewLoanSubmissions ? (
+                <div className="recent-note-list submission-list">
+                  {filteredIntakes.length ? filteredIntakes.map((intake) => (
+                    <div key={intake.id}>
+                      <button type="button" onClick={() => {
+                        const linked = notes.find((note) => note.id === intake.callNoteId);
+                        if (linked) loadNote(linked);
+                      }}>
+                        <strong>{[intake.clientName, intake.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
+                        <span>{intake.status} | {intake.submittedAt ? `Submitted ${new Date(intake.submittedAt).toLocaleString()}` : `Sent ${new Date(intake.createdAt).toLocaleString()}`}</span>
+                        <small>{intake.convertedCaseId || intake.callNoteId} | {intake.mobile || intake.email || "No contact"} | {intake.loanPurpose || "Purpose not set"}</small>
+                      </button>
+                      <div>
+                        <button type="button" onClick={async () => {
+                          await navigator.clipboard?.writeText(intake.url).catch(() => {});
+                          setMessage(`Loan Form link copied: ${intake.url}`);
+                        }}>Copy link</button>
+                        <button type="button" onClick={() => downloadFactFind(intake)}><Download size={13} /> Fact Find</button>
+                        {intake.convertedCaseId && <button type="button" onClick={onOpenAutofill}>Open EasyFlow</button>}
+                      </div>
+                    </div>
+                  )) : <div className="case-search-empty">No matching loan forms yet.</div>}
+                </div>
+              ) : (
+                <div className="locked-data-panel">
+                  <ShieldCheck size={20} />
+                  <strong>Broker access required</strong>
+                  <span>Loan Form Submissions contain full client fact-find details. Ask Ryan admin to upgrade this user if they need broker access.</span>
+                </div>
+              )}
+            </section>
+          </div>
+        ) : (
         <div className="notes-grid">
           <section className="panel note-panel">
             <div className="panel-title"><ClipboardList size={18} /><h2>Client & Loan</h2></div>
@@ -1352,41 +1420,8 @@ function CallNotesPage({ onOpenAutofill }) {
             </div>
           </section>
 
-          <section className="panel note-panel recent-note-panel">
-            <div className="panel-title"><FileJson size={18} /><h2>Loan Form Submissions</h2></div>
-            <p className="panel-helper inbox-helper">Full client-submitted fact-find data. Broker/admin only. EasyFlow AI uses these linked records for Infinity/AOL preparation.</p>
-            {canViewLoanSubmissions ? (
-              <div className="recent-note-list">
-                {filteredIntakes.length ? filteredIntakes.map((intake) => (
-                  <div key={intake.id}>
-                    <button type="button" onClick={() => {
-                      const linked = notes.find((note) => note.id === intake.callNoteId);
-                      if (linked) loadNote(linked);
-                    }}>
-                      <strong>{[intake.clientName, intake.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
-                      <span>{intake.status} | {intake.submittedAt ? `Submitted ${new Date(intake.submittedAt).toLocaleDateString()}` : `Sent ${new Date(intake.createdAt).toLocaleDateString()}`}</span>
-                      <small>{intake.convertedCaseId || intake.callNoteId} | {intake.loanPurpose || "Purpose not set"}</small>
-                    </button>
-                    <div>
-                      <button type="button" onClick={async () => {
-                        await navigator.clipboard?.writeText(intake.url).catch(() => {});
-                        setMessage(`Loan Form link copied: ${intake.url}`);
-                      }}>Copy link</button>
-                      <button type="button" onClick={() => downloadFactFind(intake)}><Download size={13} /> Fact Find</button>
-                      {intake.convertedCaseId && <button type="button" onClick={onOpenAutofill}>Open EasyFlow</button>}
-                    </div>
-                  </div>
-                )) : <div className="case-search-empty">No matching loan forms yet.</div>}
-              </div>
-            ) : (
-              <div className="locked-data-panel">
-                <ShieldCheck size={20} />
-                <strong>Broker access required</strong>
-                <span>Loan Form Submissions contain full client fact-find details. Ask Ryan admin to upgrade this user if they need broker access.</span>
-              </div>
-            )}
-          </section>
         </div>
+        )}
       </section>
     </main>
   );
