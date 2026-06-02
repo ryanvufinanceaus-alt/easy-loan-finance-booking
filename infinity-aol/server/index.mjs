@@ -1053,6 +1053,14 @@ app.get("/api/client-intakes", (request, response) => {
       loanType: note.loanType || intake.submission?.loanType || "",
       loanPurpose: note.loanPurpose || intake.submission?.loanPurpose || "",
       loanAmount: note.loanAmount || intake.submission?.loanAmount || 0,
+      propertyValue: note.propertyValue || intake.submission?.propertyValue || 0,
+      depositEquity: note.depositEquity || intake.submission?.depositEquity || 0,
+      propertyLocation: note.propertyLocation || intake.submission?.propertyLocation || "",
+      annualIncome: note.annualIncome || intake.submission?.annualIncome || 0,
+      secondAnnualIncome: note.secondAnnualIncome || intake.submission?.secondAnnualIncome || 0,
+      hemMonthly: note.hemMonthly || intake.submission?.hemMonthly || 0,
+      financialAssetBuffer: note.financialAssetBuffer || intake.submission?.financialAssetBuffer || 0,
+      clientNotes: intake.submission?.clientNotes || "",
       convertedCaseId: note.convertedCaseId || null,
       url: `${loanFormBaseUrl(request)}/loan-form/${intake.token}`,
       updatedAt: intake.submittedAt || note.updatedAt || intake.createdAt
@@ -1071,6 +1079,40 @@ app.get("/api/client-intakes/:intakeId/fact-find", (request, response) => {
   response.setHeader("cache-control", "no-store");
   response.setHeader("content-disposition", `attachment; filename="${factFindFilename(intake, note)}"`);
   response.send(document);
+});
+
+app.patch("/api/client-intakes/:intakeId", (request, response) => {
+  if (!canReadLoanSubmissions(request)) return response.status(403).json({ error: "Broker access required for Loan Form Submissions." });
+  const intakeIndex = clientIntakes.findIndex((item) => item.id === request.params.intakeId || item.token === request.params.intakeId);
+  if (intakeIndex === -1) return response.status(404).json({ error: "Loan form submission not found" });
+  const now = new Date().toISOString();
+  const current = clientIntakes[intakeIndex];
+  const submission = normalizeClientIntakeSubmission({ ...(current.submission || {}), ...(request.body?.submission || request.body || {}) });
+  clientIntakes[intakeIndex] = {
+    ...current,
+    status: request.body?.status || current.status || "submitted",
+    submittedAt: current.submittedAt || now,
+    updatedAt: now,
+    submission
+  };
+  const noteIndex = callNotes.findIndex((item) => item.id === current.callNoteId);
+  let note = null;
+  if (noteIndex !== -1) {
+    callNotes[noteIndex] = applyClientIntakeToNote(callNotes[noteIndex], submission);
+    callNotes[noteIndex] = { ...callNotes[noteIndex], updatedAt: now };
+    note = callNotes[noteIndex];
+    if (note.convertedCaseId) upsertLocalCaseFromCallNote(noteIndex, "client-intake-edited");
+    persistCallNotes();
+  }
+  persistClientIntakes();
+  auditLog.push({
+    type: "client-intake-edited",
+    timestamp: now,
+    brokerUser: request.get("x-elf-email") || clientIntakes[intakeIndex].brokerUser || "broker",
+    caseId: note?.convertedCaseId || current.callNoteId,
+    intakeId: current.id
+  });
+  response.json({ intake: clientIntakes[intakeIndex], note });
 });
 
 app.post("/api/call-notes", (request, response) => {

@@ -20,7 +20,7 @@ const PORTAL_HOST_RE = /^(portal|app)\./i;
 const CLIENT_CALL_HOST_RE = /^client-call\./i;
 const LOAN_FORM_HOST_RE = /^loan-form\./i;
 const EASYFLOW_AI_HOST_RE = /^(easyflow-ai|loanops|autofill)\./i;
-const LOAN_SUBMISSIONS_HOST_RE = /^(loan-submissions|submissions)\./i;
+const LOAN_SUBMISSIONS_HOST_RE = /^(loan-submissions-management|loan-submissions|submissions)\./i;
 const LOAN_FORM_PUBLIC_PATH_RE = /^\/(?:loan-form|client-info|apply|start|home-loan|refinance|commercial-loan|business-loan|car-loan|personal-loan)(?:\/[^/]+)?\/?$/;
 const LOAN_FORM_PUBLIC_API_RE = /^\/api\/client-intake\/[^/]+\/?$/;
 const SHARED_BRAND_ASSET_RE = /^\/(?:elf-logo\.(?:png|svg)|favicon\.ico)$/i;
@@ -2189,7 +2189,7 @@ createServer(async (req, res) => {
     }
     if (PORTAL_HOST_RE.test(hostname)) {
       if (url.pathname === "/loan-submissions") {
-        res.writeHead(302, { location: "https://easyflow-ai.easyloanfinance.com.au/loan-submissions" });
+        res.writeHead(302, { location: "https://loan-submissions-management.easyloanfinance.com.au" });
         res.end();
         return;
       }

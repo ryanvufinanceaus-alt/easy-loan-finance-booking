@@ -1237,10 +1237,44 @@ pre {
 .submission-management {
   display: grid;
   gap: 10px;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.1fr);
 }
 
 .submission-list > div {
   grid-template-columns: minmax(0, 1fr) minmax(220px, auto);
+}
+
+.submissions-shell .notes-sidebar {
+  background: #0f1d17;
+  border-right: 1px solid rgba(184, 144, 68, 0.26);
+}
+
+.submissions-shell .notes-workspace {
+  max-width: 1320px;
+}
+
+.submission-list > div.selected-submission {
+  border-color: #b89044;
+  box-shadow: 0 0 0 1px rgba(184, 144, 68, 0.28);
+}
+
+.submission-editor-panel {
+  align-self: start;
+  position: sticky;
+  top: 14px;
+}
+
+.submission-editor-actions {
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
+.wide-field {
+  grid-column: 1 / -1;
+}
+
+.wide-field textarea {
+  min-height: 110px;
 }
 
 .note-panel {
@@ -1868,6 +1902,14 @@ select {
 
   .notes-shell {
     grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
+  }
+
+  .submission-management {
+    grid-template-columns: 1fr;
+  }
+
+  .submission-editor-panel {
+    position: static;
   }
 
   .case-sidebar,
