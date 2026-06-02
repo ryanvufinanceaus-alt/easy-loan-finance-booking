@@ -1122,10 +1122,8 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     const today = new Date().toISOString().slice(0, 10);
     return {
       total: intakes.length,
-      newCount: intakes.filter((intake) => /new|sent/i.test(intake.status || "") && !intake.submittedAt).length,
       submitted: intakes.filter((intake) => Boolean(intake.submittedAt)).length,
       editedToday: intakes.filter((intake) => String(intake.lastSavedAt || "").startsWith(today)).length,
-      exported: intakes.filter((intake) => Boolean(intake.factFindExportedAt)).length
     };
   }, [intakes]);
   const submissionDirty = selectedIntake && JSON.stringify(submissionEdit) !== JSON.stringify(savedSubmissionEdit);
@@ -1368,7 +1366,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
             <h1>{activePanel === "submissions" ? "Loan Form Submissions Management" : "Client Call Intake"}</h1>
             <p className="topbar-helper">
               {activePanel === "submissions"
-                ? "Search, review, edit, and export full client-submitted fact-find data. Broker/admin access only."
+                ? "Secure repository for full client-submitted fact-find data. Edit records, export files, and prepare data for EasyFlow AI."
                 : "Call note is the short phone record. Create case turns it into the internal client file used by Loan Form and EasyFlow AI."}
             </p>
           </div>
@@ -1406,18 +1404,12 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
         {error && <div className="error-banner">{error}</div>}
         {message && <div className="success-banner">{message}</div>}
         <SessionWarning session={session} />
-        {activePanel === "submissions" && <div className="submission-kpis">
-          <div><span>New submissions</span><strong>{intakeMetrics.newCount}</strong></div>
-          <div><span>Submitted</span><strong>{intakeMetrics.submitted}</strong></div>
-          <div><span>Edited today</span><strong>{intakeMetrics.editedToday}</strong></div>
-          <div><span>Fact Finds exported</span><strong>{intakeMetrics.exported}</strong></div>
-        </div>}
 
         {activePanel === "submissions" ? (
           <div className="submission-management">
             <section className="panel note-panel recent-note-panel">
-              <div className="panel-title"><FileJson size={18} /><h2>Submission Inbox</h2></div>
-              <p className="panel-helper inbox-helper">Full client-submitted fact-find data. Search by client name, phone, email, case ID, or loan purpose.</p>
+              <div className="panel-title"><FileJson size={18} /><h2>Loan Form Records</h2></div>
+              <p className="panel-helper inbox-helper">A broker-only data store linked with Client Call Intake and EasyFlow AI. Search by client name, phone, email, case ID, or loan purpose.</p>
               {canViewLoanSubmissions ? (
                 <div className="recent-note-list submission-list">
                   {filteredIntakes.length ? filteredIntakes.map((intake) => (
