@@ -2178,6 +2178,10 @@ createServer(async (req, res) => {
         if (!requireInfinityAolLogin(req, res, url)) return;
         return await handleApi(req, res, url);
       }
+      if (CLIENT_CALL_HOST_RE.test(hostname) && /^\/api\/call-notes(?:\/|$)/.test(url.pathname) && ["GET", "POST", "PATCH"].includes(req.method)) {
+        forwardToInfinityAolApp(req, res, url);
+        return;
+      }
       if (!requireInfinityAolLogin(req, res, url)) return;
       forwardToInfinityAolApp(req, res, url);
       return;

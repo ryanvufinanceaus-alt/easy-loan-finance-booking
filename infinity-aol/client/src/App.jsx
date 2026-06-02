@@ -757,6 +757,17 @@ function splitNameFallback(fullName = "") {
   return { firstName: parts.slice(0, -1).join(" "), middleName: "", surname: parts.at(-1) };
 }
 
+function dateInputValue(value = "") {
+  const raw = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) {
+    const [, day, month, year] = slash;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+  return "";
+}
+
 function hydrateNameParts(values = {}) {
   const primaryFallback = values.firstName || values.surname ? {} : splitNameFallback(values.clientName);
   const secondaryFallback = values.secondApplicantFirstName || values.secondApplicantSurname
@@ -1654,10 +1665,8 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                       <h3>Applicant</h3>
                       <div className="note-form-grid">
                         <label>Primary given name(s)<input value={submissionEdit.firstName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, firstName: event.target.value })} /></label>
-                        <label>Primary middle name(s)<input value={submissionEdit.middleName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, middleName: event.target.value })} /></label>
                         <label>Primary surname<input value={submissionEdit.surname} onChange={(event) => setSubmissionEdit({ ...submissionEdit, surname: event.target.value })} /></label>
                         <label>Second given name(s)<input value={submissionEdit.secondApplicantFirstName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantFirstName: event.target.value })} /></label>
-                        <label>Second middle name(s)<input value={submissionEdit.secondApplicantMiddleName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantMiddleName: event.target.value })} /></label>
                         <label>Second surname<input value={submissionEdit.secondApplicantSurname} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantSurname: event.target.value })} /></label>
                         {composeLegalName(submissionEdit.secondApplicantFirstName, submissionEdit.secondApplicantMiddleName, submissionEdit.secondApplicantSurname, submissionEdit.secondApplicantName) && <>
                           <label>Second applicant DOB<input value={submissionEdit.secondApplicantDateOfBirth} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantDateOfBirth: event.target.value })} /></label>
@@ -1767,7 +1776,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                 <span>Ask these when the call allows. The full fact-find still belongs in the Loan Form.</span>
               </div>
               <div className="note-form-grid">
-                <label>DOB<input value={form.dateOfBirth} onChange={(event) => updateField("dateOfBirth", event.target.value)} placeholder="YYYY-MM-DD" /></label>
+                <label>DOB<input type="date" value={dateInputValue(form.dateOfBirth)} onChange={(event) => updateField("dateOfBirth", event.target.value)} /></label>
                 <label>Address<input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
                 <label>Marital<select value={form.maritalStatus} onChange={(event) => updateField("maritalStatus", event.target.value)}><option>Single</option><option>Married</option><option>Defacto</option><option>Separated</option></select></label>
                 <label>Employer<input value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
@@ -2172,14 +2181,12 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
           <h2>{L("Personal Details")}</h2>
           <div className="client-intake-grid">
             <label>{L("First / given name(s)")}<input required value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} /><span className="field-help">{L("Enter names exactly as shown on ID. Vietnamese accents are OK.")}</span></label>
-            <label>{L("Middle name(s)")}<input value={form.middleName} onChange={(event) => updateField("middleName", event.target.value)} /><span className="field-help">{L("Leave blank if no middle name.")}</span></label>
             <label>{L("Family name / surname")}<input required value={form.surname} onChange={(event) => updateField("surname", event.target.value)} /></label>
             <SelectField language={language} label="Add second applicant" value={hasSecondApplicant ? "Yes" : "No"} onChange={(value) => setForm((current) => ({
               ...current,
               hasSecondApplicant: value,
               secondApplicantName: value === "Yes" ? current.secondApplicantName : "",
               secondApplicantFirstName: value === "Yes" ? current.secondApplicantFirstName : "",
-              secondApplicantMiddleName: value === "Yes" ? current.secondApplicantMiddleName : "",
               secondApplicantSurname: value === "Yes" ? current.secondApplicantSurname : "",
               secondApplicantDateOfBirth: value === "Yes" ? current.secondApplicantDateOfBirth : "",
               secondApplicantMobile: value === "Yes" ? current.secondApplicantMobile : "",
@@ -2202,7 +2209,6 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
             <p>Only complete this section when there is a co-applicant, spouse, partner, or second borrower on the application.</p>
             <div className="client-intake-grid">
               <label>{L("Second applicant first / given name(s)")}<input required value={form.secondApplicantFirstName} onChange={(event) => updateField("secondApplicantFirstName", event.target.value)} /><span className="field-help">{L("Enter names exactly as shown on ID. Vietnamese accents are OK.")}</span></label>
-              <label>{L("Second applicant middle name(s)")}<input value={form.secondApplicantMiddleName} onChange={(event) => updateField("secondApplicantMiddleName", event.target.value)} /><span className="field-help">{L("Leave blank if no middle name.")}</span></label>
               <label>{L("Second applicant family name / surname")}<input required value={form.secondApplicantSurname} onChange={(event) => updateField("secondApplicantSurname", event.target.value)} /></label>
               <DateField language={language} required label="Date of birth" value={form.secondApplicantDateOfBirth} onChange={(value) => updateField("secondApplicantDateOfBirth", value)} />
               <label>{L("Second applicant email")}<input value={form.secondApplicantEmail} onChange={(event) => updateField("secondApplicantEmail", event.target.value)} placeholder="Leave blank if same contact email" /></label>
