@@ -1893,17 +1893,36 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
   }
 
   useEffect(() => {
+    if (publicForm) {
+      const routeDefaults = entry ? { loanType: entry.type, loanPurpose: entry.purpose } : {};
+      const draft = readDraft();
+      setMeta({
+        token: "public",
+        status: "new",
+        submittedAt: null,
+        callNoteId: null
+      });
+      if (draft?.language) setLanguage(draft.language);
+      if (draft?.form) setDraftRestored(true);
+      setForm((current) => ({
+        ...current,
+        ...routeDefaults,
+        ...(draft?.form || {})
+      }));
+      setError("");
+      setLoading(false);
+      return;
+    }
+
     const endpointToken = publicForm ? "public" : token;
     api(`/api/client-intake/${endpointToken}`)
       .then((result) => {
         setMeta(result);
-        const routeDefaults = publicForm && entry ? { loanType: entry.type, loanPurpose: entry.purpose } : {};
         const draft = readDraft();
         if (draft?.language) setLanguage(draft.language);
         if (draft?.form) setDraftRestored(true);
         setForm((current) => ({
           ...current,
-          ...routeDefaults,
           ...Object.fromEntries(Object.entries(result).filter(([, value]) => value !== "" && value !== null)),
           ...(draft?.form || {})
         }));
