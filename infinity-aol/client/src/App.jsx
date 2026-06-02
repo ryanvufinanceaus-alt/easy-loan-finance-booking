@@ -20,9 +20,11 @@ import {
 const isLoanFormHost = /^loan-form\./i.test(location.hostname);
 const isClientCallHost = /^client-call\./i.test(location.hostname);
 const isEasyFlowAiHost = /^(easyflow-ai|loanops|autofill)\./i.test(location.hostname);
+const isPortalHost = /^portal\./i.test(location.hostname);
+const isLoanSubmissionsRoute = location.pathname === "/loan-submissions" || location.pathname === "/infinity-aol/loan-submissions";
 const apiBase = isLoanFormHost
   ? location.origin
-  : isClientCallHost || isEasyFlowAiHost
+  : isClientCallHost || isEasyFlowAiHost || (isPortalHost && isLoanSubmissionsRoute)
   ? location.origin
   : location.pathname.startsWith("/infinity-aol")
   ? `${location.origin}/infinity-aol`
@@ -34,6 +36,7 @@ const mockAolPath = `${appBasePath}/mock-infinity-aol`;
 const brandLogoSrc = "/elf-logo.png";
 
 function pageTitle() {
+  if (isLoanSubmissionsRoute) return "Loan Form Submissions - Easy Loan Finance";
   if (isClientCallHost || location.pathname.includes("client-call")) return "Client Call Intake - Easy Loan Finance";
   if (isLoanFormHost) return "Loan Form - Easy Loan Finance";
   if (isEasyFlowAiHost) return "EasyFlow AI - Easy Loan Finance";
@@ -1014,13 +1017,13 @@ function ClientLoanFormHeader({ title, description, language = "en", onLanguageC
   );
 }
 
-function CallNotesPage({ onOpenAutofill }) {
+function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   const { session } = useSessionStatus();
   const [form, setForm] = useState(emptyCallNote);
   const [notes, setNotes] = useState([]);
   const [intakes, setIntakes] = useState([]);
   const [search, setSearch] = useState("");
-  const [activePanel, setActivePanel] = useState("call");
+  const [activePanel, setActivePanel] = useState(initialPanel);
   const [selectedId, setSelectedId] = useState("");
   const [redFlags, setRedFlags] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -1209,7 +1212,7 @@ function CallNotesPage({ onOpenAutofill }) {
           <img className="brand-logo" src={brandLogoSrc} alt="Easy Loan Finance" />
           <div>
             <span>Easy Loan Finance</span>
-            <strong>Client Call Intake</strong>
+            <strong>{isLoanSubmissionsRoute ? "Loan Form Submissions" : "Client Call Intake"}</strong>
           </div>
         </div>
         <button className="ghost-button sidebar-action" type="button" onClick={onOpenAutofill}>
@@ -1217,16 +1220,31 @@ function CallNotesPage({ onOpenAutofill }) {
           EasyFlow AI
         </button>
         <div className="module-nav">
-          <button className={activePanel === "call" ? "active" : ""} type="button" onClick={() => setActivePanel("call")}>
-            <ClipboardList size={15} />
-            Call Intake
-          </button>
-          <button className={activePanel === "submissions" ? "active" : ""} type="button" onClick={() => setActivePanel("submissions")}>
-            <FileJson size={15} />
-            Loan Form Submissions
-          </button>
+          {isLoanSubmissionsRoute ? (
+            <>
+              <a href="https://client-call.easyloanfinance.com.au">
+                <ClipboardList size={15} />
+                Client Call Intake
+              </a>
+              <button className="active" type="button">
+                <FileJson size={15} />
+                Loan Form Submissions
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="active" type="button">
+                <ClipboardList size={15} />
+                Call Intake
+              </button>
+              <a href="https://portal.easyloanfinance.com.au/loan-submissions">
+                <FileJson size={15} />
+                Open Loan Submissions
+              </a>
+            </>
+          )}
         </div>
-        <TeamSettingsPanel appName="Client Call Intake" />
+        <TeamSettingsPanel appName={isLoanSubmissionsRoute ? "Loan Form Submissions" : "Client Call Intake"} />
         <label className="note-search">
           Search clients
           <div className="search-input">
@@ -1865,7 +1883,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
 
 export default function App() {
   const { session } = useSessionStatus();
-  const [view, setView] = useState(() => (isClientCallHost || location.pathname.includes("call-notes") || location.pathname.includes("client-call") ? "notes" : "autofill"));
+  const [view, setView] = useState(() => (isLoanSubmissionsRoute || isClientCallHost || location.pathname.includes("call-notes") || location.pathname.includes("client-call") ? "notes" : "autofill"));
   const [cases, setCases] = useState([]);
   const [caseSearch, setCaseSearch] = useState("");
   const [selectedCaseId, setSelectedCaseId] = useState("");
@@ -1899,17 +1917,18 @@ export default function App() {
   }, []);
 
   const showMock = location.pathname === "/mock-infinity-aol" || location.pathname === "/infinity-aol/mock-infinity-aol";
-  const internalLogin = (isClientCallHost || isEasyFlowAiHost) && location.pathname === "/login";
+  const internalLogin = (isClientCallHost || isEasyFlowAiHost || isPortalHost) && location.pathname === "/login";
   const intakeToken = location.pathname.match(/^\/(?:infinity-aol\/)?(?:client-info|loan-form|apply)\/([^/]+)/)?.[1] || "";
   const publicEntry = getPublicLoanEntry(location.pathname);
   const publicLoanForm = Boolean(publicEntry) || (isLoanFormHost && location.pathname === "/");
 
   useEffect(() => {
     if (showMock || internalLogin) return;
+    if (view === "notes") return;
     api("/api/cases").then(setCases).catch((err) => setError(err.message));
     api("/api/templates").then(setTemplates).catch((err) => setError(err.message));
     api("/api/audit-log").then(setAuditLog).catch(() => {});
-  }, [showMock, internalLogin]);
+  }, [showMock, internalLogin, view]);
 
   useEffect(() => {
     if (showMock || !selectedCaseId) return;
@@ -2240,7 +2259,7 @@ export default function App() {
   if (showMock) return <MockInfinity />;
   if (internalLogin) return <InternalLoginPage />;
   if (intakeToken || publicLoanForm) return <ClientIntakePage token={intakeToken} publicForm={!intakeToken} entry={publicEntry} />;
-  if (view === "notes") return <CallNotesPage onOpenAutofill={() => setView("autofill")} />;
+  if (view === "notes") return <CallNotesPage initialPanel={isLoanSubmissionsRoute ? "submissions" : "call"} onOpenAutofill={() => setView("autofill")} />;
 
   return (
     <main className="app-shell">

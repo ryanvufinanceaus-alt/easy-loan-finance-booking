@@ -633,20 +633,34 @@ function verifySession(token = "") {
 function sessionCookieDomain(req) {
   const configured = process.env.COOKIE_DOMAIN || process.env.SESSION_COOKIE_DOMAIN;
   if (configured) return configured.startsWith(".") ? configured : `.${configured}`;
+  return "";
+}
+
+function sessionCookieName(req) {
   const hostname = String(req?.headers?.host || "").split(":")[0].toLowerCase();
-  return hostname.endsWith(".easyloanfinance.com.au") ? ".easyloanfinance.com.au" : "";
+  if (PORTAL_HOST_RE.test(hostname)) return "elf_portal_session";
+  if (CLIENT_CALL_HOST_RE.test(hostname)) return "elf_client_call_session";
+  if (EASYFLOW_AI_HOST_RE.test(hostname)) return "elf_easyflow_session";
+  if (LOAN_FORM_HOST_RE.test(hostname)) return "elf_loan_form_session";
+  if (BOOKING_HOST_RE.test(hostname)) return "elf_booking_session";
+  return "elf_app_session";
 }
 
 function setSessionCookie(req, res, token) {
   const domain = sessionCookieDomain(req);
+  const name = sessionCookieName(req);
   res.setHeader("set-cookie", [
-    `elf_admin=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}${domain ? `; Domain=${domain}` : ""}`,
+    `${name}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}${domain ? `; Domain=${domain}` : ""}`,
   ]);
 }
 
 function clearSessionCookie(req, res) {
   const domain = sessionCookieDomain(req);
-  res.setHeader("set-cookie", `elf_admin=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${domain ? `; Domain=${domain}` : ""}`);
+  const name = sessionCookieName(req);
+  res.setHeader("set-cookie", [
+    `${name}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${domain ? `; Domain=${domain}` : ""}`,
+    `elf_admin=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${domain ? `; Domain=${domain}` : ""}`
+  ]);
 }
 
 function isPublicRequest(req, url) {
@@ -660,7 +674,7 @@ function isPublicRequest(req, url) {
 }
 
 function adminSession(req) {
-  return verifySession(parseCookies(req).elf_admin);
+  return verifySession(parseCookies(req)[sessionCookieName(req)]);
 }
 
 function requireAdmin(req, res, url) {
@@ -2172,6 +2186,21 @@ createServer(async (req, res) => {
       return;
     }
     if (PORTAL_HOST_RE.test(hostname)) {
+      if (url.pathname === "/loan-submissions" || url.pathname.startsWith(`${INFINITY_AOL_BASE}/`)) {
+        if (!requireInfinityAolLogin(req, res, url)) return;
+        forwardToInfinityAolApp(req, res, url.pathname === "/loan-submissions" ? new URL("/", requestOrigin(req)) : url, url.pathname.startsWith(`${INFINITY_AOL_BASE}/`) ? INFINITY_AOL_BASE : "");
+        return;
+      }
+      if (url.pathname.startsWith("/api/auth/")) return await handleApi(req, res, url);
+      if (/^\/api\/brokers(?:\/|$)/.test(url.pathname)) {
+        if (!requireInfinityAolLogin(req, res, url)) return;
+        return await handleApi(req, res, url);
+      }
+      if (/^\/api\/(?:call-notes|client-intakes)(?:\/|$)/.test(url.pathname)) {
+        if (!requireInfinityAolLogin(req, res, url)) return;
+        forwardToInfinityAolApp(req, res, url);
+        return;
+      }
       const brokerDeskHandled = await handleBrokerDesk(req, res);
       if (brokerDeskHandled || res.writableEnded) return;
       return sendJson(res, 404, { error: "BrokerDesk CRM route not found" });

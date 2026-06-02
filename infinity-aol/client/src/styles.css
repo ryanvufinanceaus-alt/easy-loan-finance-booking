@@ -1157,7 +1157,8 @@ pre {
   margin: 10px 0;
 }
 
-.module-nav button {
+.module-nav button,
+.module-nav a {
   align-items: center;
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -1170,9 +1171,11 @@ pre {
   min-height: 38px;
   padding: 0 10px;
   text-align: left;
+  text-decoration: none;
 }
 
-.module-nav button.active {
+.module-nav button.active,
+.module-nav a.active {
   background: #f8fbf8;
   color: #13201a;
 }
