@@ -1832,6 +1832,28 @@ pre {
   margin-top: 16px;
 }
 
+.second-applicant-panel {
+  background: #f8fbf8;
+  border: 1px solid #dce7df;
+  border-radius: 8px;
+  margin-top: 18px;
+  padding: clamp(16px, 2.4vw, 22px);
+}
+
+.second-applicant-panel h3 {
+  color: #102019;
+  font-size: clamp(20px, 2.4vw, 24px);
+  margin: 0;
+}
+
+.second-applicant-panel p {
+  color: #53645a;
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 6px 0 0;
+  max-width: 760px;
+}
+
 .client-intake-card label {
   color: #1d2d25;
   display: grid;

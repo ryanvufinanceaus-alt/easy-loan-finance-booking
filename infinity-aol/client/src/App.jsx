@@ -1026,6 +1026,16 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   const emptySubmissionEdit = {
     clientName: "",
     secondApplicantName: "",
+    secondApplicantDateOfBirth: "",
+    secondApplicantMobile: "",
+    secondApplicantEmail: "",
+    secondApplicantResidencyStatus: "",
+    secondApplicantVisaSubclass: "",
+    secondApplicantMaritalStatus: "",
+    secondApplicantDependants: "",
+    secondApplicantEmploymentType: "",
+    secondApplicantEmployerName: "",
+    secondApplicantOccupation: "",
     mobile: "",
     email: "",
     loanType: "",
@@ -1248,6 +1258,16 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     const nextEdit = {
       clientName: intake.clientName || "",
       secondApplicantName: intake.secondApplicantName || "",
+      secondApplicantDateOfBirth: intake.secondApplicantDateOfBirth || "",
+      secondApplicantMobile: intake.secondApplicantMobile || "",
+      secondApplicantEmail: intake.secondApplicantEmail || "",
+      secondApplicantResidencyStatus: intake.secondApplicantResidencyStatus || "",
+      secondApplicantVisaSubclass: intake.secondApplicantVisaSubclass || "",
+      secondApplicantMaritalStatus: intake.secondApplicantMaritalStatus || "",
+      secondApplicantDependants: intake.secondApplicantDependants || "",
+      secondApplicantEmploymentType: intake.secondApplicantEmploymentType || "",
+      secondApplicantEmployerName: intake.secondApplicantEmployerName || "",
+      secondApplicantOccupation: intake.secondApplicantOccupation || "",
       mobile: intake.mobile || "",
       email: intake.email || "",
       loanType: intake.loanType || "",
@@ -1495,6 +1515,16 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                       <div className="note-form-grid">
                         <label>Client name<input value={submissionEdit.clientName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, clientName: event.target.value })} /></label>
                         <label>Second applicant<input value={submissionEdit.secondApplicantName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantName: event.target.value })} /></label>
+                        {submissionEdit.secondApplicantName && <>
+                          <label>Second applicant DOB<input value={submissionEdit.secondApplicantDateOfBirth} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantDateOfBirth: event.target.value })} /></label>
+                          <label>Second applicant mobile<input value={submissionEdit.secondApplicantMobile} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantMobile: event.target.value })} /></label>
+                          <label>Second applicant email<input value={submissionEdit.secondApplicantEmail} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantEmail: event.target.value })} /></label>
+                          <label>Second residency<input value={submissionEdit.secondApplicantResidencyStatus} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantResidencyStatus: event.target.value })} /></label>
+                          <label>Second visa<input value={submissionEdit.secondApplicantVisaSubclass} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantVisaSubclass: event.target.value })} /></label>
+                          <label>Second employment<input value={submissionEdit.secondApplicantEmploymentType} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantEmploymentType: event.target.value })} /></label>
+                          <label>Second employer<input value={submissionEdit.secondApplicantEmployerName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantEmployerName: event.target.value })} /></label>
+                          <label>Second occupation<input value={submissionEdit.secondApplicantOccupation} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantOccupation: event.target.value })} /></label>
+                        </>}
                       </div>
                     </section>
                     <section>
@@ -1646,6 +1676,17 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
   const [form, setForm] = useState({
     clientName: "",
     secondApplicantName: "",
+    hasSecondApplicant: "No",
+    secondApplicantDateOfBirth: "",
+    secondApplicantMobile: "",
+    secondApplicantEmail: "",
+    secondApplicantResidencyStatus: "Australian Citizen",
+    secondApplicantVisaSubclass: "",
+    secondApplicantMaritalStatus: "Single",
+    secondApplicantDependants: "0",
+    secondApplicantEmploymentType: "PAYG",
+    secondApplicantEmployerName: "",
+    secondApplicantOccupation: "",
     mobile: "",
     email: "",
     preferredLanguage: "Vietnamese / English",
@@ -1818,6 +1859,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
   const isPersonal = /personal loan/i.test(form.loanType);
   const isRefinance = /refinance/i.test(`${form.loanPurpose} ${form.loanType}`);
   const dependantCount = Math.min(Math.max(Number(form.dependants || 0), 0), 4);
+  const hasSecondApplicant = form.hasSecondApplicant === "Yes" || Boolean(form.secondApplicantName?.trim());
   const L = (label) => tx(label, language);
 
   async function submitIntake(event) {
@@ -1905,7 +1947,14 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
           <h2>{L("Personal Details")}</h2>
           <div className="client-intake-grid">
             <label>{L("Full Name")}<input required value={form.clientName} onChange={(event) => updateField("clientName", event.target.value)} /></label>
-            <label>{L("Second applicant")}<input value={form.secondApplicantName} onChange={(event) => updateField("secondApplicantName", event.target.value)} /><span className="field-help">{L("Leave blank if there is no second applicant.")}</span></label>
+            <SelectField language={language} label="Add second applicant" value={hasSecondApplicant ? "Yes" : "No"} onChange={(value) => setForm((current) => ({
+              ...current,
+              hasSecondApplicant: value,
+              secondApplicantName: value === "Yes" ? current.secondApplicantName : "",
+              secondApplicantDateOfBirth: value === "Yes" ? current.secondApplicantDateOfBirth : "",
+              secondApplicantMobile: value === "Yes" ? current.secondApplicantMobile : "",
+              secondApplicantEmail: value === "Yes" ? current.secondApplicantEmail : ""
+            }))} options={yesNoOptions} />
             <DateField language={language} required label="Date of birth" value={form.dateOfBirth} onChange={(value) => updateField("dateOfBirth", value)} />
             <label>{L("Email")}<input required value={form.email} onChange={(event) => updateField("email", event.target.value)} placeholder="example@example.com" /></label>
             <label>{L("Mobile")}<input required value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
@@ -1918,6 +1967,24 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
               return <DateField key={field} language={language} label={`DOB of Dependent ${index + 1}`} value={form[field]} onChange={(value) => updateField(field, value)} />;
             })}
           </div>
+          {hasSecondApplicant && <div className="second-applicant-panel">
+            <h3>{L("Second Applicant Details")}</h3>
+            <p>Only complete this section when there is a co-applicant, spouse, partner, or second borrower on the application.</p>
+            <div className="client-intake-grid">
+              <label>{L("Second applicant")}<input required value={form.secondApplicantName} onChange={(event) => updateField("secondApplicantName", event.target.value)} /></label>
+              <DateField language={language} required label="Date of birth" value={form.secondApplicantDateOfBirth} onChange={(value) => updateField("secondApplicantDateOfBirth", value)} />
+              <label>{L("Second applicant email")}<input value={form.secondApplicantEmail} onChange={(event) => updateField("secondApplicantEmail", event.target.value)} placeholder="Leave blank if same contact email" /></label>
+              <label>{L("Second applicant mobile")}<input value={form.secondApplicantMobile} onChange={(event) => updateField("secondApplicantMobile", event.target.value)} placeholder="Leave blank if same contact mobile" /></label>
+              <SelectField language={language} required label="Second applicant residency" value={form.secondApplicantResidencyStatus} onChange={(value) => updateField("secondApplicantResidencyStatus", value)} options={residencyOptions} />
+              <label>{L("Second applicant visa")}<input value={form.secondApplicantVisaSubclass} onChange={(event) => updateField("secondApplicantVisaSubclass", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+              <SelectField language={language} label="Marital Status" value={form.secondApplicantMaritalStatus} onChange={(value) => updateField("secondApplicantMaritalStatus", value)} options={maritalStatusOptions} />
+              <label>{L("Number of Dependents")}<select value={form.secondApplicantDependants} onChange={(event) => updateField("secondApplicantDependants", event.target.value)}>{[0, 1, 2, 3, 4].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
+              <SelectField language={language} label="Second applicant employment" value={form.secondApplicantEmploymentType} onChange={(value) => updateField("secondApplicantEmploymentType", value)} options={employmentTypeOptions} />
+              <label>{L("Employer Name")}<input value={form.secondApplicantEmployerName} onChange={(event) => updateField("secondApplicantEmployerName", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+              <label>{L("Occupation")}<input value={form.secondApplicantOccupation} onChange={(event) => updateField("secondApplicantOccupation", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+              <label>{L("Second income p.a.")}<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
+            </div>
+          </div>}
         </section>
 
         <section>
@@ -1948,7 +2015,6 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
             <label>{L("Contact Name")}<input value={form.employmentContactName} onChange={(event) => updateField("employmentContactName", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             <label>{L("Contact Number")}<input value={form.employmentContactNumber} onChange={(event) => updateField("employmentContactNumber", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             <label>{L("Main income p.a.")}<input required value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} /></label>
-            <label>{L("Second income p.a.")}<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /><span className="field-help">{L("Leave blank if there is no second applicant.")}</span></label>
             <label>{L("Rental income p.a.")}<input value={form.rentalIncomeAnnual} onChange={(event) => updateField("rentalIncomeAnnual", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             <SelectField language={language} label="Previous Employment Type" value={form.previousEmploymentType} onChange={(value) => updateField("previousEmploymentType", value)} options={employmentBasisOptions} help="Leave blank if not applicable." />
             <label>{L("Previous Business Name")}<input value={form.previousBusinessName} onChange={(event) => updateField("previousBusinessName", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
