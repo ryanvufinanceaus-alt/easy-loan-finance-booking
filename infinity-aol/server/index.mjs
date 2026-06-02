@@ -1061,6 +1061,9 @@ app.get("/api/client-intakes", (request, response) => {
       hemMonthly: note.hemMonthly || intake.submission?.hemMonthly || 0,
       financialAssetBuffer: note.financialAssetBuffer || intake.submission?.financialAssetBuffer || 0,
       clientNotes: intake.submission?.clientNotes || "",
+      lastSavedAt: intake.lastSavedAt || intake.updatedAt || intake.submittedAt || null,
+      lastEditedBy: intake.lastEditedBy || "",
+      factFindExportedAt: intake.factFindExportedAt || null,
       convertedCaseId: note.convertedCaseId || null,
       url: `${loanFormBaseUrl(request)}/loan-form/${intake.token}`,
       updatedAt: intake.submittedAt || note.updatedAt || intake.createdAt
@@ -1071,10 +1074,21 @@ app.get("/api/client-intakes", (request, response) => {
 
 app.get("/api/client-intakes/:intakeId/fact-find", (request, response) => {
   if (!canReadLoanSubmissions(request)) return response.status(403).json({ error: "Broker access required for Fact Find export." });
-  const intake = clientIntakes.find((item) => item.id === request.params.intakeId || item.token === request.params.intakeId);
+  const intakeIndex = clientIntakes.findIndex((item) => item.id === request.params.intakeId || item.token === request.params.intakeId);
+  const intake = clientIntakes[intakeIndex];
   if (!intake) return response.status(404).json({ error: "Loan form submission not found" });
   const note = callNotes.find((item) => item.id === intake.callNoteId) || {};
   const document = intakeFactFindDocument(intake, note);
+  const now = new Date().toISOString();
+  clientIntakes[intakeIndex] = { ...intake, factFindExportedAt: now, updatedAt: now };
+  persistClientIntakes();
+  auditLog.push({
+    type: "fact-find-exported",
+    timestamp: now,
+    brokerUser: request.get("x-elf-user-email") || intake.brokerUser || "broker",
+    caseId: note.convertedCaseId || intake.callNoteId,
+    intakeId: intake.id
+  });
   response.setHeader("content-type", "application/msword; charset=utf-8");
   response.setHeader("cache-control", "no-store");
   response.setHeader("content-disposition", `attachment; filename="${factFindFilename(intake, note)}"`);
@@ -1087,12 +1101,17 @@ app.patch("/api/client-intakes/:intakeId", (request, response) => {
   if (intakeIndex === -1) return response.status(404).json({ error: "Loan form submission not found" });
   const now = new Date().toISOString();
   const current = clientIntakes[intakeIndex];
+  const editor = request.get("x-elf-user-email") || current.brokerUser || "broker";
   const submission = normalizeClientIntakeSubmission({ ...(current.submission || {}), ...(request.body?.submission || request.body || {}) });
+  const previous = current.submission || {};
+  const changedFields = Object.keys(submission).filter((field) => JSON.stringify(previous[field] ?? "") !== JSON.stringify(submission[field] ?? ""));
   clientIntakes[intakeIndex] = {
     ...current,
     status: request.body?.status || current.status || "submitted",
     submittedAt: current.submittedAt || now,
     updatedAt: now,
+    lastSavedAt: now,
+    lastEditedBy: editor,
     submission
   };
   const noteIndex = callNotes.findIndex((item) => item.id === current.callNoteId);
@@ -1108,9 +1127,10 @@ app.patch("/api/client-intakes/:intakeId", (request, response) => {
   auditLog.push({
     type: "client-intake-edited",
     timestamp: now,
-    brokerUser: request.get("x-elf-email") || clientIntakes[intakeIndex].brokerUser || "broker",
+    brokerUser: editor,
     caseId: note?.convertedCaseId || current.callNoteId,
-    intakeId: current.id
+    intakeId: current.id,
+    changedFields
   });
   response.json({ intake: clientIntakes[intakeIndex], note });
 });

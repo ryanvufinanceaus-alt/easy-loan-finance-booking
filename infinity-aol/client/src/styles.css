@@ -1213,6 +1213,53 @@ pre {
   color: #55635b;
 }
 
+.submission-filter-rail {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  display: grid;
+  gap: 10px;
+  margin: 10px 0;
+  padding: 12px 0;
+}
+
+.submission-counts {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.submission-counts span {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #cbd8d0;
+  display: grid;
+  font-size: 11px;
+  gap: 2px;
+  padding: 8px;
+}
+
+.submission-counts strong {
+  color: #f7d97c;
+  font-size: 17px;
+}
+
+.submission-filter-rail label {
+  color: #dce7df;
+  display: grid;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 5px;
+}
+
+.submission-filter-rail select {
+  background: #f8fbf8;
+  border: 1px solid #d7e2dc;
+  border-radius: 8px;
+  min-height: 38px;
+  padding: 0 9px;
+}
+
 .notes-workspace {
   margin: 0 auto;
   max-width: 1180px;
@@ -1237,11 +1284,18 @@ pre {
 .submission-management {
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(560px, 1fr) minmax(430px, 0.9fr);
 }
 
 .submission-list > div {
-  grid-template-columns: minmax(0, 1fr) minmax(220px, auto);
+  align-items: stretch;
+  background: #fff;
+  border: 1px solid #dde5df;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, auto);
+  padding: 8px;
 }
 
 .submissions-shell .notes-sidebar {
@@ -1253,9 +1307,119 @@ pre {
   max-width: 1320px;
 }
 
+.submission-top-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.submission-top-actions span,
+.submission-top-actions strong {
+  color: #55635b;
+  font-size: 12px;
+}
+
+.submission-kpis {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.submission-kpis div {
+  background: #fff;
+  border: 1px solid #dde5df;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(16, 32, 25, 0.04);
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.submission-kpis span {
+  color: #66756d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.submission-kpis strong {
+  color: #102019;
+  font-size: 26px;
+}
+
 .submission-list > div.selected-submission {
   border-color: #b89044;
   box-shadow: 0 0 0 1px rgba(184, 144, 68, 0.28);
+}
+
+.submission-row-main {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #102019;
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(170px, 1.1fr) minmax(150px, 0.9fr) minmax(170px, 1fr) minmax(130px, 0.75fr);
+  padding: 4px;
+  text-align: left;
+}
+
+.submission-row-main > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.submission-row-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.submission-row-main small {
+  color: #66756d;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-badge {
+  align-items: center;
+  background: #eaf7ee;
+  border: 1px solid #b8ddc4;
+  border-radius: 999px;
+  color: #145a38;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 900;
+  justify-content: center;
+  padding: 4px 8px;
+  width: fit-content;
+}
+
+.status-needs-review,
+.status-sent {
+  background: #fff7e1;
+  border-color: #ebce7b;
+  color: #7b5615;
+}
+
+.status-under-review,
+.status-loan-form-received {
+  background: #eaf0ff;
+  border-color: #c5d3f8;
+  color: #214b90;
+}
+
+.status-edited,
+.status-fact-find-exported {
+  background: #eef1f3;
+  border-color: #d4dade;
+  color: #44515a;
 }
 
 .submission-editor-panel {
@@ -1265,8 +1429,21 @@ pre {
 }
 
 .submission-editor-actions {
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid #dde5df;
+  bottom: 0;
   justify-content: flex-start;
-  margin-top: 12px;
+  margin: 12px -1px -1px;
+  padding: 10px;
+  position: sticky;
+  z-index: 2;
+}
+
+.submission-editor-actions > span {
+  color: #66756d;
+  font-size: 12px;
+  font-weight: 900;
+  margin-right: auto;
 }
 
 .wide-field {
@@ -1275,6 +1452,77 @@ pre {
 
 .wide-field textarea {
   min-height: 110px;
+}
+
+.submission-editor-summary {
+  align-items: start;
+  background: #f6f8f7;
+  border-bottom: 1px solid #dde5df;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px;
+}
+
+.submission-editor-summary > div {
+  display: grid;
+  gap: 4px;
+}
+
+.submission-editor-summary strong {
+  color: #102019;
+  font-size: 18px;
+}
+
+.submission-editor-summary small,
+.submission-editor-summary span:not(.status-badge) {
+  color: #66756d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.submission-editor-sections {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+}
+
+.submission-editor-sections section {
+  border: 1px solid #dde5df;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.submission-editor-sections h3 {
+  background: #f8faf8;
+  border-bottom: 1px solid #dde5df;
+  font-size: 13px;
+  margin: 0;
+  padding: 9px 10px;
+}
+
+.submission-meta-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 10px;
+}
+
+.submission-meta-grid span {
+  background: #fff;
+  border: 1px solid #e3e9e5;
+  border-radius: 7px;
+  color: #66756d;
+  display: grid;
+  font-size: 12px;
+  gap: 3px;
+  padding: 8px;
+}
+
+.submission-meta-grid strong {
+  color: #102019;
+  font-size: 11px;
+  text-transform: uppercase;
 }
 
 .note-panel {
@@ -1912,6 +2160,15 @@ select {
     position: static;
   }
 
+  .submission-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .submission-list > div,
+  .submission-row-main {
+    grid-template-columns: 1fr;
+  }
+
   .case-sidebar,
   .notes-sidebar {
     padding: 14px 10px;
@@ -1966,6 +2223,23 @@ select {
   .notes-sidebar .sidebar-action,
   .notes-sidebar .team-settings {
     margin-bottom: 8px;
+  }
+
+  .submission-top-actions,
+  .submission-editor-summary {
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+  }
+
+  .submission-top-actions .ghost-button,
+  .submission-editor-actions .ghost-button,
+  .submission-editor-actions .primary-button {
+    width: 100%;
+  }
+
+  .submission-kpis,
+  .submission-meta-grid {
+    grid-template-columns: 1fr;
   }
 
   .note-search {

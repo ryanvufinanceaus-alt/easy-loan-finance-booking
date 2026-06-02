@@ -452,10 +452,12 @@ function InternalLoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const appName = isClientCallHost ? "Client Call Intake" : "EasyFlow AI";
-  const appCopy = isClientCallHost
-    ? "Secure staff access for phone intake, quick notes, and loan form links."
-    : "Secure staff access for Infinity & AOL automation, case payloads, and autofill preparation.";
+  const appName = isLoanSubmissionsHost ? "Loan Form Submissions Management" : isClientCallHost ? "Client Call Intake" : "EasyFlow AI";
+  const appCopy = isLoanSubmissionsHost
+    ? "Secure broker access for reviewing, editing, and exporting client fact-find submissions."
+    : isClientCallHost
+      ? "Secure staff access for phone intake, quick notes, and loan form links."
+      : "Secure staff access for Infinity & AOL automation, case payloads, and autofill preparation.";
 
   useEffect(() => {
     document.title = `${appName} Login - Easy Loan Finance`;
@@ -1041,10 +1043,13 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   const [notes, setNotes] = useState([]);
   const [intakes, setIntakes] = useState([]);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [loanTypeFilter, setLoanTypeFilter] = useState("All");
   const [activePanel, setActivePanel] = useState(initialPanel);
   const [selectedId, setSelectedId] = useState("");
   const [selectedIntakeId, setSelectedIntakeId] = useState("");
   const [submissionEdit, setSubmissionEdit] = useState(emptySubmissionEdit);
+  const [savedSubmissionEdit, setSavedSubmissionEdit] = useState(emptySubmissionEdit);
   const [redFlags, setRedFlags] = useState([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -1090,23 +1095,40 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
 
   const filteredIntakes = useMemo(() => {
     const terms = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    const source = terms.length
-      ? intakes.filter((intake) => {
+    const source = intakes.filter((intake) => {
+      const matchesStatus = statusFilter === "All" || String(intake.status || "New").toLowerCase() === statusFilter.toLowerCase();
+      const matchesLoanType = loanTypeFilter === "All" || String(intake.loanType || "").toLowerCase() === loanTypeFilter.toLowerCase();
+      if (!matchesStatus || !matchesLoanType) return false;
+      if (!terms.length) return true;
           const haystack = [
             intake.clientName,
             intake.secondApplicantName,
             intake.mobile,
             intake.email,
             intake.loanPurpose,
+            intake.loanType,
             intake.convertedCaseId,
+            intake.callNoteId,
             intake.status
           ].join(" ").toLowerCase();
           return terms.every((term) => haystack.includes(term));
-        })
-      : intakes.slice(0, 8);
+        });
     return source.slice(0, 12);
-  }, [intakes, search]);
+  }, [intakes, loanTypeFilter, search, statusFilter]);
   const selectedIntake = useMemo(() => intakes.find((intake) => intake.id === selectedIntakeId) || null, [intakes, selectedIntakeId]);
+  const statusOptions = useMemo(() => ["All", ...Array.from(new Set(intakes.map((intake) => intake.status || "New")))], [intakes]);
+  const loanTypeOptions = useMemo(() => ["All", ...Array.from(new Set(intakes.map((intake) => intake.loanType).filter(Boolean)))], [intakes]);
+  const intakeMetrics = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return {
+      total: intakes.length,
+      newCount: intakes.filter((intake) => /new|sent/i.test(intake.status || "") && !intake.submittedAt).length,
+      submitted: intakes.filter((intake) => Boolean(intake.submittedAt)).length,
+      editedToday: intakes.filter((intake) => String(intake.lastSavedAt || "").startsWith(today)).length,
+      exported: intakes.filter((intake) => Boolean(intake.factFindExportedAt)).length
+    };
+  }, [intakes]);
+  const submissionDirty = selectedIntake && JSON.stringify(submissionEdit) !== JSON.stringify(savedSubmissionEdit);
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -1224,11 +1246,12 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
 
   function downloadFactFind(intake) {
     window.open(`${apiBase}/api/client-intakes/${encodeURIComponent(intake.id)}/fact-find`, "_blank", "noopener,noreferrer");
+    setIntakes((current) => current.map((item) => item.id === intake.id ? { ...item, factFindExportedAt: new Date().toISOString() } : item));
   }
 
   function loadIntake(intake) {
-    setSelectedIntakeId(intake.id);
-    setSubmissionEdit({
+    if (submissionDirty && !window.confirm("You have unsaved changes. Switch submission anyway?")) return;
+    const nextEdit = {
       clientName: intake.clientName || "",
       secondApplicantName: intake.secondApplicantName || "",
       mobile: intake.mobile || "",
@@ -1244,7 +1267,10 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
       hemMonthly: intake.hemMonthly || "",
       financialAssetBuffer: intake.financialAssetBuffer || "",
       clientNotes: intake.clientNotes || ""
-    });
+    };
+    setSelectedIntakeId(intake.id);
+    setSubmissionEdit(nextEdit);
+    setSavedSubmissionEdit(nextEdit);
   }
 
   async function saveIntakeEdits() {
@@ -1258,6 +1284,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
         body: JSON.stringify({ submission: submissionEdit })
       });
       setMessage("Loan Form submission updated.");
+      setSavedSubmissionEdit(submissionEdit);
       await refreshIntakes();
     } catch (err) {
       setError(err.message);
@@ -1265,6 +1292,16 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
       setSaving(false);
     }
   }
+
+  useEffect(() => {
+    if (!submissionDirty) return undefined;
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [submissionDirty]);
 
   return (
     <main className={`notes-shell ${isLoanSubmissionsRoute ? "submissions-shell" : ""}`}>
@@ -1284,13 +1321,30 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, phone, case" />
           </div>
         </label>
+        {activePanel === "submissions" && <div className="submission-filter-rail">
+          <div className="submission-counts">
+            <span><strong>{intakeMetrics.total}</strong>Total</span>
+            <span><strong>{intakeMetrics.submitted}</strong>Submitted</span>
+            <span><strong>{intakeMetrics.editedToday}</strong>Edited today</span>
+          </div>
+          <label>Status
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              {statusOptions.map((option) => <option key={option}>{option}</option>)}
+            </select>
+          </label>
+          <label>Loan type
+            <select value={loanTypeFilter} onChange={(event) => setLoanTypeFilter(event.target.value)}>
+              {loanTypeOptions.map((option) => <option key={option}>{option}</option>)}
+            </select>
+          </label>
+        </div>}
         <div className="note-list">
           {activePanel === "submissions" && !canViewLoanSubmissions ? (
             <div className="case-search-empty">Broker access required.</div>
           ) : activePanel === "submissions" ? (
             filteredIntakes.length ? filteredIntakes.map((intake) => (
               <button className={intake.id === selectedIntakeId ? "active" : ""} key={intake.id} type="button" onClick={() => loadIntake(intake)}>
-                <span>{intake.status}</span>
+                <span className={`status-badge status-${String(intake.status || "new").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>{intake.status || "New"}</span>
                 <strong>{[intake.clientName, intake.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
                 <small>{intake.submittedAt ? `Submitted ${new Date(intake.submittedAt).toLocaleDateString()}` : "Not submitted yet"}</small>
               </button>
@@ -1318,6 +1372,15 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                 : "Call note is the short phone record. Create case turns it into the internal client file used by Loan Form and EasyFlow AI."}
             </p>
           </div>
+          {activePanel === "submissions" && <div className="submission-top-actions">
+            <span>Last updated {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+            <strong>{session?.email || "Broker user"}</strong>
+            <button className="ghost-button" type="button" onClick={() => refreshIntakes().catch((err) => setError(err.message))}>Refresh</button>
+            <button className="ghost-button" type="button" onClick={async () => {
+              await api("/api/auth/logout", { method: "POST", body: "{}" }).catch(() => {});
+              window.location.href = "/login";
+            }}>Logout</button>
+          </div>}
           {activePanel === "call" && <div className="actions call-actions">
             <button className="ghost-button quiet-action" type="button" onClick={() => {
               if ((form.clientName || form.mobile || form.email || form.quickNotes) && !window.confirm("Clear the current call intake? Unsaved changes will be lost.")) return;
@@ -1343,6 +1406,12 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
         {error && <div className="error-banner">{error}</div>}
         {message && <div className="success-banner">{message}</div>}
         <SessionWarning session={session} />
+        {activePanel === "submissions" && <div className="submission-kpis">
+          <div><span>New submissions</span><strong>{intakeMetrics.newCount}</strong></div>
+          <div><span>Submitted</span><strong>{intakeMetrics.submitted}</strong></div>
+          <div><span>Edited today</span><strong>{intakeMetrics.editedToday}</strong></div>
+          <div><span>Fact Finds exported</span><strong>{intakeMetrics.exported}</strong></div>
+        </div>}
 
         {activePanel === "submissions" ? (
           <div className="submission-management">
@@ -1353,12 +1422,27 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                 <div className="recent-note-list submission-list">
                   {filteredIntakes.length ? filteredIntakes.map((intake) => (
                     <div className={intake.id === selectedIntakeId ? "selected-submission" : ""} key={intake.id}>
-                      <button type="button" onClick={() => loadIntake(intake)}>
-                        <strong>{[intake.clientName, intake.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
-                        <span>{intake.status} | {intake.submittedAt ? `Submitted ${new Date(intake.submittedAt).toLocaleString()}` : `Sent ${new Date(intake.createdAt).toLocaleString()}`}</span>
-                        <small>{intake.convertedCaseId || intake.callNoteId} | {intake.mobile || intake.email || "No contact"} | {intake.loanPurpose || "Purpose not set"}</small>
+                      <button className="submission-row-main" type="button" onClick={() => loadIntake(intake)}>
+                        <span className="submission-client-cell">
+                          <strong>{intake.clientName || "Unnamed client"}</strong>
+                          <small>{intake.secondApplicantName ? `Second applicant: ${intake.secondApplicantName}` : intake.id}</small>
+                          <small>{intake.convertedCaseId || intake.callNoteId}</small>
+                        </span>
+                        <span className="submission-contact-cell">
+                          <strong>{intake.mobile || "No mobile"}</strong>
+                          <small>{intake.email || "No email"}</small>
+                        </span>
+                        <span className="submission-loan-cell">
+                          <strong>{intake.loanPurpose || "Purpose not set"}</strong>
+                          <small>{intake.loanType || "Loan type not set"} | {currency(Number(intake.loanAmount || 0))}</small>
+                        </span>
+                        <span>
+                          <span className={`status-badge status-${String(intake.status || "new").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>{intake.status || "New"}</span>
+                          <small>{intake.submittedAt ? new Date(intake.submittedAt).toLocaleString() : `Sent ${new Date(intake.createdAt).toLocaleString()}`}</small>
+                        </span>
                       </button>
                       <div>
+                        <button type="button" onClick={() => loadIntake(intake)}>Review</button>
                         <button type="button" onClick={async () => {
                           await navigator.clipboard?.writeText(intake.url).catch(() => {});
                           setMessage(`Loan Form link copied: ${intake.url}`);
@@ -1366,7 +1450,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                         <button type="button" onClick={() => downloadFactFind(intake)}><Download size={13} /> Fact Find</button>
                       </div>
                     </div>
-                  )) : <div className="case-search-empty">No matching loan forms yet.</div>}
+                  )) : <div className="case-search-empty"><strong>No loan form submissions found.</strong><span>When clients submit the loan form, their fact-find details will appear here for broker review.</span></div>}
                 </div>
               ) : (
                 <div className="locked-data-panel">
@@ -1380,26 +1464,77 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
               <div className="panel-title"><FileJson size={18} /><h2>Edit Client Information</h2></div>
               {selectedIntake ? (
                 <>
-                  <p className="panel-helper">Editing syncs this submission back into the linked internal case data used by EasyFlow.</p>
-                  <div className="note-form-grid">
-                    <label>Client name<input value={submissionEdit.clientName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, clientName: event.target.value })} /></label>
-                    <label>Second applicant<input value={submissionEdit.secondApplicantName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantName: event.target.value })} /></label>
-                    <label>Mobile<input value={submissionEdit.mobile} onChange={(event) => setSubmissionEdit({ ...submissionEdit, mobile: event.target.value })} /></label>
-                    <label>Email<input value={submissionEdit.email} onChange={(event) => setSubmissionEdit({ ...submissionEdit, email: event.target.value })} /></label>
-                    <label>Loan type<input value={submissionEdit.loanType} onChange={(event) => setSubmissionEdit({ ...submissionEdit, loanType: event.target.value })} /></label>
-                    <label>Loan purpose<input value={submissionEdit.loanPurpose} onChange={(event) => setSubmissionEdit({ ...submissionEdit, loanPurpose: event.target.value })} /></label>
-                    <label>Loan amount<input value={submissionEdit.loanAmount} onChange={(event) => setSubmissionEdit({ ...submissionEdit, loanAmount: event.target.value })} /></label>
-                    <label>Property value<input value={submissionEdit.propertyValue} onChange={(event) => setSubmissionEdit({ ...submissionEdit, propertyValue: event.target.value })} /></label>
-                    <label>Deposit/equity<input value={submissionEdit.depositEquity} onChange={(event) => setSubmissionEdit({ ...submissionEdit, depositEquity: event.target.value })} /></label>
-                    <label>Property/location<input value={submissionEdit.propertyLocation} onChange={(event) => setSubmissionEdit({ ...submissionEdit, propertyLocation: event.target.value })} /></label>
-                    <label>Annual income<input value={submissionEdit.annualIncome} onChange={(event) => setSubmissionEdit({ ...submissionEdit, annualIncome: event.target.value })} /></label>
-                    <label>Second income<input value={submissionEdit.secondAnnualIncome} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondAnnualIncome: event.target.value })} /></label>
-                    <label>HEM monthly<input value={submissionEdit.hemMonthly} onChange={(event) => setSubmissionEdit({ ...submissionEdit, hemMonthly: event.target.value })} /></label>
-                    <label>Financial assets<input value={submissionEdit.financialAssetBuffer} onChange={(event) => setSubmissionEdit({ ...submissionEdit, financialAssetBuffer: event.target.value })} /></label>
-                    <label className="wide-field">Client notes<textarea value={submissionEdit.clientNotes} onChange={(event) => setSubmissionEdit({ ...submissionEdit, clientNotes: event.target.value })} /></label>
+                  <div className="submission-editor-summary">
+                    <div>
+                      <span className={`status-badge status-${String(selectedIntake.status || "new").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>{selectedIntake.status || "New"}</span>
+                      <strong>{submissionEdit.clientName || "Unnamed client"}</strong>
+                      <small>{selectedIntake.id} | {selectedIntake.convertedCaseId || selectedIntake.callNoteId}</small>
+                    </div>
+                    <div>
+                      <span>{submissionDirty ? "Unsaved changes" : "Saved"}</span>
+                      <small>{selectedIntake.lastSavedAt ? `Last saved ${new Date(selectedIntake.lastSavedAt).toLocaleString()}` : "Not edited yet"}</small>
+                      <small>{selectedIntake.lastEditedBy ? `Edited by ${selectedIntake.lastEditedBy}` : "Original client submission"}</small>
+                    </div>
+                  </div>
+                  <div className="submission-editor-sections">
+                    <section>
+                      <h3>Overview</h3>
+                      <div className="submission-meta-grid">
+                        <span><strong>Submitted</strong>{selectedIntake.submittedAt ? new Date(selectedIntake.submittedAt).toLocaleString() : "Not submitted yet"}</span>
+                        <span><strong>Fact Find</strong>{selectedIntake.factFindExportedAt ? `Exported ${new Date(selectedIntake.factFindExportedAt).toLocaleDateString()}` : "Not exported"}</span>
+                        <span><strong>Linked case</strong>{selectedIntake.convertedCaseId || "Not created"}</span>
+                        <span><strong>Call note</strong>{selectedIntake.callNoteId || "Not linked"}</span>
+                      </div>
+                    </section>
+                    <section>
+                      <h3>Applicant</h3>
+                      <div className="note-form-grid">
+                        <label>Client name<input value={submissionEdit.clientName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, clientName: event.target.value })} /></label>
+                        <label>Second applicant<input value={submissionEdit.secondApplicantName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantName: event.target.value })} /></label>
+                      </div>
+                    </section>
+                    <section>
+                      <h3>Contact</h3>
+                      <div className="note-form-grid">
+                        <label>Mobile<input value={submissionEdit.mobile} onChange={(event) => setSubmissionEdit({ ...submissionEdit, mobile: event.target.value })} /></label>
+                        <label>Email<input value={submissionEdit.email} onChange={(event) => setSubmissionEdit({ ...submissionEdit, email: event.target.value })} /></label>
+                      </div>
+                    </section>
+                    <section>
+                      <h3>Loan Request</h3>
+                      <div className="note-form-grid">
+                        <label>Loan type<input value={submissionEdit.loanType} onChange={(event) => setSubmissionEdit({ ...submissionEdit, loanType: event.target.value })} /></label>
+                        <label>Loan purpose<input value={submissionEdit.loanPurpose} onChange={(event) => setSubmissionEdit({ ...submissionEdit, loanPurpose: event.target.value })} /></label>
+                        <label>Loan amount<input value={submissionEdit.loanAmount} onChange={(event) => setSubmissionEdit({ ...submissionEdit, loanAmount: event.target.value })} /></label>
+                      </div>
+                    </section>
+                    <section>
+                      <h3>Property / Security</h3>
+                      <div className="note-form-grid">
+                        <label>Property value<input value={submissionEdit.propertyValue} onChange={(event) => setSubmissionEdit({ ...submissionEdit, propertyValue: event.target.value })} /></label>
+                        <label>Deposit/equity<input value={submissionEdit.depositEquity} onChange={(event) => setSubmissionEdit({ ...submissionEdit, depositEquity: event.target.value })} /></label>
+                        <label className="wide-field">Property/location<input value={submissionEdit.propertyLocation} onChange={(event) => setSubmissionEdit({ ...submissionEdit, propertyLocation: event.target.value })} /></label>
+                      </div>
+                    </section>
+                    <section>
+                      <h3>Income & Servicing Snapshot</h3>
+                      <div className="note-form-grid">
+                        <label>Annual income<input value={submissionEdit.annualIncome} onChange={(event) => setSubmissionEdit({ ...submissionEdit, annualIncome: event.target.value })} /></label>
+                        <label>Second income<input value={submissionEdit.secondAnnualIncome} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondAnnualIncome: event.target.value })} /></label>
+                        <label>HEM monthly<input value={submissionEdit.hemMonthly} onChange={(event) => setSubmissionEdit({ ...submissionEdit, hemMonthly: event.target.value })} /></label>
+                        <label>Financial assets<input value={submissionEdit.financialAssetBuffer} onChange={(event) => setSubmissionEdit({ ...submissionEdit, financialAssetBuffer: event.target.value })} /></label>
+                      </div>
+                    </section>
+                    <section>
+                      <h3>Notes</h3>
+                      <div className="note-form-grid">
+                        <label className="wide-field">Client notes<textarea value={submissionEdit.clientNotes} onChange={(event) => setSubmissionEdit({ ...submissionEdit, clientNotes: event.target.value })} /></label>
+                      </div>
+                    </section>
                   </div>
                   <div className="actions submission-editor-actions">
-                    <button className="primary-button" type="button" disabled={saving} onClick={saveIntakeEdits}>{saving ? "Saving..." : "Save changes"}</button>
+                    <span>{submissionDirty ? "Unsaved changes" : "Saved"}</span>
+                    <button className="primary-button" type="button" disabled={saving || !submissionDirty} onClick={saveIntakeEdits}>{saving ? "Saving..." : "Save changes"}</button>
                     <button className="ghost-button" type="button" onClick={() => downloadFactFind(selectedIntake)}><Download size={14} /> Download Fact Find</button>
                   </div>
                 </>
