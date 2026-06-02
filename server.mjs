@@ -20,6 +20,7 @@ const PORTAL_HOST_RE = /^(portal|app)\./i;
 const CLIENT_CALL_HOST_RE = /^client-call\./i;
 const LOAN_FORM_HOST_RE = /^loan-form\./i;
 const EASYFLOW_AI_HOST_RE = /^(easyflow-ai|loanops|autofill)\./i;
+const LOAN_SUBMISSIONS_HOST_RE = /^(loan-submissions|submissions)\./i;
 const LOAN_FORM_PUBLIC_PATH_RE = /^\/(?:loan-form|client-info|apply|start|home-loan|refinance|commercial-loan|business-loan|car-loan|personal-loan)(?:\/[^/]+)?\/?$/;
 const LOAN_FORM_PUBLIC_API_RE = /^\/api\/client-intake\/[^/]+\/?$/;
 const SHARED_BRAND_ASSET_RE = /^\/(?:elf-logo\.(?:png|svg)|favicon\.ico)$/i;
@@ -640,6 +641,7 @@ function sessionCookieName(req) {
   const hostname = String(req?.headers?.host || "").split(":")[0].toLowerCase();
   if (PORTAL_HOST_RE.test(hostname)) return "elf_portal_session";
   if (CLIENT_CALL_HOST_RE.test(hostname)) return "elf_client_call_session";
+  if (LOAN_SUBMISSIONS_HOST_RE.test(hostname)) return "elf_loan_submissions_session";
   if (EASYFLOW_AI_HOST_RE.test(hostname)) return "elf_easyflow_session";
   if (LOAN_FORM_HOST_RE.test(hostname)) return "elf_loan_form_session";
   if (BOOKING_HOST_RE.test(hostname)) return "elf_booking_session";
@@ -2161,7 +2163,7 @@ createServer(async (req, res) => {
       forwardToInfinityAolApp(req, res, url);
       return;
     }
-    if (CLIENT_CALL_HOST_RE.test(hostname) || EASYFLOW_AI_HOST_RE.test(hostname)) {
+    if (CLIENT_CALL_HOST_RE.test(hostname) || EASYFLOW_AI_HOST_RE.test(hostname) || LOAN_SUBMISSIONS_HOST_RE.test(hostname)) {
       if (SHARED_BRAND_ASSET_RE.test(url.pathname)) return await handleStatic(req, res, url);
       if (url.pathname.startsWith(`${INFINITY_AOL_BASE}/assets/`)) {
         forwardToInfinityAolApp(req, res, url, INFINITY_AOL_BASE);
@@ -2186,9 +2188,14 @@ createServer(async (req, res) => {
       return;
     }
     if (PORTAL_HOST_RE.test(hostname)) {
-      if (url.pathname === "/loan-submissions" || url.pathname.startsWith(`${INFINITY_AOL_BASE}/`)) {
+      if (url.pathname === "/loan-submissions") {
+        res.writeHead(302, { location: "https://easyflow-ai.easyloanfinance.com.au/loan-submissions" });
+        res.end();
+        return;
+      }
+      if (url.pathname.startsWith(`${INFINITY_AOL_BASE}/`)) {
         if (!requireInfinityAolLogin(req, res, url)) return;
-        forwardToInfinityAolApp(req, res, url.pathname === "/loan-submissions" ? new URL("/", requestOrigin(req)) : url, url.pathname.startsWith(`${INFINITY_AOL_BASE}/`) ? INFINITY_AOL_BASE : "");
+        forwardToInfinityAolApp(req, res, url, INFINITY_AOL_BASE);
         return;
       }
       if (url.pathname.startsWith("/api/auth/")) return await handleApi(req, res, url);

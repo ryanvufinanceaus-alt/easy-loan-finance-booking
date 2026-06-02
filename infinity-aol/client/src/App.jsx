@@ -20,18 +20,19 @@ import {
 const isLoanFormHost = /^loan-form\./i.test(location.hostname);
 const isClientCallHost = /^client-call\./i.test(location.hostname);
 const isEasyFlowAiHost = /^(easyflow-ai|loanops|autofill)\./i.test(location.hostname);
+const isLoanSubmissionsHost = /^(loan-submissions|submissions)\./i.test(location.hostname);
 const isPortalHost = /^portal\./i.test(location.hostname);
-const isLoanSubmissionsRoute = location.pathname === "/loan-submissions" || location.pathname === "/infinity-aol/loan-submissions";
+const isLoanSubmissionsRoute = isLoanSubmissionsHost || location.pathname === "/loan-submissions" || location.pathname === "/infinity-aol/loan-submissions";
 const apiBase = isLoanFormHost
   ? location.origin
-  : isClientCallHost || isEasyFlowAiHost || (isPortalHost && isLoanSubmissionsRoute)
+  : isClientCallHost || isEasyFlowAiHost || isLoanSubmissionsHost || (isPortalHost && isLoanSubmissionsRoute)
   ? location.origin
   : location.pathname.startsWith("/infinity-aol")
   ? `${location.origin}/infinity-aol`
   : ["localhost", "127.0.0.1"].includes(location.hostname)
     ? "http://127.0.0.1:8797"
     : `${location.origin}/infinity-aol`;
-const appBasePath = !isLoanFormHost && !isClientCallHost && !isEasyFlowAiHost && location.pathname.startsWith("/infinity-aol") ? "/infinity-aol" : "";
+const appBasePath = !isLoanFormHost && !isClientCallHost && !isEasyFlowAiHost && !isLoanSubmissionsHost && location.pathname.startsWith("/infinity-aol") ? "/infinity-aol" : "";
 const mockAolPath = `${appBasePath}/mock-infinity-aol`;
 const brandLogoSrc = "/elf-logo.png";
 
@@ -1237,7 +1238,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                 <ClipboardList size={15} />
                 Call Intake
               </button>
-              <a href="https://portal.easyloanfinance.com.au/loan-submissions">
+              <a href="https://easyflow-ai.easyloanfinance.com.au/loan-submissions">
                 <FileJson size={15} />
                 Open Loan Submissions
               </a>
@@ -1917,7 +1918,7 @@ export default function App() {
   }, []);
 
   const showMock = location.pathname === "/mock-infinity-aol" || location.pathname === "/infinity-aol/mock-infinity-aol";
-  const internalLogin = (isClientCallHost || isEasyFlowAiHost || isPortalHost) && location.pathname === "/login";
+  const internalLogin = (isClientCallHost || isEasyFlowAiHost || isLoanSubmissionsHost || isPortalHost) && location.pathname === "/login";
   const intakeToken = location.pathname.match(/^\/(?:infinity-aol\/)?(?:client-info|loan-form|apply)\/([^/]+)/)?.[1] || "";
   const publicEntry = getPublicLoanEntry(location.pathname);
   const publicLoanForm = Boolean(publicEntry) || (isLoanFormHost && location.pathname === "/");
