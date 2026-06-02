@@ -678,7 +678,13 @@ function MockInfinity() {
 const emptyCallNote = {
   brokerUser: "ryan.vu",
   clientName: "",
+  firstName: "",
+  middleName: "",
+  surname: "",
   secondApplicantName: "",
+  secondApplicantFirstName: "",
+  secondApplicantMiddleName: "",
+  secondApplicantSurname: "",
   mobile: "",
   email: "",
   preferredLanguage: "Vietnamese / English",
@@ -738,6 +744,39 @@ const commercialPurposeOptions = ["Commercial property purchase", "Commercial re
 const businessPurposeOptions = ["Working capital", "Business expansion", "Equipment purchase", "Cash flow support", "Tax debt", "Other purpose"];
 const carPurposeOptions = ["Car loan - purchase", "Car loan - refinance", "Business vehicle", "Other purpose"];
 const personalPurposeOptions = ["Personal loan - debt consolidation", "Personal loan - home improvement", "Personal loan - travel", "Personal loan - other"];
+
+function composeLegalName(firstName, middleName, surname, fallback = "") {
+  const name = [firstName, middleName, surname].map((part) => String(part || "").trim()).filter(Boolean).join(" ");
+  return name || String(fallback || "").trim();
+}
+
+function splitNameFallback(fullName = "") {
+  const parts = String(fullName || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return { firstName: "", middleName: "", surname: "" };
+  if (parts.length === 1) return { firstName: parts[0], middleName: "", surname: "" };
+  return { firstName: parts.slice(0, -1).join(" "), middleName: "", surname: parts.at(-1) };
+}
+
+function hydrateNameParts(values = {}) {
+  const primaryFallback = values.firstName || values.surname ? {} : splitNameFallback(values.clientName);
+  const secondaryFallback = values.secondApplicantFirstName || values.secondApplicantSurname
+    ? {}
+    : splitNameFallback(values.secondApplicantName);
+  return {
+    ...primaryFallback,
+    ...secondaryFallback,
+    ...values
+  };
+}
+
+function searchKey(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase();
+}
 const loanPurposeOptions = [...homeLoanPurposeOptions, ...commercialPurposeOptions, ...businessPurposeOptions, ...carPurposeOptions, ...personalPurposeOptions]
   .filter((value, index, arr) => arr.indexOf(value) === index);
 const loanTypeOptions = ["Home loan", "Refinance", "Commercial loan", "Business loan", "Car loan", "Personal loan"];
@@ -812,6 +851,14 @@ const clientFormCopy = {
 };
 
 const labelVi = {
+  "First / given name(s)": "Ten va ten dem theo giay to",
+  "Middle name(s)": "Ten dem neu muon tach rieng",
+  "Family name / surname": "Ho theo giay to",
+  "Enter names exactly as shown on ID. Vietnamese accents are OK.": "Nhap ten dung nhu tren giay to. Co dau tieng Viet van duoc.",
+  "Leave blank if no middle name.": "De trong neu khong co ten dem.",
+  "Second applicant first / given name(s)": "Nguoi vay thu hai - ten va ten dem",
+  "Second applicant middle name(s)": "Nguoi vay thu hai - ten dem",
+  "Second applicant family name / surname": "Nguoi vay thu hai - ho",
   "Personal Details": "Thông tin cá nhân",
   "Full Name": "Họ và tên",
   "Second applicant": "Người vay thứ hai",
@@ -1033,7 +1080,13 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   const [form, setForm] = useState(emptyCallNote);
   const emptySubmissionEdit = {
     clientName: "",
+    firstName: "",
+    middleName: "",
+    surname: "",
     secondApplicantName: "",
+    secondApplicantFirstName: "",
+    secondApplicantMiddleName: "",
+    secondApplicantSurname: "",
     secondApplicantDateOfBirth: "",
     secondApplicantMobile: "",
     secondApplicantEmail: "",
@@ -1111,31 +1164,44 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   }, [canViewLoanSubmissions]);
 
   const filteredNotes = useMemo(() => {
-    const terms = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const terms = searchKey(search).trim().split(/\s+/).filter(Boolean);
     const source = terms.length
       ? notes.filter((note) => {
           const haystack = [
             note.id,
             note.clientName,
+            note.firstName,
+            note.middleName,
+            note.surname,
             note.secondApplicantName,
+            note.secondApplicantFirstName,
+            note.secondApplicantMiddleName,
+            note.secondApplicantSurname,
             note.mobile,
             note.email,
             note.loanPurpose,
             note.convertedCaseId
-          ].join(" ").toLowerCase();
-          return terms.every((term) => haystack.includes(term));
+          ].join(" ");
+          const searchable = searchKey(haystack);
+          return terms.every((term) => searchable.includes(term));
         })
       : notes.slice(0, 6);
     return source.slice(0, 12);
   }, [notes, search]);
 
   const filteredIntakes = useMemo(() => {
-    const terms = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const terms = searchKey(search).trim().split(/\s+/).filter(Boolean);
     const source = intakes.filter((intake) => {
       if (!terms.length) return true;
           const haystack = [
             intake.clientName,
+            intake.firstName,
+            intake.middleName,
+            intake.surname,
             intake.secondApplicantName,
+            intake.secondApplicantFirstName,
+            intake.secondApplicantMiddleName,
+            intake.secondApplicantSurname,
             intake.mobile,
             intake.email,
             intake.loanPurpose,
@@ -1143,8 +1209,9 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
             intake.convertedCaseId,
             intake.callNoteId,
             intake.status
-          ].join(" ").toLowerCase();
-          return terms.every((term) => haystack.includes(term));
+          ].join(" ");
+          const searchable = searchKey(haystack);
+          return terms.every((term) => searchable.includes(term));
         });
     return source.slice(0, 12);
   }, [intakes, search]);
@@ -1293,7 +1360,13 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     if (submissionDirty && !window.confirm("You have unsaved changes. Switch submission anyway?")) return;
     const nextEdit = {
       clientName: intake.clientName || "",
+      firstName: intake.firstName || "",
+      middleName: intake.middleName || "",
+      surname: intake.surname || "",
       secondApplicantName: intake.secondApplicantName || "",
+      secondApplicantFirstName: intake.secondApplicantFirstName || "",
+      secondApplicantMiddleName: intake.secondApplicantMiddleName || "",
+      secondApplicantSurname: intake.secondApplicantSurname || "",
       secondApplicantDateOfBirth: intake.secondApplicantDateOfBirth || "",
       secondApplicantMobile: intake.secondApplicantMobile || "",
       secondApplicantEmail: intake.secondApplicantEmail || "",
@@ -1349,12 +1422,23 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     setError("");
     setMessage("");
     try {
+      const payload = {
+        ...submissionEdit,
+        clientName: composeLegalName(submissionEdit.firstName, submissionEdit.middleName, submissionEdit.surname, submissionEdit.clientName),
+        secondApplicantName: composeLegalName(
+          submissionEdit.secondApplicantFirstName,
+          submissionEdit.secondApplicantMiddleName,
+          submissionEdit.secondApplicantSurname,
+          submissionEdit.secondApplicantName
+        )
+      };
       await api(`/api/client-intakes/${encodeURIComponent(selectedIntake.id)}`, {
         method: "PATCH",
-        body: JSON.stringify({ submission: submissionEdit })
+        body: JSON.stringify({ submission: payload })
       });
       setMessage("Loan Form submission updated.");
-      setSavedSubmissionEdit(submissionEdit);
+      setSubmissionEdit(payload);
+      setSavedSubmissionEdit(payload);
       await refreshIntakes();
     } catch (err) {
       setError(err.message);
@@ -1569,9 +1653,13 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                     <section>
                       <h3>Applicant</h3>
                       <div className="note-form-grid">
-                        <label>Client name<input value={submissionEdit.clientName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, clientName: event.target.value })} /></label>
-                        <label>Second applicant<input value={submissionEdit.secondApplicantName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantName: event.target.value })} /></label>
-                        {submissionEdit.secondApplicantName && <>
+                        <label>Primary given name(s)<input value={submissionEdit.firstName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, firstName: event.target.value })} /></label>
+                        <label>Primary middle name(s)<input value={submissionEdit.middleName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, middleName: event.target.value })} /></label>
+                        <label>Primary surname<input value={submissionEdit.surname} onChange={(event) => setSubmissionEdit({ ...submissionEdit, surname: event.target.value })} /></label>
+                        <label>Second given name(s)<input value={submissionEdit.secondApplicantFirstName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantFirstName: event.target.value })} /></label>
+                        <label>Second middle name(s)<input value={submissionEdit.secondApplicantMiddleName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantMiddleName: event.target.value })} /></label>
+                        <label>Second surname<input value={submissionEdit.secondApplicantSurname} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantSurname: event.target.value })} /></label>
+                        {composeLegalName(submissionEdit.secondApplicantFirstName, submissionEdit.secondApplicantMiddleName, submissionEdit.secondApplicantSurname, submissionEdit.secondApplicantName) && <>
                           <label>Second applicant DOB<input value={submissionEdit.secondApplicantDateOfBirth} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantDateOfBirth: event.target.value })} /></label>
                           <label>Second applicant mobile<input value={submissionEdit.secondApplicantMobile} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantMobile: event.target.value })} /></label>
                           <label>Second applicant email<input value={submissionEdit.secondApplicantEmail} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantEmail: event.target.value })} /></label>
@@ -1731,7 +1819,13 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
   const [language, setLanguage] = useState("en");
   const [form, setForm] = useState({
     clientName: "",
+    firstName: "",
+    middleName: "",
+    surname: "",
     secondApplicantName: "",
+    secondApplicantFirstName: "",
+    secondApplicantMiddleName: "",
+    secondApplicantSurname: "",
     hasSecondApplicant: "No",
     secondApplicantDateOfBirth: "",
     secondApplicantMobile: "",
@@ -1909,8 +2003,10 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
       if (draft?.form) setDraftRestored(true);
       setForm((current) => ({
         ...current,
-        ...routeDefaults,
-        ...(draft?.form || {})
+        ...hydrateNameParts({
+          ...routeDefaults,
+          ...(draft?.form || {})
+        })
       }));
       setError("");
       setLoading(false);
@@ -1926,8 +2022,10 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
         if (draft?.form) setDraftRestored(true);
         setForm((current) => ({
           ...current,
-          ...Object.fromEntries(Object.entries(result).filter(([, value]) => value !== "" && value !== null)),
-          ...(draft?.form || {})
+          ...hydrateNameParts({
+            ...Object.fromEntries(Object.entries(result).filter(([, value]) => value !== "" && value !== null)),
+            ...(draft?.form || {})
+          })
         }));
       })
       .catch((err) => setError(err.message))
@@ -1967,7 +2065,14 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
   const isPersonal = /personal loan/i.test(form.loanType);
   const isRefinance = /refinance/i.test(`${form.loanPurpose} ${form.loanType}`);
   const dependantCount = Math.min(Math.max(Number(form.dependants || 0), 0), 4);
-  const hasSecondApplicant = /married|defacto/i.test(form.maritalStatus) || form.hasSecondApplicant === "Yes" || Boolean(form.secondApplicantName?.trim());
+  const hasSecondApplicant = /married|defacto/i.test(form.maritalStatus)
+    || form.hasSecondApplicant === "Yes"
+    || Boolean(composeLegalName(
+      form.secondApplicantFirstName,
+      form.secondApplicantMiddleName,
+      form.secondApplicantSurname,
+      form.secondApplicantName
+    ));
   const L = (label) => tx(label, language);
 
   async function submitIntake(event) {
@@ -1976,9 +2081,21 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
     setError("");
     try {
       const endpointToken = publicForm ? "public" : token;
+      const primaryLegalName = composeLegalName(form.firstName, form.middleName, form.surname, form.clientName);
+      const secondaryLegalName = composeLegalName(
+        form.secondApplicantFirstName,
+        form.secondApplicantMiddleName,
+        form.secondApplicantSurname,
+        form.secondApplicantName
+      );
       await api(`/api/client-intake/${endpointToken}`, {
         method: "POST",
-        body: JSON.stringify({ ...form, sourceUrl: location.href })
+        body: JSON.stringify({
+          ...form,
+          clientName: primaryLegalName,
+          secondApplicantName: secondaryLegalName,
+          sourceUrl: location.href
+        })
       });
       clearDraft();
       setSubmitted(true);
@@ -2054,11 +2171,16 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
         <section>
           <h2>{L("Personal Details")}</h2>
           <div className="client-intake-grid">
-            <label>{L("Full Name")}<input required value={form.clientName} onChange={(event) => updateField("clientName", event.target.value)} /></label>
+            <label>{L("First / given name(s)")}<input required value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} /><span className="field-help">{L("Enter names exactly as shown on ID. Vietnamese accents are OK.")}</span></label>
+            <label>{L("Middle name(s)")}<input value={form.middleName} onChange={(event) => updateField("middleName", event.target.value)} /><span className="field-help">{L("Leave blank if no middle name.")}</span></label>
+            <label>{L("Family name / surname")}<input required value={form.surname} onChange={(event) => updateField("surname", event.target.value)} /></label>
             <SelectField language={language} label="Add second applicant" value={hasSecondApplicant ? "Yes" : "No"} onChange={(value) => setForm((current) => ({
               ...current,
               hasSecondApplicant: value,
               secondApplicantName: value === "Yes" ? current.secondApplicantName : "",
+              secondApplicantFirstName: value === "Yes" ? current.secondApplicantFirstName : "",
+              secondApplicantMiddleName: value === "Yes" ? current.secondApplicantMiddleName : "",
+              secondApplicantSurname: value === "Yes" ? current.secondApplicantSurname : "",
               secondApplicantDateOfBirth: value === "Yes" ? current.secondApplicantDateOfBirth : "",
               secondApplicantMobile: value === "Yes" ? current.secondApplicantMobile : "",
               secondApplicantEmail: value === "Yes" ? current.secondApplicantEmail : ""
@@ -2079,7 +2201,9 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
             <h3>{L("Second Applicant Details")}</h3>
             <p>Only complete this section when there is a co-applicant, spouse, partner, or second borrower on the application.</p>
             <div className="client-intake-grid">
-              <label>{L("Second applicant")}<input required value={form.secondApplicantName} onChange={(event) => updateField("secondApplicantName", event.target.value)} /></label>
+              <label>{L("Second applicant first / given name(s)")}<input required value={form.secondApplicantFirstName} onChange={(event) => updateField("secondApplicantFirstName", event.target.value)} /><span className="field-help">{L("Enter names exactly as shown on ID. Vietnamese accents are OK.")}</span></label>
+              <label>{L("Second applicant middle name(s)")}<input value={form.secondApplicantMiddleName} onChange={(event) => updateField("secondApplicantMiddleName", event.target.value)} /><span className="field-help">{L("Leave blank if no middle name.")}</span></label>
+              <label>{L("Second applicant family name / surname")}<input required value={form.secondApplicantSurname} onChange={(event) => updateField("secondApplicantSurname", event.target.value)} /></label>
               <DateField language={language} required label="Date of birth" value={form.secondApplicantDateOfBirth} onChange={(value) => updateField("secondApplicantDateOfBirth", value)} />
               <label>{L("Second applicant email")}<input value={form.secondApplicantEmail} onChange={(event) => updateField("secondApplicantEmail", event.target.value)} placeholder="Leave blank if same contact email" /></label>
               <label>{L("Second applicant mobile")}<input value={form.secondApplicantMobile} onChange={(event) => updateField("secondApplicantMobile", event.target.value)} placeholder="Leave blank if same contact mobile" /></label>
@@ -2366,7 +2490,7 @@ export default function App() {
   }, [caseData]);
 
   const filteredCases = useMemo(() => {
-    const terms = caseSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const terms = searchKey(caseSearch).trim().split(/\s+/).filter(Boolean);
     if (caseSearch.trim().length < 2 || !terms.length) return [];
     return cases
       .filter((caseItem) => {
@@ -2377,8 +2501,9 @@ export default function App() {
           caseItem.applicantNames,
           caseItem.propertyAddress,
           String(caseItem.loanAmount || "")
-        ].join(" ").toLowerCase();
-        return terms.every((term) => haystack.includes(term));
+        ].join(" ");
+        const searchable = searchKey(haystack);
+        return terms.every((term) => searchable.includes(term));
       })
       .slice(0, 12);
   }, [caseSearch, cases]);

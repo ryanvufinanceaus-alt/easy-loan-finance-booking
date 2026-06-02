@@ -529,7 +529,15 @@ function applyClientIntakeToNote(note, intake) {
   const next = { ...note };
   const fields = [
     "clientName",
+    "firstName",
+    "middleName",
+    "surname",
+    "clientNameSearch",
     "secondApplicantName",
+    "secondApplicantFirstName",
+    "secondApplicantMiddleName",
+    "secondApplicantSurname",
+    "secondApplicantNameSearch",
     "secondApplicantDateOfBirth",
     "secondApplicantMobile",
     "secondApplicantEmail",
@@ -671,8 +679,33 @@ function applyClientIntakeToNote(note, intake) {
 }
 
 function normalizeClientIntakeSubmission(body = {}) {
+  const primaryFallback = splitName(body.clientName);
+  const secondaryFallback = splitName(body.secondApplicantName);
+  const firstName = String(body.firstName || primaryFallback.firstName || "").trim();
+  const middleName = String(body.middleName || primaryFallback.middleName || "").trim();
+  const surname = String(body.surname || primaryFallback.lastName || "").trim();
+  const secondApplicantFirstName = String(body.secondApplicantFirstName || secondaryFallback.firstName || "").trim();
+  const secondApplicantMiddleName = String(body.secondApplicantMiddleName || secondaryFallback.middleName || "").trim();
+  const secondApplicantSurname = String(body.secondApplicantSurname || secondaryFallback.lastName || "").trim();
+  const clientName = composeLegalName(firstName, middleName, surname, body.clientName);
+  const secondApplicantName = composeLegalName(
+    secondApplicantFirstName,
+    secondApplicantMiddleName,
+    secondApplicantSurname,
+    body.secondApplicantName
+  );
   return {
     ...body,
+    clientName,
+    firstName,
+    middleName,
+    surname,
+    clientNameSearch: normalizeSearchText(clientName),
+    secondApplicantName,
+    secondApplicantFirstName,
+    secondApplicantMiddleName,
+    secondApplicantSurname,
+    secondApplicantNameSearch: normalizeSearchText(secondApplicantName),
     loanAmount: Number(body.loanAmount || 0),
     propertyValue: Number(body.propertyValue || 0),
     depositEquity: Number(body.depositEquity || 0),
@@ -704,11 +737,28 @@ function normalizeClientIntakeSubmission(body = {}) {
   };
 }
 
+function composeLegalName(firstName, middleName, surname, fallback = "") {
+  const name = [firstName, middleName, surname].map((part) => String(part || "").trim()).filter(Boolean).join(" ");
+  return name || String(fallback || "").trim();
+}
+
+function stripVietnameseMarks(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D");
+}
+
+function normalizeSearchText(value = "") {
+  return stripVietnameseMarks(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
 function splitName(fullName = "") {
   const parts = String(fullName).trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return { firstName: "", lastName: "" };
-  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
-  return { firstName: parts.slice(0, -1).join(" "), lastName: parts.at(-1) };
+  if (!parts.length) return { firstName: "", middleName: "", lastName: "" };
+  if (parts.length === 1) return { firstName: parts[0], middleName: "", lastName: "" };
+  return { firstName: parts.slice(0, -1).join(" "), middleName: "", lastName: parts.at(-1) };
 }
 
 function buildLocalCaseFromCallNote(note) {
@@ -717,9 +767,9 @@ function buildLocalCaseFromCallNote(note) {
   const applicants = [
     {
       role: "primary",
-      firstName: primary.firstName,
-      middleName: "",
-      lastName: primary.lastName,
+      firstName: note.firstName || primary.firstName,
+      middleName: note.middleName || primary.middleName || "",
+      lastName: note.surname || primary.lastName,
       dateOfBirth: note.dateOfBirth || "",
       maritalStatus: note.maritalStatus || "Single",
       residencyStatus: note.residencyStatus || "",
@@ -740,9 +790,9 @@ function buildLocalCaseFromCallNote(note) {
   if (note.secondApplicantName?.trim()) {
     applicants.push({
       role: "secondary",
-      firstName: secondary.firstName,
-      middleName: "",
-      lastName: secondary.lastName,
+      firstName: note.secondApplicantFirstName || secondary.firstName,
+      middleName: note.secondApplicantMiddleName || secondary.middleName || "",
+      lastName: note.secondApplicantSurname || secondary.lastName,
       dateOfBirth: note.secondApplicantDateOfBirth || "",
       maritalStatus: note.secondApplicantMaritalStatus || note.maritalStatus || "Married",
       residencyStatus: note.secondApplicantResidencyStatus || "",
@@ -1125,7 +1175,15 @@ app.get("/api/client-intakes", (request, response) => {
       createdAt: intake.createdAt,
       submittedAt: intake.submittedAt,
       clientName: note.clientName || intake.submission?.clientName || "",
+      firstName: note.firstName || intake.submission?.firstName || "",
+      middleName: note.middleName || intake.submission?.middleName || "",
+      surname: note.surname || intake.submission?.surname || "",
+      clientNameSearch: note.clientNameSearch || intake.submission?.clientNameSearch || "",
       secondApplicantName: note.secondApplicantName || intake.submission?.secondApplicantName || "",
+      secondApplicantFirstName: note.secondApplicantFirstName || intake.submission?.secondApplicantFirstName || "",
+      secondApplicantMiddleName: note.secondApplicantMiddleName || intake.submission?.secondApplicantMiddleName || "",
+      secondApplicantSurname: note.secondApplicantSurname || intake.submission?.secondApplicantSurname || "",
+      secondApplicantNameSearch: note.secondApplicantNameSearch || intake.submission?.secondApplicantNameSearch || "",
       secondApplicantDateOfBirth: intake.submission?.secondApplicantDateOfBirth || "",
       secondApplicantMobile: intake.submission?.secondApplicantMobile || "",
       secondApplicantEmail: intake.submission?.secondApplicantEmail || "",
@@ -1249,8 +1307,16 @@ app.post("/api/call-notes", (request, response) => {
     id: `CN-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
     status: request.body?.status || "New call",
     brokerUser: request.body?.brokerUser || "ryan.vu",
-    clientName: request.body?.clientName || "",
-    secondApplicantName: request.body?.secondApplicantName || "",
+    clientName: request.body?.clientName || composeLegalName(request.body?.firstName, request.body?.middleName, request.body?.surname),
+    firstName: request.body?.firstName || "",
+    middleName: request.body?.middleName || "",
+    surname: request.body?.surname || "",
+    clientNameSearch: normalizeSearchText(request.body?.clientName || composeLegalName(request.body?.firstName, request.body?.middleName, request.body?.surname)),
+    secondApplicantName: request.body?.secondApplicantName || composeLegalName(request.body?.secondApplicantFirstName, request.body?.secondApplicantMiddleName, request.body?.secondApplicantSurname),
+    secondApplicantFirstName: request.body?.secondApplicantFirstName || "",
+    secondApplicantMiddleName: request.body?.secondApplicantMiddleName || "",
+    secondApplicantSurname: request.body?.secondApplicantSurname || "",
+    secondApplicantNameSearch: normalizeSearchText(request.body?.secondApplicantName || composeLegalName(request.body?.secondApplicantFirstName, request.body?.secondApplicantMiddleName, request.body?.secondApplicantSurname)),
     mobile: request.body?.mobile || "",
     email: request.body?.email || "",
     preferredLanguage: request.body?.preferredLanguage || "Vietnamese / English",
@@ -1301,7 +1367,22 @@ app.post("/api/call-notes", (request, response) => {
 app.patch("/api/call-notes/:noteId", (request, response) => {
   const index = callNotes.findIndex((item) => item.id === request.params.noteId);
   if (index === -1) return response.status(404).json({ error: "Call note not found" });
-  const updated = { ...callNotes[index], ...request.body, id: callNotes[index].id, updatedAt: new Date().toISOString() };
+  const merged = { ...callNotes[index], ...request.body };
+  const clientName = merged.clientName || composeLegalName(merged.firstName, merged.middleName, merged.surname);
+  const secondApplicantName = merged.secondApplicantName || composeLegalName(
+    merged.secondApplicantFirstName,
+    merged.secondApplicantMiddleName,
+    merged.secondApplicantSurname
+  );
+  const updated = {
+    ...merged,
+    clientName,
+    clientNameSearch: normalizeSearchText(clientName),
+    secondApplicantName,
+    secondApplicantNameSearch: normalizeSearchText(secondApplicantName),
+    id: callNotes[index].id,
+    updatedAt: new Date().toISOString()
+  };
   callNotes[index] = updated;
   persistCallNotes();
   response.json(updated);
@@ -1392,7 +1473,13 @@ app.get("/api/client-intake/public", (_request, response) => {
     submittedAt: null,
     callNoteId: null,
     clientName: "",
+    firstName: "",
+    middleName: "",
+    surname: "",
     secondApplicantName: "",
+    secondApplicantFirstName: "",
+    secondApplicantMiddleName: "",
+    secondApplicantSurname: "",
     secondApplicantDateOfBirth: "",
     secondApplicantMobile: "",
     secondApplicantEmail: "",
@@ -1419,7 +1506,15 @@ app.post("/api/client-intake/public", (request, response) => {
     status: "Loan form received",
     brokerUser: "loan-form",
     clientName: "",
+    firstName: "",
+    middleName: "",
+    surname: "",
+    clientNameSearch: "",
     secondApplicantName: "",
+    secondApplicantFirstName: "",
+    secondApplicantMiddleName: "",
+    secondApplicantSurname: "",
+    secondApplicantNameSearch: "",
     mobile: "",
     email: "",
     preferredLanguage: "Vietnamese / English",
