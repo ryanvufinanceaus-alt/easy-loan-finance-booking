@@ -123,7 +123,11 @@ async function readStoredJson(name, filePath, fallback) {
 }
 
 function writeStoredJson(name, filePath, value) {
-  writeJsonFile(filePath, value);
+  try {
+    writeJsonFile(filePath, value);
+  } catch (error) {
+    console.warn(`Infinity AOL local write failed for ${name}: ${error.message}`);
+  }
   writeSupabaseJson(name, value);
 }
 
@@ -762,15 +766,15 @@ function normalizeClientIntakeSubmission(body = {}) {
   const primaryFallback = splitName(body.clientName);
   const secondaryFallback = splitName(body.secondApplicantName);
   const firstName = String(body.firstName || primaryFallback.firstName || "").trim();
-  const middleName = String(body.middleName || primaryFallback.middleName || "").trim();
+  const middleName = "";
   const surname = String(body.surname || primaryFallback.lastName || "").trim();
   const secondApplicantFirstName = String(body.secondApplicantFirstName || secondaryFallback.firstName || "").trim();
-  const secondApplicantMiddleName = String(body.secondApplicantMiddleName || secondaryFallback.middleName || "").trim();
+  const secondApplicantMiddleName = "";
   const secondApplicantSurname = String(body.secondApplicantSurname || secondaryFallback.lastName || "").trim();
-  const clientName = composeLegalName(firstName, middleName, surname, body.clientName);
+  const clientName = composeLegalName(firstName, "", surname, body.clientName);
   const secondApplicantName = composeLegalName(
     secondApplicantFirstName,
-    secondApplicantMiddleName,
+    "",
     secondApplicantSurname,
     body.secondApplicantName
   );
@@ -1807,20 +1811,32 @@ app.patch("/api/client-intakes/:intakeId", (request, response) => {
 
 app.post("/api/call-notes", (request, response) => {
   const now = new Date().toISOString();
+  const clientName = request.body?.clientName || composeLegalName(request.body?.firstName, "", request.body?.surname);
+  const secondApplicantName = request.body?.secondApplicantName || composeLegalName(request.body?.secondApplicantFirstName, "", request.body?.secondApplicantSurname);
   const note = {
     id: `CN-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
     status: request.body?.status || "New call",
     brokerUser: request.body?.brokerUser || "ryan.vu",
-    clientName: request.body?.clientName || composeLegalName(request.body?.firstName, request.body?.middleName, request.body?.surname),
+    clientName,
     firstName: request.body?.firstName || "",
-    middleName: request.body?.middleName || "",
+    middleName: "",
     surname: request.body?.surname || "",
-    clientNameSearch: normalizeSearchText(request.body?.clientName || composeLegalName(request.body?.firstName, request.body?.middleName, request.body?.surname)),
-    secondApplicantName: request.body?.secondApplicantName || composeLegalName(request.body?.secondApplicantFirstName, request.body?.secondApplicantMiddleName, request.body?.secondApplicantSurname),
+    clientNameSearch: normalizeSearchText(clientName),
+    secondApplicantName,
     secondApplicantFirstName: request.body?.secondApplicantFirstName || "",
-    secondApplicantMiddleName: request.body?.secondApplicantMiddleName || "",
+    secondApplicantMiddleName: "",
     secondApplicantSurname: request.body?.secondApplicantSurname || "",
-    secondApplicantNameSearch: normalizeSearchText(request.body?.secondApplicantName || composeLegalName(request.body?.secondApplicantFirstName, request.body?.secondApplicantMiddleName, request.body?.secondApplicantSurname)),
+    secondApplicantNameSearch: normalizeSearchText(secondApplicantName),
+    hasSecondApplicant: request.body?.hasSecondApplicant || (secondApplicantName ? "Yes" : "No"),
+    secondApplicantDateOfBirth: request.body?.secondApplicantDateOfBirth || "",
+    secondApplicantMobile: request.body?.secondApplicantMobile || "",
+    secondApplicantEmail: request.body?.secondApplicantEmail || "",
+    secondApplicantAddress: request.body?.secondApplicantAddress || "",
+    secondApplicantResidencyStatus: request.body?.secondApplicantResidencyStatus || "",
+    secondApplicantMaritalStatus: request.body?.secondApplicantMaritalStatus || request.body?.maritalStatus || "",
+    secondApplicantDependants: Number(request.body?.secondApplicantDependants || 0),
+    secondApplicantEmployerName: request.body?.secondApplicantEmployerName || "",
+    secondApplicantJobTitle: request.body?.secondApplicantJobTitle || "",
     mobile: request.body?.mobile || "",
     email: request.body?.email || "",
     preferredLanguage: request.body?.preferredLanguage || "Vietnamese / English",
@@ -1872,10 +1888,10 @@ app.patch("/api/call-notes/:noteId", (request, response) => {
   const index = callNotes.findIndex((item) => item.id === request.params.noteId);
   if (index === -1) return response.status(404).json({ error: "Call note not found" });
   const merged = { ...callNotes[index], ...request.body };
-  const clientName = merged.clientName || composeLegalName(merged.firstName, merged.middleName, merged.surname);
+  const clientName = merged.clientName || composeLegalName(merged.firstName, "", merged.surname);
   const secondApplicantName = merged.secondApplicantName || composeLegalName(
     merged.secondApplicantFirstName,
-    merged.secondApplicantMiddleName,
+    "",
     merged.secondApplicantSurname
   );
   const updated = {

@@ -210,7 +210,7 @@ async function api(path, options) {
       : "API connection issue. The server returned a web page instead of data.");
   }
 
-  if (!response.ok) throw new Error(data?.error || response.statusText || "API request failed.");
+  if (!response.ok) throw new Error(data?.detail || data?.error || response.statusText || "API request failed.");
   return data;
 }
 
@@ -2520,7 +2520,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
         return {
           ...next,
           hasSecondApplicant: "Yes",
-          secondApplicantMaritalStatus: current.secondApplicantMaritalStatus || value
+          secondApplicantMaritalStatus: value
         };
       }
       return clearSecondApplicantFields(next);
@@ -2534,7 +2534,9 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
         ...current,
         hasSecondApplicant: "Yes",
         secondApplicantResidencyStatus: current.secondApplicantResidencyStatus || "Australian citizen",
-        secondApplicantMaritalStatus: current.secondApplicantMaritalStatus || current.maritalStatus || "Single",
+        secondApplicantMaritalStatus: /married|defacto/i.test(current.maritalStatus || "")
+          ? current.maritalStatus
+          : current.secondApplicantMaritalStatus || "Single",
         secondApplicantDependants: current.secondApplicantDependants || "0"
       };
     });
@@ -2542,7 +2544,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
 
   function loadNote(note) {
     setSelectedId(note.id);
-    setForm({ ...emptyCallNote, ...note });
+    setForm({ ...emptyCallNote, ...hydrateNameParts(note) });
     setRedFlags(note.redFlags || []);
     setMessage(`Loaded ${note.id}`);
   }
@@ -2553,7 +2555,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
 
   function validateDraftCase() {
     const missing = [];
-    if (!form.clientName.trim()) missing.push("Client name");
+    if (!composeLegalName(form.firstName, "", form.surname, form.clientName).trim()) missing.push("Client name");
     if (!form.mobile.trim() && !form.email.trim()) missing.push("Mobile or email");
     if (!form.loanType.trim()) missing.push("Loan type");
     if (!form.loanPurpose.trim()) missing.push("Loan purpose");
@@ -2568,10 +2570,11 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     setError("");
     setMessage("");
     try {
-      const primaryLegalName = composeLegalName(form.firstName, form.middleName, form.surname, form.clientName);
+      const primaryNameParts = hydrateNameParts(form);
+      const primaryLegalName = composeLegalName(primaryNameParts.firstName, "", primaryNameParts.surname, form.clientName);
       const secondaryLegalName = composeLegalName(
         form.secondApplicantFirstName,
-        form.secondApplicantMiddleName,
+        "",
         form.secondApplicantSurname,
         form.secondApplicantName
       );
@@ -2580,6 +2583,10 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
         /married|defacto/i.test(form.maritalStatus || "");
       const callPayload = {
         ...form,
+        firstName: primaryNameParts.firstName,
+        middleName: "",
+        surname: primaryNameParts.surname,
+        secondApplicantMiddleName: "",
         clientName: primaryLegalName,
         secondApplicantName: hasSecondApplicantForSave ? secondaryLegalName : "",
         hasSecondApplicant: hasSecondApplicantForSave ? "Yes" : "No",
@@ -2740,10 +2747,12 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     try {
       const payload = {
         ...submissionEdit,
-        clientName: composeLegalName(submissionEdit.firstName, submissionEdit.middleName, submissionEdit.surname, submissionEdit.clientName),
+        middleName: "",
+        secondApplicantMiddleName: "",
+        clientName: composeLegalName(submissionEdit.firstName, "", submissionEdit.surname, submissionEdit.clientName),
         secondApplicantName: composeLegalName(
           submissionEdit.secondApplicantFirstName,
-          submissionEdit.secondApplicantMiddleName,
+          "",
           submissionEdit.secondApplicantSurname,
           submissionEdit.secondApplicantName
         )
@@ -2856,7 +2865,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
               Save call note
               <small>Phone note only</small>
             </button>
-            <button className="primary-button" type="button" disabled={saving || !form.clientName.trim()} onClick={() => saveCallNote({ convert: true })}>
+            <button className="primary-button" type="button" disabled={saving || !composeLegalName(form.firstName, "", form.surname, form.clientName).trim()} onClick={() => saveCallNote({ convert: true })}>
               {saving ? <RefreshCw size={17} className="spin" /> : <Play size={17} />}
               Save & create case
               <small>For Loan Form / EasyFlow</small>
@@ -2977,7 +2986,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                         <label>Primary surname<input value={submissionEdit.surname} onChange={(event) => setSubmissionEdit({ ...submissionEdit, surname: event.target.value })} /></label>
                         <label>Second given name(s)<input value={submissionEdit.secondApplicantFirstName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantFirstName: event.target.value })} /></label>
                         <label>Second surname<input value={submissionEdit.secondApplicantSurname} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantSurname: event.target.value })} /></label>
-                        {composeLegalName(submissionEdit.secondApplicantFirstName, submissionEdit.secondApplicantMiddleName, submissionEdit.secondApplicantSurname, submissionEdit.secondApplicantName) && <>
+                        {composeLegalName(submissionEdit.secondApplicantFirstName, "", submissionEdit.secondApplicantSurname, submissionEdit.secondApplicantName) && <>
                           <label>Second applicant DOB<input value={submissionEdit.secondApplicantDateOfBirth} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantDateOfBirth: event.target.value })} /></label>
                           <label>Second applicant mobile<input value={submissionEdit.secondApplicantMobile} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantMobile: event.target.value })} /></label>
                           <label>Second applicant email<input value={submissionEdit.secondApplicantEmail} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondApplicantEmail: event.target.value })} /></label>
@@ -3044,7 +3053,8 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
           <section className="panel note-panel">
             <div className="panel-title"><ClipboardList size={18} /><h2>Client & Loan</h2></div>
             <div className="note-form-grid">
-              <label>Client name<input value={form.clientName} onChange={(event) => updateField("clientName", event.target.value)} placeholder="Main applicant" /></label>
+              <label>First / given name(s)<input value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} placeholder="Main applicant" /></label>
+              <label>Last name / surname<input value={form.surname} onChange={(event) => updateField("surname", event.target.value)} /></label>
               <label>Second applicant?<select value={callHasSecondApplicant ? "Yes" : "No"} onChange={(event) => updateSecondApplicantChoice(event.target.value)}><option>No</option><option>Yes</option></select></label>
               <label>Mobile<input value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
               <label>Email<input value={form.email} onChange={(event) => updateField("email", event.target.value)} /></label>
@@ -3088,7 +3098,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                     <span>Shown only when there is a spouse, partner, or co-borrower.</span>
                   </div>
                   <div className="note-form-grid">
-                    <label>Given name(s)<input value={form.secondApplicantFirstName || form.secondApplicantName} onChange={(event) => updateField("secondApplicantFirstName", event.target.value)} placeholder="As shown on ID" /></label>
+                    <label>Given name(s)<input value={form.secondApplicantFirstName} onChange={(event) => updateField("secondApplicantFirstName", event.target.value)} placeholder="As shown on ID" /></label>
                     <label>Surname<input value={form.secondApplicantSurname} onChange={(event) => updateField("secondApplicantSurname", event.target.value)} /></label>
                     <DateField label="DOB" value={form.secondApplicantDateOfBirth} onChange={(value) => updateField("secondApplicantDateOfBirth", value)} />
                     <label>Mobile<input value={form.secondApplicantMobile} onChange={(event) => updateField("secondApplicantMobile", event.target.value)} placeholder="Leave blank if same contact" /></label>
@@ -3517,10 +3527,10 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
     setError("");
     try {
       const endpointToken = publicForm ? "public" : token;
-      const primaryLegalName = composeLegalName(form.firstName, form.middleName, form.surname, form.clientName);
+      const primaryLegalName = composeLegalName(form.firstName, "", form.surname, form.clientName);
       const secondaryLegalName = composeLegalName(
         form.secondApplicantFirstName,
-        form.secondApplicantMiddleName,
+        "",
         form.secondApplicantSurname,
         form.secondApplicantName
       );
@@ -3528,6 +3538,8 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
         method: "POST",
         body: JSON.stringify({
           ...form,
+          middleName: "",
+          secondApplicantMiddleName: "",
           clientName: primaryLegalName,
           secondApplicantName: secondaryLegalName,
           sourceUrl: location.href
