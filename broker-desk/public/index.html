@@ -3,19 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/png" href="/elf-logo.png?v=2">
-<link rel="shortcut icon" type="image/png" href="/elf-logo.png?v=2">
-<link rel="apple-touch-icon" href="/elf-logo.png?v=2">
-<link rel="manifest" href="/site.webmanifest?v=2">
-<meta name="theme-color" content="#064E3B">
-<meta property="og:title" content="Broker Desk - Easy Loan Finance">
-<meta property="og:image" content="/elf-logo.png?v=2">
-<meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="/elf-logo.png?v=2">
-<meta name="msapplication-TileImage" content="/elf-logo.png?v=2">
-<meta name="msapplication-TileColor" content="#064E3B">
 <title>Broker Desk — Easy Loan Finance</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 // Global error catcher \u2014 installed BEFORE the main app script so it captures
 // EVERYTHING, including a parse/syntax error in the main script (which would
@@ -478,7 +468,7 @@ const LOAN_TYPES=['Variable','Fixed','Split','IO Variable','IO Fixed'];
 // Default commission rates \u2014 AU industry standard, editable per loan
 const DEFAULT_UPFRONT_RATE = 0.65;   // % of loan amount, paid once at settlement
 const DEFAULT_TRAIL_RATE   = 0.15;   // % per annum, paid monthly (\u00F7 12)
-const SESSION_SECONDS = 6 * 60 * 60; // must match backend (6h)
+const SESSION_SECONDS = 7200;        // must match backend (2h)
 const DOC_LIST=[
   {k:'payslips',    l:'Payslips (\u00D72)'},
   {k:'taxReturns',  l:'Tax Returns + NOAs (2 yrs)'},
@@ -1565,6 +1555,7 @@ const NAV=[
   {id:'loanbook',  label:'Loan Book',     role:'notsupp', section:'Income', ico:'<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>'},
   {id:'commissions',label:'Commissions',  role:'notsupp', ico:'<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'},
   {id:'invoices',  label:'Invoices',      role:'notsupp', ico:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/>'},
+  {id:'revenue',   label:'Revenue',        role:'notsupp', ico:'<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-5"/>'},
   // \u2500\u2500 TOOLS \u2500\u2500
   {id:'documents', label:'Documents',     role:'notsupp', section:'Tools', ico:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'},
   // \u2500\u2500 REFERENCE \u2500\u2500
@@ -1920,6 +1911,7 @@ function _render(){
       v==='loanbook'?rLoanBook():
       v==='commissions'?rCommissions():
       v==='invoices'?rInvoices():
+      v==='revenue'?rRevenue():
       v==='documents'?rDocuments():
       v==='team'?rTeam():
       v==='lenders'?rLenders():
@@ -1979,7 +1971,8 @@ function _renderModal(){
       m==='editUser'?rEditUser():
       m==='changePass'?rChangePass():
       m==='tfaSetup'?rTfaSetup():
-      m==='bulkEmail'?rBulkEmail():'';
+      m==='bulkEmail'?rBulkEmail():
+      m==='revPreview'?rRevPreviewModal():'';
   } catch(e) {
     mc.innerHTML='';
     console.error(e);toast('Modal error: '+e.message,1);
@@ -11702,7 +11695,7 @@ function rActivity(){
     const lt=loginUsers[uid].timestamp;
     const out=logoutAfter[uid];
     if(out&&out>lt)return false;
-    // Consider "active" if last login is within the 6h session window.
+    // Consider "active" if last login within 2 hours (matches session)
     const age=(new Date()-new Date(lt))/1000;
     return age<SESSION_SECONDS;
   });
@@ -11809,6 +11802,364 @@ async function clearActivity_(){
 // \u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557
 // \u2551  START                                          \u2551
 // \u255A\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255D
+// ============================================================================
+// REVENUE TRACKING / COMMISSION RECONCILIATION
+// Upload Finsure statement (.xlsx) -> parse client-side (SheetJS) -> preview ->
+// import as a keyed batch (ref|type|month, upsert, never scrambles old data) ->
+// reconcile vs settled loans -> show missing/variance -> draft email to Finsure.
+// ============================================================================
+function _revNum(v){ if(v==null)return 0; var s=String(v).replace(/[^0-9.\-]/g,''); var n=parseFloat(s); return isNaN(n)?0:n; }
+function _revMonthKey(v, fallbackYear){
+  if(v==null||v==='')return '';
+  if(Object.prototype.toString.call(v)==='[object Date]'){ return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0'); }
+  var t=String(v).trim();
+  var m=/^(\d{4})-(\d{2})/.exec(t); if(m)return m[1]+'-'+m[2];
+  m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(t); if(m)return m[3]+'-'+String(m[2]).padStart(2,'0'); // dd/mm/yyyy
+  var mn=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  m=/([a-z]{3,9})\s+(\d{4})/i.exec(t);
+  if(m){ var i=mn.indexOf(m[1].toLowerCase().slice(0,3)); if(i>=0)return m[2]+'-'+String(i+1).padStart(2,'0'); }
+  m=/^([a-z]{3,9})$/i.exec(t);
+  if(m){ var j=mn.indexOf(m[1].toLowerCase().slice(0,3)); if(j>=0&&fallbackYear)return fallbackYear+'-'+String(j+1).padStart(2,'0'); }
+  return '';
+}
+function _revAddMonths(monthKey, n){
+  var p=monthKey.split('-'); var d=new Date(parseInt(p[0],10), parseInt(p[1],10)-1+n, 1);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+}
+function _revMonthLabel(mk){ if(!mk)return ''; var p=mk.split('-'); return new Date(+p[0],+p[1]-1,1).toLocaleDateString('en-AU',{month:'short',year:'numeric'}); }
+
+async function _loadRevenueData(force){
+  if(S._revFetched && !force){ render(); return; }
+  showLoad();
+  var a=await gs_('getCommRows',S.tok), b=await gs_('getCommBatches',S.tok);
+  hideLoad();
+  S.commRows=(a&&a.ok&&a.data)||[];
+  S.commBatches=(b&&b.ok&&b.data)||[];
+  S._revFetched=true;
+  render();
+}
+
+function rRevenue(){
+  if(!S._revFetched){ _loadRevenueData(); return '<div style="text-align:center;padding:40px;color:#6b7280;">Loading revenue data...</div>'; }
+  var tab=S.revTab||'recon';
+  var btn=function(id,label){ return '<button class="btn-ghost" style="border-radius:0;padding:11px 18px;font-size:13px;border:none;'+(tab===id?'color:#D4A843;border-bottom:2px solid #D4A843;':'color:#6b7280;')+'" onclick="S.revTab=\''+id+'\';render()">'+label+'</button>'; };
+  return '<div style="display:flex;border-bottom:1px solid #1e2430;margin-bottom:14px;flex-shrink:0;">'
+    + btn('recon','Reconciliation') + btn('loans','Loans &amp; Ref #') + btn('batches','Upload history')
+    + '</div>'
+    + (tab==='loans'?rRevLoans():tab==='batches'?rRevBatches():rRevRecon());
+}
+
+// ---- Reconciliation engine (frontend) ----
+function _revReconcile(){
+  var loans=(S.loanBook||[]).filter(function(l){ return S.user.role==='admin'?true:l.brokerId===S.user.id; });
+  var rows=S.commRows||[];
+  // latest statement month present (bounds the "missing" window)
+  var latest='';
+  rows.forEach(function(r){ if(r.periodMonth>latest)latest=r.periodMonth; });
+  // index rows by ref
+  var byRef={};
+  rows.forEach(function(r){
+    var k=String(r.ref||'').trim(); if(!k)return;
+    (byRef[k]=byRef[k]||[]).push(r);
+  });
+  var refsUsed={};
+  var missingUpfront=[],missingTrail=[],variance=[],matched=0;
+  var now=Date.now();
+  loans.forEach(function(l){
+    var ref=String(l.finsureRef||'').trim();
+    if(!ref) return; // not linked yet -> skip (shown in Loans tab)
+    refsUsed[ref]=true;
+    var lr=byRef[ref]||[];
+    var ups=lr.filter(function(r){return /up/i.test(r.type);});
+    var trails=lr.filter(function(r){return /trail/i.test(r.type);});
+    var settleMk=_revMonthKey(l.settlementDate);
+    // Upfront: expected once. Flag missing only if settled > ~60 days ago.
+    var settledMs=new Date(l.settlementDate).getTime();
+    if(ups.length===0 && settleMk){
+      if(!isNaN(settledMs) && (now-settledMs)>55*86400000){
+        missingUpfront.push({loan:l,ref:ref});
+      }
+    } else matched+=ups.length;
+    // Trail: expected each month from settle+1 .. latest statement month
+    if(settleMk && latest){
+      var trailMonths={}; trails.forEach(function(r){ if(r.periodMonth)trailMonths[r.periodMonth]=r; });
+      var mk=_revAddMonths(settleMk,1);
+      var guard=0;
+      while(mk<=latest && guard<120){
+        if(trailMonths[mk]) matched++;
+        else missingTrail.push({loan:l,ref:ref,month:mk});
+        mk=_revAddMonths(mk,1); guard++;
+      }
+      // variance: sort trail by month, flag big drops
+      var sorted=trails.slice().sort(function(a,b){return a.periodMonth<b.periodMonth?-1:1;});
+      for(var i=1;i<sorted.length;i++){
+        var prev=_revNum(sorted[i-1].commission), cur=_revNum(sorted[i].commission);
+        if(prev>5 && cur>0 && cur < prev*0.55){
+          variance.push({loan:l,ref:ref,month:sorted[i].periodMonth,prev:prev,cur:cur,pct:Math.round((1-cur/prev)*100)});
+        }
+      }
+    }
+  });
+  // unknown: rows whose ref matches no loan
+  var unknownMap={};
+  rows.forEach(function(r){ var k=String(r.ref||'').trim(); if(k && !refsUsed[k]) unknownMap[k]=r; });
+  var unknown=Object.keys(unknownMap).map(function(k){return unknownMap[k];});
+  return {latest:latest, matched:matched, missingUpfront:missingUpfront, missingTrail:missingTrail, variance:variance, unknown:unknown};
+}
+
+function rRevRecon(){
+  var rec=_revReconcile();
+  var kpi=function(label,val,color){ return '<div style="flex:1;min-width:120px;background:#11161f;border:1px solid '+color+'33;border-radius:9px;padding:11px 14px;"><div style="font-size:10px;color:'+color+';text-transform:uppercase;letter-spacing:.6px;font-weight:700;">'+label+'</div><div style="font-size:22px;font-weight:800;color:#c9d1d9;margin-top:3px;">'+val+'</div></div>'; };
+  var unlinked=(S.loanBook||[]).filter(function(l){return !String(l.finsureRef||'').trim();}).length;
+  var h='<div style="overflow-y:auto;max-height:calc(100vh - 170px);padding-right:4px;">';
+  // Upload
+  h+='<div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">'
+    +'<label class="btn-gold" style="font-size:13px;padding:9px 16px;cursor:pointer;">Upload Finsure statement (.xlsx)<input type="file" accept=".xlsx,.xls,.csv" style="display:none;" onchange="_revParseFile(this)"></label>'
+    +'<span style="font-size:12px;color:#6b7280;">'+(rec.latest?('Statements up to '+_revMonthLabel(rec.latest)):'No statement imported yet')+'</span>'
+    +(unlinked?'<span style="font-size:12px;color:#FB923C;">'+unlinked+' loan(s) not linked to a Ref # &mdash; see Loans tab</span>':'')+'</div>';
+  // KPIs
+  h+='<div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">'
+    +kpi('Matched',rec.matched,'#34D399')
+    +kpi('Missing upfront',rec.missingUpfront.length,'#EF4444')
+    +kpi('Missing trail',rec.missingTrail.length,'#EF4444')
+    +kpi('Variance',rec.variance.length,'#FB923C')
+    +kpi('Unknown payment',rec.unknown.length,'#60A5FA')+'</div>';
+  // Missing items table
+  var items=[];
+  rec.missingUpfront.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref,issue:'Missing upfront',color:'#EF4444'}); });
+  rec.missingTrail.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref,issue:'Missing trail '+_revMonthLabel(x.month),color:'#EF4444'}); });
+  rec.variance.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref,issue:'Trail down '+x.pct+'% '+_revMonthLabel(x.month),color:'#FB923C'}); });
+  rec.unknown.forEach(function(r){ items.push({client:r.clientRaw||'(unknown)',lender:r.lenderRaw||'',ref:r.ref,issue:'Unknown payment - not in loan book',color:'#60A5FA'}); });
+  if(items.length===0){
+    h+='<div class="card" style="padding:30px;text-align:center;color:#34D399;">All matched. Nothing missing within imported statements.</div>';
+  } else {
+    h+='<div style="font-weight:700;color:#c9d1d9;font-size:13px;margin-bottom:8px;">Items to query Finsure ('+items.length+')</div>';
+    h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th>Ref #</th><th>Issue</th></tr></thead><tbody>';
+    items.forEach(function(it){
+      h+='<tr><td style="font-weight:600;color:#c9d1d9;">'+esc(it.client||'')+'</td><td>'+esc(it.lender||'')+'</td><td style="font-family:monospace;font-size:11px;">'+esc(it.ref||'')+'</td>'
+        +'<td><span style="background:'+it.color+'18;color:'+it.color+';border:1px solid '+it.color+'33;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600;">'+esc(it.issue)+'</span></td></tr>';
+    });
+    h+='</tbody></table>';
+    // Email draft
+    h+='<div class="card" style="margin-top:16px;padding:14px 16px;">'
+      +'<div style="font-size:13px;font-weight:700;color:#D4A843;margin-bottom:8px;">Draft email to Finsure (copy into Outlook)</div>'
+      +'<div style="font-size:12px;color:#8b949e;margin-bottom:10px;">To: finance@loankit.com.au</div>'
+      +'<div style="display:flex;gap:10px;flex-wrap:wrap;">'
+      +'<button class="btn-gold" style="font-size:12px;padding:8px 14px;" onclick="_revCopyEmail()">Copy email text</button>'
+      +'<button class="btn-sec" style="font-size:12px;padding:8px 14px;" onclick="_revCopyTable()">Copy table (TSV)</button>'
+      +'<button class="btn-sec" style="font-size:12px;padding:8px 14px;" onclick="_revDownloadCsv()">Download CSV</button>'
+      +'</div></div>';
+    S._revMissingItems=items;
+  }
+  h+='</div>';
+  return h;
+}
+
+function _revEmailText(){
+  var items=S._revMissingItems||[];
+  var mk=_revReconcile().latest;
+  var lines='Hi team,\n\nReconciling our commissions'+(mk?(' for '+_revMonthLabel(mk)):'')+'. The following items appear missing or off from the statement. Could you please verify?\n\n';
+  lines+='Client\tLender\tRef #\tIssue\n';
+  items.forEach(function(it){ lines+=(it.client||'')+'\t'+(it.lender||'')+'\t'+(it.ref||'')+'\t'+it.issue+'\n'; });
+  lines+='\nThanks,\nRyan\nEasy Loan Finance';
+  return lines;
+}
+function _revCopyEmail(){ _revClip(_revEmailText()); toast('Email text copied - paste into Outlook'); }
+function _revCopyTable(){
+  var items=S._revMissingItems||[];
+  var t='Client\tLender\tRef #\tIssue\n'+items.map(function(it){return (it.client||'')+'\t'+(it.lender||'')+'\t'+(it.ref||'')+'\t'+it.issue;}).join('\n');
+  _revClip(t); toast('Table copied (paste into Excel/email)');
+}
+function _revDownloadCsv(){
+  var items=S._revMissingItems||[];
+  var csv='Client,Lender,Ref #,Issue\n'+items.map(function(it){return '"'+(it.client||'')+'","'+(it.lender||'')+'","'+(it.ref||'')+'","'+it.issue+'"';}).join('\n');
+  var blob=new Blob([csv],{type:'text/csv'}); var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='finsure-missing-'+(new Date().toISOString().slice(0,10))+'.csv'; a.click();
+}
+function _revClip(t){ try{navigator.clipboard.writeText(t);}catch(e){ var ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);} }
+
+// ---- Parse uploaded statement ----
+function _revParseFile(input){
+  var f=input.files&&input.files[0]; if(!f)return;
+  if(typeof XLSX==='undefined'){ toast('Spreadsheet engine still loading, try again in a moment',1); return; }
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});
+      var ws=wb.Sheets[wb.SheetNames[0]];
+      var aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''});
+      S._revPreview=_revExtract(aoa, f.name);
+      openModal('revPreview');
+    }catch(err){ toast('Parse error: '+err.message,1); }
+  };
+  reader.readAsArrayBuffer(f);
+}
+// Heuristic extractor: find header rows (contain Ref# + Commission), map columns by
+// keyword, parse data rows under each header block. Skips Total/blank/note rows.
+function _revExtract(aoa, fileName){
+  var out=[]; var fallbackYear=new Date().getFullYear();
+  var find=function(cells,re){ for(var i=0;i<cells.length;i++){ if(re.test(String(cells[i]||'')))return i; } return -1; };
+  // detect a year hint from any settlement date in the file
+  for(var r=0;r<aoa.length;r++){ for(var c=0;c<aoa[r].length;c++){ var mm=/(\d{4})-\d{2}-\d{2}/.exec(String(aoa[r][c]||'')); if(mm){fallbackYear=mm[1];break;} } }
+  var rr=0;
+  while(rr<aoa.length){
+    var row=aoa[rr]||[];
+    var refCol=find(row,/ref\s*#|reference|account|loan\s*(no|number)/i);
+    var commCol=find(row,/^commission$|commission/i);
+    if(refCol>=0 && commCol>=0){
+      // header found at rr. Build column map (search the whole header row).
+      var map={
+        split:find(row,/%\s*split|^split/i),
+        broker:find(row,/broker/i),
+        lender:find(row,/lender/i),
+        client:find(row,/client|customer|borrower|applicant/i),
+        ref:refCol,
+        settledAmount:find(row,/settled.*amount|loan amount/i),
+        settleDate:find(row,/settlement date|settled date/i),
+        commission:commCol,
+        gst:find(row,/^gst$/i),
+        net:find(row,/remitted|net/i),
+        period:find(row,/period|payment month|^month/i),
+        balance:find(row,/balance|outstanding/i)
+      };
+      rr++;
+      // parse data rows until a row that looks like a new header or is empty/total
+      while(rr<aoa.length){
+        var d=aoa[rr]||[];
+        var joined=d.join('').trim();
+        if(joined===''){ rr++; continue; }
+        if(/total\s*for|^total/i.test(String(d[map.client>=0?map.client:0]||'')) || /total\s*for/i.test(joined)){ rr++; continue; }
+        // new header?
+        if(find(d,/ref\s*#|reference/i)>=0 && find(d,/commission/i)>=0){ break; }
+        var ref=map.ref>=0?String(d[map.ref]||'').trim():'';
+        var client=map.client>=0?String(d[map.client]||'').trim():'';
+        if(!ref && !client){ rr++; continue; }
+        var comm=map.commission>=0?_revNum(d[map.commission]):0;
+        var bal=map.balance>=0?_revNum(d[map.balance]):0;
+        var settleDate=map.settleDate>=0?String(d[map.settleDate]||'').slice(0,10):'';
+        // type guess: has a period/month value, or balance present & differs from settled -> Trail
+        var periodVal=map.period>=0?d[map.period]:'';
+        var settledAmt=map.settledAmount>=0?_revNum(d[map.settledAmount]):0;
+        var type='Upfront';
+        if((periodVal&&_revMonthKey(periodVal,fallbackYear)) || (bal>0 && Math.abs(bal-settledAmt)>1)) type='Trail';
+        var pm = type==='Trail'
+          ? (_revMonthKey(periodVal,fallbackYear) || _revMonthKey(settleDate,fallbackYear))
+          : _revMonthKey(settleDate,fallbackYear);
+        out.push({
+          ref:ref, type:type, periodMonth:pm,
+          clientRaw:client, lenderRaw:map.lender>=0?String(d[map.lender]||'').trim():'',
+          brokerRaw:map.broker>=0?String(d[map.broker]||'').trim():'',
+          settledAmount:settledAmt||'', settleDate:settleDate,
+          balanceW:bal||(type==='Trail'?settledAmt:'')||'',
+          commission:comm||'', gst:map.gst>=0?_revNum(d[map.gst]):'',
+          net:map.net>=0?_revNum(d[map.net]):'', splitPct:map.split>=0?_revNum(d[map.split]):''
+        });
+        rr++;
+      }
+    } else rr++;
+  }
+  // derive batch period = most common/max period month
+  var maxPm=''; out.forEach(function(o){ if(o.periodMonth>maxPm)maxPm=o.periodMonth; });
+  return {fileName:fileName, periodMonth:maxPm, rows:out};
+}
+
+function rRevPreviewModal(){
+  var p=S._revPreview; if(!p)return '';
+  var rows=p.rows||[];
+  var body='<div style="max-height:55vh;overflow:auto;border:1px solid #1e2430;border-radius:8px;">'
+    +'<table class="tbl"><thead><tr><th>Type</th><th>Client</th><th>Lender</th><th>Ref #</th><th>Period</th><th>Commission</th><th>Balance</th></tr></thead><tbody>';
+  rows.slice(0,200).forEach(function(o){
+    body+='<tr><td><span style="color:'+(/trail/i.test(o.type)?'#60A5FA':'#D4A843')+';font-weight:600;">'+esc(o.type)+'</span></td>'
+      +'<td>'+esc(o.clientRaw)+'</td><td>'+esc(o.lenderRaw)+'</td><td style="font-family:monospace;font-size:11px;">'+esc(o.ref)+'</td>'
+      +'<td>'+esc(o.periodMonth||'-')+'</td><td>'+(o.commission!==''?'$'+_revNum(o.commission).toFixed(2):'-')+'</td>'
+      +'<td>'+(o.balanceW!==''?'$'+_revNum(o.balanceW).toLocaleString():'-')+'</td></tr>';
+  });
+  body+='</tbody></table></div>';
+  var ups=rows.filter(function(o){return /up/i.test(o.type);}).length;
+  var trs=rows.filter(function(o){return /trail/i.test(o.type);}).length;
+  return '<div class="m-ct"><div class="m-box">'
+    +'<div style="padding:16px 20px;border-bottom:1px solid #1e2430;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">'
+    +'<div style="font-size:15px;font-weight:700;color:#c9d1d9;">Preview statement import</div>'
+    +'<button class="btn-ghost" onclick="closeModal()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>'
+    +'<div style="padding:18px 20px;overflow-y:auto;max-height:70vh;">'
+    +'<div style="font-size:12px;color:#8b949e;margin-bottom:10px;">'+esc(p.fileName)+' &middot; '+rows.length+' rows ('+ups+' upfront, '+trs+' trail)'
+    +(p.periodMonth?(' &middot; period '+_revMonthLabel(p.periodMonth)):'')+'</div>'
+    +'<div style="font-size:11px;color:#6b7280;margin-bottom:10px;">Rows are keyed by Ref# + type + month. Re-importing a month updates those rows; it never duplicates or erases other months. Check the Type column is correct before importing.</div>'
+    +body+'</div>'
+    +'<div style="padding:14px 20px;border-top:1px solid #1e2430;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">'
+    +'<button class="btn-sec" onclick="closeModal()">Cancel</button><button class="btn-gold" onclick="_revConfirmImport()">Import '+rows.length+' rows</button>'
+    +'</div></div></div>';
+}
+async function _revConfirmImport(){
+  var p=S._revPreview; if(!p)return;
+  showLoad();
+  var r=await gs_('importCommStatement',S.tok,{fileName:p.fileName,periodMonth:p.periodMonth},p.rows);
+  hideLoad();
+  if(r&&r.ok){ toast('Imported: '+r.inserted+' new, '+r.updated+' updated'); closeModal(); await _loadRevenueData(true); }
+  else toast((r&&r.msg)||'Import failed',1);
+}
+
+// ---- Loans tab: link Ref# + repayment info + forecast ----
+function rRevLoans(){
+  var loans=(S.loanBook||[]).filter(function(l){ return S.user.role==='admin'?true:l.brokerId===S.user.id; });
+  var rows=S.commRows||[];
+  var h='<div style="overflow-y:auto;max-height:calc(100vh - 170px);padding-right:4px;">';
+  h+='<div style="font-size:12px;color:#8b949e;margin-bottom:12px;">Link each loan to its Finsure Ref # once. After that, every statement matches automatically. Set repayment type + rate to enable offset estimate.</div>';
+  h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th>Loan</th><th>Ref #</th><th>Repay</th><th>Rate %</th><th>Next trail est.</th><th></th></tr></thead><tbody>';
+  loans.forEach(function(l){
+    var ref=String(l.finsureRef||'').trim();
+    var lr=rows.filter(function(r){return String(r.ref||'').trim()===ref && /trail/i.test(r.type);}).sort(function(a,b){return a.periodMonth<b.periodMonth?-1:1;});
+    var lastBal=lr.length?_revNum(lr[lr.length-1].balanceW):0;
+    var tr=_revNum(l.trailRate)|| (l.trailRate? _revNum(l.trailRate):0.15);
+    var split=lr.length?(_revNum(lr[lr.length-1].splitPct)||1):1;
+    var est = lastBal>0 ? (lastBal*(tr/100)/12*(split>1?1:split||1)) : 0;
+    h+='<tr>'
+      +'<td style="font-weight:600;color:#c9d1d9;">'+esc(l.clientName||'')+'</td>'
+      +'<td>'+esc(l.lenderName||'')+'</td>'
+      +'<td>$'+_revNum(l.loanAmount).toLocaleString()+'</td>'
+      +'<td><input class="fi" style="width:120px;font-family:monospace;font-size:11px;padding:4px 6px;" value="'+esc(ref)+'" id="rref-'+esc(l.id)+'" placeholder="Ref #"></td>'
+      +'<td><select class="fi" style="width:75px;padding:4px;" id="rrep-'+esc(l.id)+'"><option value=""'+(!l.repaymentType?' selected':'')+'>-</option><option'+(l.repaymentType==='P&I'?' selected':'')+'>P&I</option><option'+(l.repaymentType==='IO'?' selected':'')+'>IO</option></select></td>'
+      +'<td><input class="fi" style="width:60px;padding:4px 6px;" value="'+esc(l.trailRate||'')+'" id="rrate-'+esc(l.id)+'" placeholder="0.15"></td>'
+      +'<td style="color:#34D399;font-weight:600;">'+(est>0?'$'+est.toFixed(2):(ref?'-':'link ref'))+'</td>'
+      +'<td><button class="btn-sec" style="font-size:11px;padding:4px 9px;" onclick="_revSaveLoan(\''+esc(l.id)+'\')">Save</button></td>'
+      +'</tr>';
+  });
+  h+='</tbody></table></div>';
+  return h;
+}
+async function _revSaveLoan(id){
+  var ref=(document.getElementById('rref-'+id)||{}).value||'';
+  var rep=(document.getElementById('rrep-'+id)||{}).value||'';
+  var rate=(document.getElementById('rrate-'+id)||{}).value||'';
+  var r=await gs_('updateLoanRevenue',S.tok,id,{finsureRef:ref.trim(),repaymentType:rep,trailRate:rate});
+  if(r&&r.ok){ var l=(S.loanBook||[]).find(function(x){return x.id===id;}); if(l){l.finsureRef=ref.trim();l.repaymentType=rep;l.trailRate=rate;} toast('Saved'); render(); }
+  else toast((r&&r.msg)||'Save failed',1);
+}
+
+// ---- Batches tab ----
+function rRevBatches(){
+  var b=(S.commBatches||[]).slice().sort(function(a,c){return a.uploadedAt<c.uploadedAt?1:-1;});
+  var h='<div style="overflow-y:auto;max-height:calc(100vh - 170px);padding-right:4px;">';
+  if(!b.length){ h+='<div class="card" style="padding:30px;text-align:center;color:#6b7280;">No statements imported yet.</div></div>'; return h; }
+  h+='<table class="tbl"><thead><tr><th>Uploaded</th><th>File</th><th>Period</th><th>Rows</th><th>New</th><th>Updated</th><th>By</th><th></th></tr></thead><tbody>';
+  b.forEach(function(x){
+    h+='<tr><td>'+esc(String(x.uploadedAt||'').slice(0,16).replace('T',' '))+'</td><td>'+esc(x.fileName||'')+'</td>'
+      +'<td>'+esc(_revMonthLabel(x.periodMonth)||'-')+'</td><td>'+esc(x.rowCount||0)+'</td><td>'+esc(x.insertedCount||0)+'</td><td>'+esc(x.updatedCount||0)+'</td>'
+      +'<td>'+esc(x.uploadedByName||'')+'</td>'
+      +'<td><button class="btn-sec" style="font-size:11px;padding:4px 9px;color:#ef4444;border-color:#ef444444;" onclick="_revRevert(\''+esc(x.id)+'\')">Revert</button></td></tr>';
+  });
+  h+='</tbody></table></div>';
+  return h;
+}
+async function _revRevert(id){
+  if(!confirm('Revert this upload? All rows from this batch are removed. Other batches/months stay intact.'))return;
+  showLoad();
+  var r=await gs_('revertCommBatch',S.tok,id);
+  hideLoad();
+  if(r&&r.ok){ toast('Reverted: '+r.removed+' rows removed'); await _loadRevenueData(true); }
+  else toast((r&&r.msg)||'Revert failed',1);
+}
+
 window.addEventListener('load',init);
 </script>
 </body>
