@@ -681,10 +681,20 @@ const emptyCallNote = {
   firstName: "",
   middleName: "",
   surname: "",
+  hasSecondApplicant: "No",
   secondApplicantName: "",
   secondApplicantFirstName: "",
   secondApplicantMiddleName: "",
   secondApplicantSurname: "",
+  secondApplicantDateOfBirth: "",
+  secondApplicantMobile: "",
+  secondApplicantEmail: "",
+  secondApplicantAddress: "",
+  secondApplicantResidencyStatus: "Australian citizen",
+  secondApplicantMaritalStatus: "Single",
+  secondApplicantDependants: "0",
+  secondApplicantEmployerName: "",
+  secondApplicantJobTitle: "",
   mobile: "",
   email: "",
   preferredLanguage: "Vietnamese / English",
@@ -2470,6 +2480,27 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     }));
   }
 
+  function updateSecondApplicantChoice(value) {
+    setForm((current) => ({
+      ...current,
+      hasSecondApplicant: value,
+      secondApplicantName: value === "Yes" ? current.secondApplicantName : "",
+      secondApplicantFirstName: value === "Yes" ? current.secondApplicantFirstName : "",
+      secondApplicantMiddleName: value === "Yes" ? current.secondApplicantMiddleName : "",
+      secondApplicantSurname: value === "Yes" ? current.secondApplicantSurname : "",
+      secondApplicantDateOfBirth: value === "Yes" ? current.secondApplicantDateOfBirth : "",
+      secondApplicantMobile: value === "Yes" ? current.secondApplicantMobile : "",
+      secondApplicantEmail: value === "Yes" ? current.secondApplicantEmail : "",
+      secondApplicantAddress: value === "Yes" ? current.secondApplicantAddress : "",
+      secondApplicantResidencyStatus: value === "Yes" ? (current.secondApplicantResidencyStatus || "Australian citizen") : "Australian citizen",
+      secondApplicantMaritalStatus: value === "Yes" ? (current.secondApplicantMaritalStatus || current.maritalStatus || "Single") : "Single",
+      secondApplicantDependants: value === "Yes" ? (current.secondApplicantDependants || "0") : "0",
+      secondApplicantEmployerName: value === "Yes" ? current.secondApplicantEmployerName : "",
+      secondApplicantJobTitle: value === "Yes" ? current.secondApplicantJobTitle : "",
+      secondAnnualIncome: value === "Yes" ? current.secondAnnualIncome : ""
+    }));
+  }
+
   function loadNote(note) {
     setSelectedId(note.id);
     setForm({ ...emptyCallNote, ...note });
@@ -2498,6 +2529,24 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     setError("");
     setMessage("");
     try {
+      const primaryLegalName = composeLegalName(form.firstName, form.middleName, form.surname, form.clientName);
+      const secondaryLegalName = composeLegalName(
+        form.secondApplicantFirstName,
+        form.secondApplicantMiddleName,
+        form.secondApplicantSurname,
+        form.secondApplicantName
+      );
+      const hasSecondApplicantForSave =
+        form.hasSecondApplicant === "Yes" ||
+        /married|defacto/i.test(form.maritalStatus || "") ||
+        Boolean(secondaryLegalName);
+      const callPayload = {
+        ...form,
+        clientName: primaryLegalName,
+        secondApplicantName: hasSecondApplicantForSave ? secondaryLegalName : "",
+        hasSecondApplicant: hasSecondApplicantForSave ? "Yes" : "No",
+        redFlags
+      };
       const missing = convert ? validateDraftCase() : [];
       if (missing.length) {
         throw new Error(`Cannot create draft case yet. Missing: ${missing.join(", ")}.`);
@@ -2505,7 +2554,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
 
       const saved = await api(selectedId ? `/api/call-notes/${selectedId}` : "/api/call-notes", {
         method: selectedId ? "PATCH" : "POST",
-        body: JSON.stringify({ ...form, redFlags })
+        body: JSON.stringify(callPayload)
       });
       let output = saved;
       if (convert) {
@@ -2685,6 +2734,17 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [submissionDirty]);
+
+  const callSecondApplicantName = composeLegalName(
+    form.secondApplicantFirstName,
+    form.secondApplicantMiddleName,
+    form.secondApplicantSurname,
+    form.secondApplicantName
+  );
+  const callHasSecondApplicant =
+    form.hasSecondApplicant === "Yes" ||
+    /married|defacto/i.test(form.maritalStatus || "") ||
+    Boolean(callSecondApplicantName);
 
   return (
     <main className={`notes-shell ${appThemeClass()} ${isLoanSubmissionsRoute ? "submissions-shell" : ""}`}>
@@ -2954,7 +3014,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
             <div className="panel-title"><ClipboardList size={18} /><h2>Client & Loan</h2></div>
             <div className="note-form-grid">
               <label>Client name<input value={form.clientName} onChange={(event) => updateField("clientName", event.target.value)} placeholder="Main applicant" /></label>
-              <label>Second applicant<input value={form.secondApplicantName} onChange={(event) => updateField("secondApplicantName", event.target.value)} placeholder="Leave blank if single" /></label>
+              <label>Second applicant?<select value={callHasSecondApplicant ? "Yes" : "No"} onChange={(event) => updateSecondApplicantChoice(event.target.value)}><option>No</option><option>Yes</option></select></label>
               <label>Mobile<input value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
               <label>Email<input value={form.email} onChange={(event) => updateField("email", event.target.value)} /></label>
               <label>Language<select value={form.preferredLanguage} onChange={(event) => updateField("preferredLanguage", event.target.value)}><option>Vietnamese / English</option><option>English</option><option>Vietnamese</option></select></label>
@@ -2969,14 +3029,57 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
             </div>
           </section>
 
+          <section className="panel note-panel call-key-details-panel">
+            <div className="panel-title"><ShieldCheck size={18} /><h2>Key Client Details</h2></div>
+            <p className="panel-helper">Capture these early if the call allows. They sync into Loan Form, Loan Submissions, and EasyFlow AI.</p>
+            <div className="call-key-detail-groups">
+              <div className="call-key-detail-group">
+                <div className="call-key-detail-heading">
+                  <strong>Main applicant</strong>
+                  <span>Primary contact and borrower information.</span>
+                </div>
+                <div className="note-form-grid">
+                  <DateField label="DOB" value={form.dateOfBirth} onChange={(value) => updateField("dateOfBirth", value)} />
+                  <label>Address<input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
+                  <label>Residency<select value={form.residencyStatus} onChange={(event) => updateField("residencyStatus", event.target.value)}>{residencyOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                  <label>Marital<select value={form.maritalStatus} onChange={(event) => updateMaritalStatus(event.target.value)}><option>Single</option><option>Married</option><option>Defacto</option><option>Separated</option></select></label>
+                  <label>Dependants<input value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)} /></label>
+                  <label>Main income p.a.<input value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} placeholder="Rough income is OK" /></label>
+                  <label>Employer<input value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
+                  <label>Occupation<input value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
+                </div>
+              </div>
+
+              {callHasSecondApplicant && (
+                <div className="call-key-detail-group second-applicant-call-panel">
+                  <div className="call-key-detail-heading">
+                    <strong>Second applicant</strong>
+                    <span>Shown only when there is a spouse, partner, or co-borrower.</span>
+                  </div>
+                  <div className="note-form-grid">
+                    <label>Given name(s)<input value={form.secondApplicantFirstName || form.secondApplicantName} onChange={(event) => updateField("secondApplicantFirstName", event.target.value)} placeholder="As shown on ID" /></label>
+                    <label>Surname<input value={form.secondApplicantSurname} onChange={(event) => updateField("secondApplicantSurname", event.target.value)} /></label>
+                    <DateField label="DOB" value={form.secondApplicantDateOfBirth} onChange={(value) => updateField("secondApplicantDateOfBirth", value)} />
+                    <label>Mobile<input value={form.secondApplicantMobile} onChange={(event) => updateField("secondApplicantMobile", event.target.value)} placeholder="Leave blank if same contact" /></label>
+                    <label>Email<input value={form.secondApplicantEmail} onChange={(event) => updateField("secondApplicantEmail", event.target.value)} placeholder="Leave blank if same email" /></label>
+                    <label>Address<input value={form.secondApplicantAddress} onChange={(event) => updateField("secondApplicantAddress", event.target.value)} placeholder="Leave blank if same address" /></label>
+                    <label>Residency<select value={form.secondApplicantResidencyStatus || "Australian citizen"} onChange={(event) => updateField("secondApplicantResidencyStatus", event.target.value)}>{residencyOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                    <label>Marital<select value={form.secondApplicantMaritalStatus || form.maritalStatus} onChange={(event) => updateField("secondApplicantMaritalStatus", event.target.value)}><option>Single</option><option>Married</option><option>Defacto</option><option>Separated</option></select></label>
+                    <label>Dependants<input value={form.secondApplicantDependants || "0"} onChange={(event) => updateField("secondApplicantDependants", event.target.value)} /></label>
+                    <label>Income p.a.<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
+                    <label>Employer<input value={form.secondApplicantEmployerName} onChange={(event) => updateField("secondApplicantEmployerName", event.target.value)} /></label>
+                    <label>Occupation<input value={form.secondApplicantJobTitle} onChange={(event) => updateField("secondApplicantJobTitle", event.target.value)} /></label>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
           <section className="panel note-panel">
             <div className="panel-title"><ShieldCheck size={18} /><h2>Fact Find Snapshot</h2></div>
             <p className="panel-helper">Only ask enough to triage borrowing path. Full fact-find belongs in the Loan Form.</p>
             <div className="note-form-grid">
-              <label>Residency<select value={form.residencyStatus} onChange={(event) => updateField("residencyStatus", event.target.value)}>{residencyOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
-              <label>Dependants<input value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)} /></label>
               <label>Employment<select value={form.employmentType} onChange={(event) => updateField("employmentType", event.target.value)}><option>PAYG</option><option>Self-employed</option><option>Casual</option><option>Contractor</option><option>Unemployed</option></select></label>
-              <label>Total income p.a.<input value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} placeholder="Main or combined rough income" /></label>
               <label>Living expense monthly<input value={form.hemMonthly} onChange={(event) => updateField("hemMonthly", event.target.value)} placeholder="Only if known" /></label>
               <label>Savings/assets<input value={form.financialAssetBuffer} onChange={(event) => updateField("financialAssetBuffer", event.target.value)} /></label>
               <label>Credit issue<select value={form.creditIssue} onChange={(event) => updateField("creditIssue", event.target.value)}><option>Unknown</option><option>No</option><option>Unsure</option><option>Yes</option></select></label>
@@ -2987,20 +3090,6 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                   {flag}
                 </button>
               ))}
-            </div>
-            <div className="call-key-detail">
-              <div>
-                <strong>Key client details</strong>
-                <span>Ask these when the call allows. The full fact-find still belongs in the Loan Form.</span>
-              </div>
-              <div className="note-form-grid">
-                <DateField label="DOB" value={form.dateOfBirth} onChange={(value) => updateField("dateOfBirth", value)} />
-                <label>Address<input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
-                <label>Marital<select value={form.maritalStatus} onChange={(event) => updateField("maritalStatus", event.target.value)}><option>Single</option><option>Married</option><option>Defacto</option><option>Separated</option></select></label>
-                <label>Employer<input value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
-                <label>Occupation<input value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
-                <label>Second income p.a.<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
-              </div>
             </div>
           </section>
 

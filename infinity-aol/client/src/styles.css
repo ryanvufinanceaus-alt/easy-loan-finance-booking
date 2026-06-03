@@ -1545,29 +1545,49 @@ pre {
   padding: 10px 0 0;
 }
 
-.call-key-detail {
-  border-top: 1px solid #edf0ed;
-  margin: 0 12px 12px;
-  padding-top: 10px;
+.call-key-details-panel {
+  grid-column: 1 / -1;
 }
 
-.call-key-detail > div:first-child {
+.call-key-detail-groups {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0 12px 12px;
+}
+
+.call-key-detail-group {
+  background: #f8fbf8;
+  border: 1px solid #dbe6df;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.second-applicant-call-panel {
+  background: #f6f9ff;
+  border-color: #ccd9ee;
+}
+
+.call-key-detail-heading {
   display: grid;
   gap: 2px;
-  margin-bottom: 8px;
 }
 
-.call-key-detail strong {
+.call-key-detail-heading strong {
   color: #0f2018;
   font-size: 13px;
+  font-weight: 900;
 }
 
-.call-key-detail span {
+.call-key-detail-heading span {
   color: #59675f;
   font-size: 12px;
+  line-height: 1.35;
 }
 
-.call-key-detail .note-form-grid {
+.call-key-detail-group .note-form-grid {
   padding: 0;
 }
 
@@ -2214,6 +2234,10 @@ select {
   }
 
   .submission-smart-groups {
+    grid-template-columns: 1fr;
+  }
+
+  .call-key-detail-groups {
     grid-template-columns: 1fr;
   }
 
