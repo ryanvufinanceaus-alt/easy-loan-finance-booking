@@ -757,17 +757,6 @@ function splitNameFallback(fullName = "") {
   return { firstName: parts.slice(0, -1).join(" "), middleName: "", surname: parts.at(-1) };
 }
 
-function dateInputValue(value = "") {
-  const raw = String(value || "").trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-  const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (slash) {
-    const [, day, month, year] = slash;
-    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-  }
-  return "";
-}
-
 function hydrateNameParts(values = {}) {
   const primaryFallback = values.firstName || values.surname ? {} : splitNameFallback(values.clientName);
   const secondaryFallback = values.secondApplicantFirstName || values.secondApplicantSurname
@@ -1041,14 +1030,1243 @@ function SelectField({ label, value, onChange, options, language = "en", require
   );
 }
 
+function auDateValue(value = "") {
+  const raw = String(value || "").trim();
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${iso[3]}-${iso[2]}-${iso[1]}`;
+  const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) return `${slash[1].padStart(2, "0")}-${slash[2].padStart(2, "0")}-${slash[3]}`;
+  return raw.replace(/\//g, "-");
+}
+
+function cleanAuDateInput(value = "") {
+  return String(value || "").replace(/[^\d/-]/g, "").replace(/\//g, "-").slice(0, 10);
+}
+
+function isFilled(value) {
+  if (typeof value === "boolean") return true;
+  return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
 function DateField({ label, value, onChange, language = "en", required = false, help = "" }) {
   return (
     <label>
-      {tx(label, language)} <span className="field-label-note">({tx("date", language)})</span>
-      <input required={required} type="date" value={value} onChange={(event) => onChange(event.target.value)} />
-      {help ? <span className="field-help">{tx(help, language)}</span> : null}
+      {tx(label, language)} <span className="field-label-note">(DD-MM-YYYY)</span>
+      <input
+        required={required}
+        inputMode="numeric"
+        placeholder="DD-MM-YYYY"
+        value={auDateValue(value)}
+        onChange={(event) => onChange(cleanAuDateInput(event.target.value))}
+      />
+      {help ? <span className="field-help">{tx(help, language)}</span> : <span className="field-help">DD-MM-YYYY</span>}
     </label>
   );
+}
+
+const loanTypeKeys = {
+  "Home loan": "homeLoan",
+  "Refinance": "refinance",
+  "Commercial loan": "commercialLoan",
+  "Business loan": "businessLoan",
+  "Car loan": "carLoan",
+  "Personal loan": "personalLoan"
+};
+
+function currentLoanTypeKey(loanType = "") {
+  return loanTypeKeys[loanType] || "homeLoan";
+}
+
+const dynamicLoanFieldCatalog = [
+  {
+    section: "Home loan details",
+    key: "propertyFoundStatus",
+    label_en: "Have you found a property?",
+    label_vi: "Bạn đã tìm được bất động sản chưa?",
+    type: "select",
+    options: ["Yes", "No", "Pre-approval only"],
+    required: true,
+    loanTypes: ["homeLoan"],
+    infinityField: "loan.propertyFoundStatus",
+    aolField: "loans.security.propertyFoundStatus",
+    helpText_en: "Select pre-approval only if there is no property address yet.",
+    helpText_vi: "Chọn pre-approval nếu chưa có địa chỉ bất động sản."
+  },
+  {
+    section: "Home loan details",
+    key: "purchasePrice",
+    label_en: "Purchase price",
+    label_vi: "Giá mua",
+    type: "money",
+    required: (form) => form.propertyFoundStatus === "Yes",
+    loanTypes: ["homeLoan"],
+    infinityField: "loan.purchasePrice",
+    aolField: "loans.purchasePrice",
+    helpText_en: "Leave blank if you are still looking.",
+    helpText_vi: "Để trống nếu vẫn đang tìm nhà."
+  },
+  {
+    section: "Home loan details",
+    key: "sourceOfDeposit",
+    label_en: "Source of deposit",
+    label_vi: "Nguồn tiền deposit",
+    type: "text",
+    required: true,
+    loanTypes: ["homeLoan"],
+    infinityField: "loan.depositSource",
+    aolField: "loans.deposit.source",
+    helpText_en: "For example savings, equity, gift, sale of asset.",
+    helpText_vi: "Ví dụ tiền tiết kiệm, equity, quà tặng, bán tài sản."
+  },
+  {
+    section: "Home loan details",
+    key: "contractStatus",
+    label_en: "Contract status",
+    label_vi: "Tình trạng hợp đồng mua",
+    type: "select",
+    options: ["Not signed", "Signed", "Auction", "Off the plan", "Construction"],
+    required: true,
+    loanTypes: ["homeLoan"],
+    infinityField: "loan.contractStatus",
+    aolField: "loans.contractStatus"
+  },
+  {
+    section: "Home loan details",
+    key: "auctionDate",
+    label_en: "Auction date",
+    label_vi: "Ngày đấu giá",
+    type: "date",
+    required: (form) => form.contractStatus === "Auction",
+    loanTypes: ["homeLoan"],
+    conditionalDisplay: (form) => form.contractStatus === "Auction",
+    infinityField: "loan.auctionDate",
+    aolField: "loans.auctionDate"
+  },
+  {
+    section: "Home loan details",
+    key: "settlementDate",
+    label_en: "Settlement date",
+    label_vi: "Ngày settlement",
+    type: "date",
+    required: (form) => form.propertyFoundStatus === "Yes",
+    loanTypes: ["homeLoan", "refinance"],
+    infinityField: "loan.settlementDate",
+    aolField: "loans.estimatedSettlementDate"
+  },
+  {
+    section: "Home loan details",
+    key: "financeClauseDate",
+    label_en: "Finance clause date",
+    label_vi: "Ngày finance clause",
+    type: "date",
+    required: false,
+    loanTypes: ["homeLoan"],
+    infinityField: "loan.financeClauseDate",
+    aolField: "loans.financeClauseDate",
+    helpText_en: "Leave blank if not applicable.",
+    helpText_vi: "Để trống nếu không áp dụng."
+  },
+  {
+    section: "Home loan details",
+    key: "propertyUsage",
+    label_en: "Property use",
+    label_vi: "Mục đích sử dụng bất động sản",
+    type: "select",
+    options: ["Owner occupied", "Investment"],
+    required: true,
+    loanTypes: ["homeLoan", "refinance", "commercialLoan"],
+    infinityField: "loan.propertyUsage",
+    aolField: "securities.propertyPrimaryPurpose"
+  },
+  {
+    section: "Home loan details",
+    key: "fhogEligible",
+    label_en: "First Home Owner Grant",
+    label_vi: "First Home Owner Grant",
+    type: "select",
+    options: ["Yes", "No", "Unsure"],
+    required: (form) => form.firstHomeBuyer === "Yes",
+    loanTypes: ["homeLoan"],
+    conditionalDisplay: (form) => form.firstHomeBuyer === "Yes",
+    infinityField: "loan.fhogEligible",
+    aolField: "loans.firstHomeOwnerGrant"
+  },
+  {
+    section: "Home loan details",
+    key: "constructionDetails",
+    label_en: "Construction details",
+    label_vi: "Thông tin xây dựng",
+    type: "textarea",
+    required: (form) => /construction/i.test(`${form.loanPurpose} ${form.contractStatus}`),
+    loanTypes: ["homeLoan"],
+    conditionalDisplay: (form) => /construction/i.test(`${form.loanPurpose} ${form.contractStatus}`),
+    infinityField: "loan.constructionDetails",
+    aolField: "loans.construction.details"
+  },
+  {
+    section: "Refinance details",
+    key: "currentLender",
+    label_en: "Current lender",
+    label_vi: "Ngân hàng hiện tại",
+    type: "text",
+    required: true,
+    loanTypes: ["refinance"],
+    infinityField: "liabilities.currentLender",
+    aolField: "financials.liabilities.creditor"
+  },
+  {
+    section: "Refinance details",
+    key: "currentLoanBalance",
+    label_en: "Current loan balance",
+    label_vi: "Dư nợ hiện tại",
+    type: "money",
+    required: true,
+    loanTypes: ["refinance"],
+    infinityField: "liabilities.currentBalance",
+    aolField: "financials.liabilities.balance"
+  },
+  {
+    section: "Refinance details",
+    key: "currentInterestRate",
+    label_en: "Current interest rate",
+    label_vi: "Lãi suất hiện tại",
+    type: "text",
+    required: true,
+    loanTypes: ["refinance"],
+    infinityField: "liabilities.interestRate",
+    aolField: "financials.liabilities.interestRate"
+  },
+  {
+    section: "Refinance details",
+    key: "currentRepayment",
+    label_en: "Monthly repayment",
+    label_vi: "Trả nợ hàng tháng",
+    type: "money",
+    required: true,
+    loanTypes: ["refinance"],
+    infinityField: "liabilities.monthlyRepayment",
+    aolField: "financials.liabilities.monthlyRepayment"
+  },
+  {
+    section: "Refinance details",
+    key: "currentLoanRepaymentType",
+    label_en: "Current repayment type",
+    label_vi: "Kiểu trả nợ hiện tại",
+    type: "select",
+    options: ["Principal and interest", "Interest only"],
+    required: true,
+    loanTypes: ["refinance"],
+    infinityField: "liabilities.repaymentType",
+    aolField: "loans.repaymentType"
+  },
+  {
+    section: "Refinance details",
+    key: "currentRateType",
+    label_en: "Current rate type",
+    label_vi: "Loại lãi suất hiện tại",
+    type: "select",
+    options: ["Variable", "Fixed", "Split"],
+    required: true,
+    loanTypes: ["refinance"],
+    infinityField: "liabilities.rateType",
+    aolField: "loans.rateType"
+  },
+  {
+    section: "Refinance details",
+    key: "fixedExpiryDate",
+    label_en: "Fixed expiry date",
+    label_vi: "Ngày hết fixed rate",
+    type: "date",
+    required: (form) => form.currentRateType === "Fixed",
+    conditionalDisplay: (form) => form.currentRateType === "Fixed",
+    loanTypes: ["refinance"],
+    infinityField: "liabilities.fixedExpiryDate",
+    aolField: "loans.fixedExpiryDate"
+  },
+  {
+    section: "Refinance details",
+    key: "offsetRedrawBalance",
+    label_en: "Offset/redraw balance",
+    label_vi: "Số dư offset/redraw",
+    type: "money",
+    required: false,
+    loanTypes: ["refinance"],
+    infinityField: "liabilities.offsetRedrawBalance",
+    aolField: "loans.offsetRedrawBalance",
+    helpText_en: "Leave blank if not applicable.",
+    helpText_vi: "Để trống nếu không áp dụng."
+  },
+  {
+    section: "Refinance details",
+    key: "propertyEstimatedValue",
+    label_en: "Estimated property value",
+    label_vi: "Giá trị nhà ước tính",
+    type: "money",
+    required: true,
+    loanTypes: ["refinance"],
+    infinityField: "assets.propertyEstimatedValue",
+    aolField: "securities.estimatedValue"
+  },
+  {
+    section: "Refinance details",
+    key: "cashOutAmount",
+    label_en: "Cash out amount",
+    label_vi: "Số tiền rút equity",
+    type: "money",
+    required: (form) => /cash/i.test(form.loanPurpose || ""),
+    loanTypes: ["refinance"],
+    infinityField: "loan.cashOutAmount",
+    aolField: "loans.cashOut.amount"
+  },
+  {
+    section: "Refinance details",
+    key: "cashOutPurpose",
+    label_en: "Cash out purpose",
+    label_vi: "Mục đích rút equity",
+    type: "textarea",
+    required: (form) => Number(form.cashOutAmount || 0) > 0 || /cash/i.test(form.loanPurpose || ""),
+    loanTypes: ["refinance", "commercialLoan"],
+    infinityField: "loan.cashOutPurpose",
+    aolField: "loans.cashOut.purpose"
+  },
+  {
+    section: "Refinance details",
+    key: "debtConsolidationDebts",
+    label_en: "Debt consolidation debts",
+    label_vi: "Các khoản nợ muốn gom",
+    type: "textarea",
+    required: (form) => /debt/i.test(`${form.loanPurpose} ${form.personalLoanPurpose || ""}`),
+    loanTypes: ["refinance", "personalLoan"],
+    infinityField: "loan.debtConsolidationDebts",
+    aolField: "loans.debtConsolidation.details"
+  },
+  {
+    section: "Refinance details",
+    key: "payoutDetails",
+    label_en: "Payout details",
+    label_vi: "Thông tin payout",
+    type: "textarea",
+    required: false,
+    loanTypes: ["refinance", "carLoan"],
+    infinityField: "loan.payoutDetails",
+    aolField: "loans.payoutDetails"
+  },
+  {
+    section: "Refinance details",
+    key: "arrearsHistory",
+    label_en: "Any missed repayments or arrears?",
+    label_vi: "Có trễ hạn hoặc arrears không?",
+    type: "select",
+    options: ["No", "Yes", "Unsure"],
+    required: true,
+    loanTypes: ["refinance"],
+    infinityField: "compliance.arrearsHistory",
+    aolField: "compliance.arrearsHistory"
+  },
+  {
+    section: "Commercial loan details",
+    key: "borrowerEntity",
+    label_en: "Borrower entity",
+    label_vi: "Tên pháp nhân vay",
+    type: "text",
+    required: true,
+    loanTypes: ["commercialLoan"],
+    infinityField: "commercial.borrowerEntity",
+    aolField: "applicants.entityName"
+  },
+  {
+    section: "Commercial loan details",
+    key: "abnAcn",
+    label_en: "ABN / ACN",
+    label_vi: "ABN / ACN",
+    type: "text",
+    required: true,
+    loanTypes: ["commercialLoan", "businessLoan"],
+    infinityField: "business.abnAcn",
+    aolField: "applicants.abnAcn"
+  },
+  {
+    section: "Commercial loan details",
+    key: "companyTrustDirectorsGuarantors",
+    label_en: "Company, trust, directors and guarantors",
+    label_vi: "Công ty, trust, directors và guarantors",
+    type: "textarea",
+    required: true,
+    loanTypes: ["commercialLoan"],
+    infinityField: "commercial.entityStructure",
+    aolField: "applicants.entityStructure"
+  },
+  {
+    section: "Commercial loan details",
+    key: "commercialPropertyAddress",
+    label_en: "Commercial property address",
+    label_vi: "Địa chỉ bất động sản commercial",
+    type: "text",
+    required: true,
+    loanTypes: ["commercialLoan"],
+    infinityField: "commercial.propertyAddress",
+    aolField: "securities.address"
+  },
+  {
+    section: "Commercial loan details",
+    key: "commercialPropertyType",
+    label_en: "Commercial property type",
+    label_vi: "Loại tài sản commercial",
+    type: "select",
+    options: ["Office", "Retail", "Industrial", "Warehouse", "Mixed use", "Other"],
+    required: true,
+    loanTypes: ["commercialLoan"],
+    infinityField: "commercial.propertyType",
+    aolField: "securities.propertyType"
+  },
+  {
+    section: "Commercial loan details",
+    key: "commercialPurchasePrice",
+    label_en: "Commercial value / purchase price",
+    label_vi: "Giá trị / giá mua commercial",
+    type: "money",
+    required: true,
+    loanTypes: ["commercialLoan"],
+    infinityField: "commercial.purchasePrice",
+    aolField: "securities.estimatedValue"
+  },
+  {
+    section: "Commercial loan details",
+    key: "commercialZoning",
+    label_en: "Zoning",
+    label_vi: "Zoning",
+    type: "text",
+    required: false,
+    loanTypes: ["commercialLoan"],
+    infinityField: "commercial.zoning",
+    aolField: "securities.zoning"
+  },
+  {
+    section: "Commercial loan details",
+    key: "commercialOccupancy",
+    label_en: "Owner occupied or investment",
+    label_vi: "Owner occupied hay investment",
+    type: "select",
+    options: ["Owner occupied", "Investment", "Mixed use"],
+    required: true,
+    loanTypes: ["commercialLoan"],
+    infinityField: "commercial.occupancy",
+    aolField: "securities.propertyPrimaryPurpose"
+  },
+  {
+    section: "Commercial loan details",
+    key: "commercialLeaseDetails",
+    label_en: "Lease details",
+    label_vi: "Thông tin lease",
+    type: "textarea",
+    required: (form) => /investment|mixed/i.test(form.commercialOccupancy || ""),
+    loanTypes: ["commercialLoan"],
+    infinityField: "commercial.leaseDetails",
+    aolField: "securities.leaseDetails"
+  },
+  {
+    section: "Commercial loan details",
+    key: "commercialAnnualRent",
+    label_en: "Annual rent",
+    label_vi: "Tiền thuê hàng năm",
+    type: "money",
+    required: (form) => /investment|mixed/i.test(form.commercialOccupancy || ""),
+    loanTypes: ["commercialLoan"],
+    infinityField: "commercial.annualRent",
+    aolField: "income.annualRent"
+  },
+  {
+    section: "Commercial loan details",
+    key: "commercialTenantDetails",
+    label_en: "Tenant details",
+    label_vi: "Thông tin tenant",
+    type: "textarea",
+    required: false,
+    loanTypes: ["commercialLoan"],
+    infinityField: "commercial.tenantDetails",
+    aolField: "securities.tenantDetails"
+  },
+  {
+    section: "Commercial loan details",
+    key: "currentCommercialLoanDetails",
+    label_en: "Current commercial loan details",
+    label_vi: "Thông tin khoản vay commercial hiện tại",
+    type: "textarea",
+    required: (form) => /refinance/i.test(form.loanPurpose || ""),
+    loanTypes: ["commercialLoan"],
+    infinityField: "commercial.currentLoanDetails",
+    aolField: "financials.liabilities.commercialLoan"
+  },
+  {
+    section: "Commercial loan details",
+    key: "commercialIncomeEvidence",
+    label_en: "Income evidence available",
+    label_vi: "Giấy tờ chứng minh thu nhập có sẵn",
+    type: "select",
+    options: ["Financials", "BAS", "Bank statements", "Lease income", "Accountant letter", "Not sure"],
+    required: true,
+    loanTypes: ["commercialLoan"],
+    infinityField: "documents.incomeEvidence",
+    aolField: "documents.incomeEvidence"
+  },
+  {
+    section: "Commercial loan details",
+    key: "commercialFinancialsAvailable",
+    label_en: "Financials / BAS / bank statements available",
+    label_vi: "Có financials / BAS / bank statements không?",
+    type: "textarea",
+    required: true,
+    loanTypes: ["commercialLoan"],
+    infinityField: "documents.financialsAvailable",
+    aolField: "documents.financialsAvailable"
+  },
+  {
+    section: "Business loan details",
+    key: "businessLegalName",
+    label_en: "Business legal name",
+    label_vi: "Tên pháp lý doanh nghiệp",
+    type: "text",
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "business.legalName",
+    aolField: "applicants.businessLegalName"
+  },
+  {
+    section: "Business loan details",
+    key: "businessTradingName",
+    label_en: "Trading name",
+    label_vi: "Tên giao dịch",
+    type: "text",
+    required: true,
+    loanTypes: ["businessLoan", "commercialLoan"],
+    infinityField: "business.tradingName",
+    aolField: "applicants.tradingName"
+  },
+  {
+    section: "Business loan details",
+    key: "entityType",
+    label_en: "Entity type",
+    label_vi: "Loại pháp nhân",
+    type: "select",
+    options: ["Sole trader", "Company", "Trust", "Partnership"],
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "business.entityType",
+    aolField: "applicants.entityType"
+  },
+  {
+    section: "Business loan details",
+    key: "gstRegistered",
+    label_en: "GST registered",
+    label_vi: "Đã đăng ký GST",
+    type: "select",
+    options: ["Yes", "No"],
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "business.gstRegistered",
+    aolField: "business.gstRegistered"
+  },
+  {
+    section: "Business loan details",
+    key: "abnStartDate",
+    label_en: "ABN start date",
+    label_vi: "Ngày bắt đầu ABN",
+    type: "date",
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "business.abnStartDate",
+    aolField: "business.abnStartDate"
+  },
+  {
+    section: "Business loan details",
+    key: "industry",
+    label_en: "Industry",
+    label_vi: "Ngành nghề",
+    type: "text",
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "business.industry",
+    aolField: "business.industry"
+  },
+  {
+    section: "Business loan details",
+    key: "businessAddress",
+    label_en: "Business address",
+    label_vi: "Địa chỉ doanh nghiệp",
+    type: "text",
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "business.address",
+    aolField: "business.address"
+  },
+  {
+    section: "Business loan details",
+    key: "businessOwnersDirectors",
+    label_en: "Owners / directors",
+    label_vi: "Chủ doanh nghiệp / directors",
+    type: "textarea",
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "business.ownersDirectors",
+    aolField: "business.ownersDirectors"
+  },
+  {
+    section: "Business loan details",
+    key: "businessLoanPurpose",
+    label_en: "Business loan purpose",
+    label_vi: "Mục đích vay business",
+    type: "textarea",
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "loan.businessPurpose",
+    aolField: "loans.businessPurpose"
+  },
+  {
+    section: "Business loan details",
+    key: "businessLoanAmount",
+    label_en: "Business loan amount",
+    label_vi: "Số tiền vay business",
+    type: "money",
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "loan.amount",
+    aolField: "loans.amount"
+  },
+  {
+    section: "Business loan details",
+    key: "businessLoanTerm",
+    label_en: "Business loan term",
+    label_vi: "Thời hạn vay business",
+    type: "select",
+    options: ["1 year", "2 years", "3 years", "5 years", "7 years", "Other"],
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "loan.term",
+    aolField: "loans.term"
+  },
+  {
+    section: "Business loan details",
+    key: "businessSecurityType",
+    label_en: "Secured or unsecured",
+    label_vi: "Có tài sản bảo đảm hay không",
+    type: "select",
+    options: ["Secured", "Unsecured", "Unsure"],
+    required: true,
+    loanTypes: ["businessLoan", "personalLoan"],
+    infinityField: "loan.securityType",
+    aolField: "loans.securityType"
+  },
+  {
+    section: "Business loan details",
+    key: "monthlyTurnover",
+    label_en: "Monthly revenue",
+    label_vi: "Doanh thu hàng tháng",
+    type: "money",
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "business.monthlyRevenue",
+    aolField: "business.monthlyRevenue"
+  },
+  {
+    section: "Business loan details",
+    key: "annualBusinessTurnover",
+    label_en: "Annual turnover",
+    label_vi: "Doanh thu hàng năm",
+    type: "money",
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "business.annualTurnover",
+    aolField: "business.annualTurnover"
+  },
+  {
+    section: "Business loan details",
+    key: "netProfitBeforeTax",
+    label_en: "Net profit",
+    label_vi: "Lợi nhuận ròng",
+    type: "money",
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "business.netProfit",
+    aolField: "business.netProfit"
+  },
+  {
+    section: "Business loan details",
+    key: "existingBusinessDebts",
+    label_en: "Existing business debts",
+    label_vi: "Nợ doanh nghiệp hiện tại",
+    type: "textarea",
+    required: false,
+    loanTypes: ["businessLoan"],
+    infinityField: "business.existingDebts",
+    aolField: "financials.businessDebts"
+  },
+  {
+    section: "Business loan details",
+    key: "atoDebtPaymentPlan",
+    label_en: "ATO debt / payment plan",
+    label_vi: "Nợ ATO / payment plan",
+    type: "textarea",
+    required: false,
+    loanTypes: ["businessLoan"],
+    infinityField: "business.atoDebt",
+    aolField: "business.atoDebt"
+  },
+  {
+    section: "Business loan details",
+    key: "bankStatementsAvailable",
+    label_en: "Bank statements available",
+    label_vi: "Có bank statements không?",
+    type: "select",
+    options: ["Yes", "No", "Can provide"],
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "documents.bankStatements",
+    aolField: "documents.bankStatements"
+  },
+  {
+    section: "Business loan details",
+    key: "basAvailable",
+    label_en: "BAS available",
+    label_vi: "Có BAS không?",
+    type: "select",
+    options: ["Yes", "No", "Can provide"],
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "documents.bas",
+    aolField: "documents.bas"
+  },
+  {
+    section: "Business loan details",
+    key: "taxReturnsAvailable",
+    label_en: "Tax returns available",
+    label_vi: "Có tax returns không?",
+    type: "select",
+    options: ["Yes", "No", "Can provide"],
+    required: true,
+    loanTypes: ["businessLoan"],
+    infinityField: "documents.taxReturns",
+    aolField: "documents.taxReturns"
+  },
+  {
+    section: "Business loan details",
+    key: "equipmentQuoteInvoice",
+    label_en: "Equipment quote / invoice",
+    label_vi: "Quote / invoice thiết bị",
+    type: "textarea",
+    required: (form) => /equipment/i.test(`${form.loanPurpose} ${form.businessLoanPurpose}`),
+    loanTypes: ["businessLoan"],
+    infinityField: "documents.equipmentQuote",
+    aolField: "documents.equipmentQuote"
+  },
+  {
+    section: "Car loan details",
+    key: "vehicleUse",
+    label_en: "Personal or business use",
+    label_vi: "Dùng cá nhân hay business",
+    type: "select",
+    options: ["Personal", "Business"],
+    required: true,
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.use",
+    aolField: "assets.vehicle.use"
+  },
+  {
+    section: "Car loan details",
+    key: "vehicleApplicantType",
+    label_en: "Applicant type",
+    label_vi: "Loại người vay",
+    type: "select",
+    options: ["Individual", "Company", "Sole trader", "Trust"],
+    required: true,
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.applicantType",
+    aolField: "applicants.type"
+  },
+  {
+    section: "Car loan details",
+    key: "vehicleCondition",
+    label_en: "Vehicle condition",
+    label_vi: "Tình trạng xe",
+    type: "select",
+    options: ["New", "Used"],
+    required: true,
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.condition",
+    aolField: "assets.vehicle.condition"
+  },
+  {
+    section: "Car loan details",
+    key: "vehicleMake",
+    label_en: "Make",
+    label_vi: "Hãng xe",
+    type: "text",
+    required: true,
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.make",
+    aolField: "assets.vehicle.make"
+  },
+  {
+    section: "Car loan details",
+    key: "vehicleModel",
+    label_en: "Model",
+    label_vi: "Model",
+    type: "text",
+    required: true,
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.model",
+    aolField: "assets.vehicle.model"
+  },
+  {
+    section: "Car loan details",
+    key: "vehicleYear",
+    label_en: "Year",
+    label_vi: "Năm xe",
+    type: "number",
+    required: true,
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.year",
+    aolField: "assets.vehicle.year"
+  },
+  {
+    section: "Car loan details",
+    key: "vehicleVariant",
+    label_en: "Variant",
+    label_vi: "Phiên bản",
+    type: "text",
+    required: false,
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.variant",
+    aolField: "assets.vehicle.variant"
+  },
+  {
+    section: "Car loan details",
+    key: "vehicleVin",
+    label_en: "VIN",
+    label_vi: "Số VIN",
+    type: "text",
+    required: false,
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.vin",
+    aolField: "assets.vehicle.vin"
+  },
+  {
+    section: "Car loan details",
+    key: "vehicleRego",
+    label_en: "Rego",
+    label_vi: "Biển số",
+    type: "text",
+    required: false,
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.rego",
+    aolField: "assets.vehicle.rego"
+  },
+  {
+    section: "Car loan details",
+    key: "vehicleOdometer",
+    label_en: "Odometer",
+    label_vi: "Số km đã đi",
+    type: "number",
+    required: false,
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.odometer",
+    aolField: "assets.vehicle.odometer"
+  },
+  {
+    section: "Car loan details",
+    key: "vehiclePrice",
+    label_en: "Purchase price",
+    label_vi: "Giá mua xe",
+    type: "money",
+    required: true,
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.purchasePrice",
+    aolField: "assets.vehicle.purchasePrice"
+  },
+  {
+    section: "Car loan details",
+    key: "tradeInDeposit",
+    label_en: "Deposit / trade-in",
+    label_vi: "Deposit / trade-in",
+    type: "money",
+    required: false,
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.deposit",
+    aolField: "assets.vehicle.deposit"
+  },
+  {
+    section: "Car loan details",
+    key: "saleType",
+    label_en: "Seller type",
+    label_vi: "Người bán",
+    type: "select",
+    options: ["Dealer", "Private sale"],
+    required: true,
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.sellerType",
+    aolField: "assets.vehicle.sellerType"
+  },
+  {
+    section: "Car loan details",
+    key: "dealerInvoiceAvailable",
+    label_en: "Dealer invoice available",
+    label_vi: "Có invoice từ dealer không?",
+    type: "select",
+    options: ["Yes", "No", "Can provide"],
+    required: (form) => form.saleType === "Dealer",
+    conditionalDisplay: (form) => form.saleType === "Dealer",
+    loanTypes: ["carLoan"],
+    infinityField: "documents.dealerInvoice",
+    aolField: "documents.dealerInvoice"
+  },
+  {
+    section: "Car loan details",
+    key: "privateSellerDetails",
+    label_en: "Private seller details",
+    label_vi: "Thông tin người bán private",
+    type: "textarea",
+    required: (form) => form.saleType === "Private sale",
+    conditionalDisplay: (form) => form.saleType === "Private sale",
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.privateSeller",
+    aolField: "assets.vehicle.privateSeller"
+  },
+  {
+    section: "Car loan details",
+    key: "balloonResidual",
+    label_en: "Balloon / residual",
+    label_vi: "Balloon / residual",
+    type: "money",
+    required: false,
+    loanTypes: ["carLoan"],
+    infinityField: "loan.balloonResidual",
+    aolField: "loans.balloonResidual"
+  },
+  {
+    section: "Car loan details",
+    key: "insuranceStatus",
+    label_en: "Insurance status",
+    label_vi: "Tình trạng bảo hiểm",
+    type: "select",
+    options: ["Already arranged", "Will arrange", "Need help", "Unsure"],
+    required: true,
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.insuranceStatus",
+    aolField: "assets.vehicle.insuranceStatus"
+  },
+  {
+    section: "Car loan details",
+    key: "vehicleRefinancePayout",
+    label_en: "Refinance payout details",
+    label_vi: "Thông tin payout nếu refinance xe",
+    type: "textarea",
+    required: (form) => /refinance/i.test(form.loanPurpose || ""),
+    conditionalDisplay: (form) => /refinance/i.test(form.loanPurpose || ""),
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.refinancePayout",
+    aolField: "loans.vehiclePayout"
+  },
+  {
+    section: "Car loan details",
+    key: "businessUsePercentage",
+    label_en: "Business use percentage",
+    label_vi: "Tỉ lệ dùng cho business",
+    type: "number",
+    required: (form) => form.vehicleUse === "Business",
+    conditionalDisplay: (form) => form.vehicleUse === "Business",
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.businessUsePercentage",
+    aolField: "assets.vehicle.businessUsePercentage"
+  },
+  {
+    section: "Car loan details",
+    key: "chattelMortgageRequired",
+    label_en: "Chattel mortgage required?",
+    label_vi: "Có cần chattel mortgage không?",
+    type: "select",
+    options: ["Yes", "No", "Unsure"],
+    required: (form) => form.vehicleUse === "Business",
+    conditionalDisplay: (form) => form.vehicleUse === "Business",
+    loanTypes: ["carLoan"],
+    infinityField: "vehicle.chattelMortgage",
+    aolField: "loans.chattelMortgage"
+  },
+  {
+    section: "Personal loan details",
+    key: "personalLoanPurpose",
+    label_en: "Personal loan purpose",
+    label_vi: "Mục đích vay cá nhân",
+    type: "select",
+    options: ["Debt consolidation", "Home improvement", "Medical", "Travel", "Wedding", "Other"],
+    required: true,
+    loanTypes: ["personalLoan"],
+    infinityField: "loan.personalPurpose",
+    aolField: "loans.personalPurpose"
+  },
+  {
+    section: "Personal loan details",
+    key: "personalLoanAmount",
+    label_en: "Personal loan amount",
+    label_vi: "Số tiền vay cá nhân",
+    type: "money",
+    required: true,
+    loanTypes: ["personalLoan"],
+    infinityField: "loan.amount",
+    aolField: "loans.amount"
+  },
+  {
+    section: "Personal loan details",
+    key: "personalLoanTerm",
+    label_en: "Personal loan term",
+    label_vi: "Thời hạn vay cá nhân",
+    type: "select",
+    options: ["1 year", "2 years", "3 years", "5 years", "7 years"],
+    required: true,
+    loanTypes: ["personalLoan"],
+    infinityField: "loan.term",
+    aolField: "loans.term"
+  },
+  {
+    section: "Personal loan details",
+    key: "personalSecurityType",
+    label_en: "Secured or unsecured",
+    label_vi: "Có tài sản bảo đảm hay không",
+    type: "select",
+    options: ["Secured", "Unsecured", "Unsure"],
+    required: true,
+    loanTypes: ["personalLoan"],
+    infinityField: "loan.securityType",
+    aolField: "loans.securityType"
+  },
+  {
+    section: "Personal loan details",
+    key: "fundingTimeframe",
+    label_en: "Funding timeframe",
+    label_vi: "Khi nào cần tiền",
+    type: "text",
+    required: true,
+    loanTypes: ["personalLoan"],
+    infinityField: "loan.fundingTimeframe",
+    aolField: "loans.fundingTimeframe"
+  },
+  {
+    section: "Personal loan details",
+    key: "quoteInvoiceAvailable",
+    label_en: "Quote / invoice available",
+    label_vi: "Có quote / invoice không?",
+    type: "select",
+    options: ["Yes", "No", "Not applicable"],
+    required: true,
+    loanTypes: ["personalLoan"],
+    infinityField: "documents.quoteInvoice",
+    aolField: "documents.quoteInvoice"
+  },
+  {
+    section: "Personal loan details",
+    key: "personalDebtConsolidationDetails",
+    label_en: "Debt consolidation details",
+    label_vi: "Chi tiết gom nợ",
+    type: "textarea",
+    required: (form) => form.personalLoanPurpose === "Debt consolidation",
+    conditionalDisplay: (form) => form.personalLoanPurpose === "Debt consolidation",
+    loanTypes: ["personalLoan"],
+    infinityField: "loan.personalDebtConsolidation",
+    aolField: "loans.debtConsolidation.details"
+  },
+  {
+    section: "Credit history",
+    key: "paydayLoans",
+    label_en: "Any payday loans?",
+    label_vi: "Có payday loan không?",
+    type: "select",
+    options: ["No", "Yes", "Unsure"],
+    required: true,
+    loanTypes: ["personalLoan"],
+    infinityField: "credit.paydayLoans",
+    aolField: "credit.paydayLoans"
+  },
+  {
+    section: "Credit history",
+    key: "bnplUse",
+    label_en: "BNPL usage",
+    label_vi: "Có dùng BNPL không?",
+    type: "select",
+    options: ["No", "Yes", "Unsure"],
+    required: true,
+    loanTypes: ["personalLoan"],
+    infinityField: "credit.bnplUse",
+    aolField: "credit.bnplUse"
+  },
+  {
+    section: "Credit history",
+    key: "gamblingTransactions",
+    label_en: "Gambling transactions",
+    label_vi: "Có giao dịch gambling không?",
+    type: "select",
+    options: ["No", "Yes", "Unsure"],
+    required: true,
+    loanTypes: ["personalLoan"],
+    infinityField: "credit.gamblingTransactions",
+    aolField: "credit.gamblingTransactions"
+  },
+  {
+    section: "Credit history",
+    key: "dishonoursHistory",
+    label_en: "Dishonours",
+    label_vi: "Có dishonour không?",
+    type: "select",
+    options: ["No", "Yes", "Unsure"],
+    required: true,
+    loanTypes: ["personalLoan"],
+    infinityField: "credit.dishonours",
+    aolField: "credit.dishonours"
+  },
+  {
+    section: "Credit history",
+    key: "hardshipHistory",
+    label_en: "Hardship history",
+    label_vi: "Có hardship không?",
+    type: "select",
+    options: ["No", "Yes", "Unsure"],
+    required: true,
+    loanTypes: ["personalLoan"],
+    infinityField: "credit.hardship",
+    aolField: "credit.hardship"
+  },
+  {
+    section: "Credit history",
+    key: "recentDeclines",
+    label_en: "Recent loan declines",
+    label_vi: "Có bị từ chối vay gần đây không?",
+    type: "select",
+    options: ["No", "Yes", "Unsure"],
+    required: true,
+    loanTypes: ["personalLoan"],
+    infinityField: "credit.recentDeclines",
+    aolField: "credit.recentDeclines"
+  }
+];
+
+function activeDynamicFields(form) {
+  const typeKey = currentLoanTypeKey(form.loanType);
+  return dynamicLoanFieldCatalog.filter((field) => {
+    if (!field.loanTypes.includes(typeKey)) return false;
+    if (field.conditionalDisplay && !field.conditionalDisplay(form)) return false;
+    return true;
+  });
+}
+
+function fieldRequired(field, form) {
+  return typeof field.required === "function" ? field.required(form) : Boolean(field.required);
+}
+
+function fieldLabel(field, language) {
+  return language === "vi" ? field.label_vi || field.label_en : field.label_en;
+}
+
+function fieldHelp(field, language) {
+  return language === "vi" ? field.helpText_vi || field.helpText_en || "" : field.helpText_en || "";
+}
+
+function buildClientLoanMissingFields(form, language) {
+  const baseRequired = [
+    { key: "firstName", label_en: "First / given name(s)", label_vi: "Tên" },
+    { key: "surname", label_en: "Family name / surname", label_vi: "Họ" },
+    { key: "dateOfBirth", label_en: "Date of birth", label_vi: "Ngày sinh" },
+    { key: "email", label_en: "Email", label_vi: "Email" },
+    { key: "mobile", label_en: "Mobile", label_vi: "Số điện thoại" },
+    { key: "loanType", label_en: "Loan type", label_vi: "Loại khoản vay" },
+    { key: "loanPurpose", label_en: "Your loan purpose", label_vi: "Mục đích vay" },
+    { key: "loanAmount", label_en: "How much would you like to borrow ($)", label_vi: "Số tiền muốn vay" },
+    { key: "address", label_en: "Current residential address", label_vi: "Địa chỉ hiện tại" },
+    { key: "currentSuburb", label_en: "Suburb", label_vi: "Suburb" },
+    { key: "currentState", label_en: "State", label_vi: "Bang" },
+    { key: "currentAddressFromDate", label_en: "From Date", label_vi: "Ở từ ngày" },
+    { key: "currentResidentialStatus", label_en: "Residential Status", label_vi: "Tình trạng nhà ở" },
+    { key: "employmentType", label_en: "Employment Type", label_vi: "Loại công việc" },
+    { key: "annualIncome", label_en: "Main income p.a.", label_vi: "Thu nhập chính mỗi năm" },
+    { key: "generalExpenses", label_en: "Monthly living expense total", label_vi: "Tổng chi phí sinh hoạt hàng tháng" }
+  ];
+  if (!/unemployed|retired/i.test(form.employmentType || "")) {
+    baseRequired.push(
+      { key: "employerName", label_en: "Business Name", label_vi: "Tên công ty" },
+      { key: "employmentFromDate", label_en: "From Date", label_vi: "Làm từ ngày" }
+    );
+  }
+  if (/married|defacto/i.test(form.maritalStatus || "") || form.hasSecondApplicant === "Yes") {
+    baseRequired.push(
+      { key: "secondApplicantFirstName", label_en: "Second applicant first / given name(s)", label_vi: "Tên người vay thứ hai" },
+      { key: "secondApplicantSurname", label_en: "Second applicant family name / surname", label_vi: "Họ người vay thứ hai" },
+      { key: "secondApplicantDateOfBirth", label_en: "Second applicant date of birth", label_vi: "Ngày sinh người vay thứ hai" },
+      { key: "secondAnnualIncome", label_en: "Second income p.a.", label_vi: "Thu nhập người vay thứ hai" }
+    );
+  }
+  const dynamicRequired = activeDynamicFields(form)
+    .filter((field) => fieldRequired(field, form))
+    .map((field) => ({ key: field.key, label_en: field.label_en, label_vi: field.label_vi }));
+  return [...baseRequired, ...dynamicRequired]
+    .filter((field) => !isFilled(form[field.key]))
+    .map((field) => language === "vi" ? field.label_vi || field.label_en : field.label_en);
+}
+
+function DynamicLoanField({ field, form, language, onChange }) {
+  const required = fieldRequired(field, form);
+  const label = fieldLabel(field, language);
+  const help = fieldHelp(field, language);
+  const value = form[field.key] ?? "";
+  if (field.type === "select") {
+    return (
+      <label>
+        {label}
+        <select required={required} value={value} onChange={(event) => onChange(field.key, event.target.value)}>
+          <option value="">{clientFormCopy[language].select}</option>
+          {field.options.map((option) => <option key={option} value={option}>{optionText(option, language)}</option>)}
+        </select>
+        {help ? <span className="field-help">{help}</span> : null}
+      </label>
+    );
+  }
+  if (field.type === "textarea") {
+    return (
+      <label className="client-wide-field">
+        {label}
+        <textarea required={required} value={value} onChange={(event) => onChange(field.key, event.target.value)} />
+        {help ? <span className="field-help">{help}</span> : null}
+      </label>
+    );
+  }
+  if (field.type === "date") {
+    return <DateField label={label} language={language} required={required} value={value} onChange={(next) => onChange(field.key, next)} help={help} />;
+  }
+  return (
+    <label>
+      {label}
+      <input
+        required={required}
+        inputMode={field.type === "money" || field.type === "number" ? "decimal" : undefined}
+        value={value}
+        onChange={(event) => onChange(field.key, event.target.value)}
+      />
+      {help ? <span className="field-help">{help}</span> : null}
+    </label>
+  );
+}
+
+function DynamicLoanSections({ form, language, onChange }) {
+  const sections = activeDynamicFields(form).reduce((acc, field) => {
+    if (!acc[field.section]) acc[field.section] = [];
+    acc[field.section].push(field);
+    return acc;
+  }, {});
+  return Object.entries(sections).map(([section, fields]) => (
+    <div className="conditional-panel" key={section}>
+      <h3>{language === "vi" ? tx(section, language) : section}</h3>
+      <div className="client-intake-grid">
+        {fields.map((field) => (
+          <DynamicLoanField key={field.key} field={field} form={form} language={language} onChange={onChange} />
+        ))}
+      </div>
+    </div>
+  ));
 }
 
 function ClientLoanFormHeader({ title, description, language = "en", onLanguageChange }) {
@@ -1776,7 +2994,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                 <span>Ask these when the call allows. The full fact-find still belongs in the Loan Form.</span>
               </div>
               <div className="note-form-grid">
-                <label>DOB<input type="date" value={dateInputValue(form.dateOfBirth)} onChange={(event) => updateField("dateOfBirth", event.target.value)} /></label>
+                <DateField label="DOB" value={form.dateOfBirth} onChange={(value) => updateField("dateOfBirth", value)} />
                 <label>Address<input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
                 <label>Marital<select value={form.maritalStatus} onChange={(event) => updateField("maritalStatus", event.target.value)}><option>Single</option><option>Married</option><option>Defacto</option><option>Separated</option></select></label>
                 <label>Employer<input value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
@@ -1964,6 +3182,86 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
     gstRegistered: "",
     yearsTrading: "",
     monthlyTurnover: "",
+    propertyFoundStatus: "",
+    purchasePrice: "",
+    sourceOfDeposit: "",
+    contractStatus: "",
+    auctionDate: "",
+    settlementDate: "",
+    financeClauseDate: "",
+    propertyUsage: "",
+    fhogEligible: "",
+    constructionDetails: "",
+    currentInterestRate: "",
+    currentLoanRepaymentType: "",
+    currentRateType: "",
+    fixedExpiryDate: "",
+    offsetRedrawBalance: "",
+    propertyEstimatedValue: "",
+    cashOutAmount: "",
+    cashOutPurpose: "",
+    debtConsolidationDebts: "",
+    payoutDetails: "",
+    arrearsHistory: "",
+    borrowerEntity: "",
+    abnAcn: "",
+    companyTrustDirectorsGuarantors: "",
+    commercialPropertyAddress: "",
+    commercialPropertyType: "",
+    commercialPurchasePrice: "",
+    commercialZoning: "",
+    commercialOccupancy: "",
+    commercialLeaseDetails: "",
+    commercialAnnualRent: "",
+    commercialTenantDetails: "",
+    currentCommercialLoanDetails: "",
+    commercialIncomeEvidence: "",
+    commercialFinancialsAvailable: "",
+    commercialCashOutPurposeEvidence: "",
+    businessLegalName: "",
+    entityType: "",
+    abnStartDate: "",
+    industry: "",
+    businessOwnersDirectors: "",
+    businessLoanPurpose: "",
+    businessLoanAmount: "",
+    businessLoanTerm: "",
+    businessSecurityType: "",
+    existingBusinessDebts: "",
+    atoDebtPaymentPlan: "",
+    bankStatementsAvailable: "",
+    basAvailable: "",
+    taxReturnsAvailable: "",
+    equipmentQuoteInvoice: "",
+    vehicleApplicantType: "",
+    vehicleMake: "",
+    vehicleModel: "",
+    vehicleYear: "",
+    vehicleVariant: "",
+    vehicleVin: "",
+    vehicleRego: "",
+    vehicleOdometer: "",
+    sellerType: "",
+    dealerInvoiceAvailable: "",
+    privateSellerDetails: "",
+    balloonResidual: "",
+    insuranceStatus: "",
+    vehicleRefinancePayout: "",
+    businessUsePercentage: "",
+    chattelMortgageRequired: "",
+    personalLoanPurpose: "",
+    personalLoanAmount: "",
+    personalLoanTerm: "",
+    personalSecurityType: "",
+    fundingTimeframe: "",
+    quoteInvoiceAvailable: "",
+    personalDebtConsolidationDetails: "",
+    paydayLoans: "",
+    bnplUse: "",
+    gamblingTransactions: "",
+    dishonoursHistory: "",
+    hardshipHistory: "",
+    recentDeclines: "",
     sourceUrl: "",
     clientNotes: ""
   });
@@ -1971,6 +3269,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   useEffect(() => {
     document.title = pageTitle();
@@ -2073,6 +3372,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
   const isVehicle = /car loan/i.test(form.loanType);
   const isPersonal = /personal loan/i.test(form.loanType);
   const isRefinance = /refinance/i.test(`${form.loanPurpose} ${form.loanType}`);
+  const missingFields = buildClientLoanMissingFields(form, language);
   const dependantCount = Math.min(Math.max(Number(form.dependants || 0), 0), 4);
   const hasSecondApplicant = /married|defacto/i.test(form.maritalStatus)
     || form.hasSecondApplicant === "Yes"
@@ -2086,6 +3386,13 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
 
   async function submitIntake(event) {
     event.preventDefault();
+    setSubmitAttempted(true);
+    if (missingFields.length) {
+      setError(language === "vi"
+        ? `Vui lòng bổ sung các mục còn thiếu: ${missingFields.slice(0, 8).join(", ")}${missingFields.length > 8 ? "..." : ""}`
+        : `Please complete the missing items: ${missingFields.slice(0, 8).join(", ")}${missingFields.length > 8 ? "..." : ""}`);
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -2141,7 +3448,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
 
   return (
     <main className={`client-intake-shell ${appThemeClass()}`}>
-      <form className="client-intake-card" onSubmit={submitIntake}>
+      <form className="client-intake-card" noValidate onSubmit={submitIntake}>
         <ClientLoanFormHeader
           title={currentTitle}
           description={txt.intro}
@@ -2158,6 +3465,13 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
               clearDraft();
               window.location.reload();
             }}>{L("Start fresh")}</button>
+          </div>
+        ) : null}
+        {submitAttempted && missingFields.length ? (
+          <div className="missing-data-report">
+            <strong>{language === "vi" ? "Missing data report" : "Missing data report"}</strong>
+            <p>{language === "vi" ? "Các mục bắt buộc sẽ thay đổi theo loại khoản vay và câu trả lời của khách." : "Mandatory items change by loan type and by the client's answers."}</p>
+            <ul>{missingFields.map((field) => <li key={field}>{field}</li>)}</ul>
           </div>
         ) : null}
 
@@ -2348,63 +3662,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
             <label>{L("Timeline")}<input value={form.timeline} onChange={(event) => updateField("timeline", event.target.value)} placeholder="ASAP, 3 months, pre-approval" /></label>
             <SelectField language={language} label="Credit issue" value={form.creditIssue} onChange={(value) => updateField("creditIssue", value)} options={["No", "Unsure", "Yes"]} />
           </div>
-          {isRefinance && (
-            <div className="conditional-panel">
-              <h3>{L("Refinance Details")}</h3>
-              <div className="client-intake-grid">
-                <label>{L("Current lender")}<input value={form.currentLender} onChange={(event) => updateField("currentLender", event.target.value)} /></label>
-                <label>{L("Current loan balance")}<input value={form.currentLoanBalance} onChange={(event) => updateField("currentLoanBalance", event.target.value)} /></label>
-                <label>{L("Current repayment")}<input value={form.currentRepayment} onChange={(event) => updateField("currentRepayment", event.target.value)} /></label>
-                <label className="client-wide-field">{L("Reason for refinance")}<textarea value={form.refinanceReason} onChange={(event) => updateField("refinanceReason", event.target.value)} /></label>
-              </div>
-            </div>
-          )}
-          {isVehicle && (
-            <div className="conditional-panel">
-              <h3>{L("Vehicle Details")}</h3>
-              <div className="client-intake-grid">
-                <label>{L("Vehicle use")}<select value={form.vehicleUse} onChange={(event) => updateField("vehicleUse", event.target.value)}><option value="">Please select</option><option>Private</option><option>Business</option></select></label>
-                <label>{L("Vehicle condition")}<select value={form.vehicleCondition} onChange={(event) => updateField("vehicleCondition", event.target.value)}><option value="">Please select</option><option>New</option><option>Used</option></select></label>
-                <label>{L("Sale type")}<select value={form.saleType} onChange={(event) => updateField("saleType", event.target.value)}><option value="">Please select</option><option>Dealer</option><option>Private sale</option></select></label>
-                <label>{L("Vehicle price")}<input value={form.vehiclePrice} onChange={(event) => updateField("vehiclePrice", event.target.value)} /></label>
-                <label>{L("Deposit / trade-in")}<input value={form.tradeInDeposit} onChange={(event) => updateField("tradeInDeposit", event.target.value)} /></label>
-                <label className="client-wide-field">{L("Vehicle description")}<textarea value={form.vehicleDescription} onChange={(event) => updateField("vehicleDescription", event.target.value)} placeholder="Year, make, model, dealer/private seller" /></label>
-              </div>
-            </div>
-          )}
-          {isPersonal && (
-            <div className="conditional-panel">
-              <h3>{L("Personal Loan Details")}</h3>
-              <label className="client-wide-field">{L("What will the loan be used for?")}<textarea value={form.existingDebtsSummary} onChange={(event) => updateField("existingDebtsSummary", event.target.value)} /></label>
-            </div>
-          )}
-          {isBusiness && (
-            <div className="conditional-panel">
-              <h3>{L("Business Details")}</h3>
-              <div className="client-intake-grid">
-                <label>{L("Business purpose")}<input value={form.businessPurpose} onChange={(event) => updateField("businessPurpose", event.target.value)} /></label>
-                <label>{L("GST registered")}<select value={form.gstRegistered} onChange={(event) => updateField("gstRegistered", event.target.value)}><option value="">Please select</option><option>Yes</option><option>No</option></select></label>
-                <label>{L("Years trading")}<input value={form.yearsTrading} onChange={(event) => updateField("yearsTrading", event.target.value)} /></label>
-                <label>{L("Monthly turnover")}<input value={form.monthlyTurnover} onChange={(event) => updateField("monthlyTurnover", event.target.value)} /></label>
-              </div>
-            </div>
-          )}
-          {isCommercial && (
-            <div className="commercial-panel">
-              <h3>{L("Commercial Details")}</h3>
-              <div className="client-intake-grid">
-                <label>{L("Commercial property use")}<input value={form.commercialPropertyUse} onChange={(event) => updateField("commercialPropertyUse", event.target.value)} placeholder={language === "vi" ? "Owner occupied, investment, mixed use" : "Owner occupied, investment, mixed use"} /></label>
-                <label>{L("Business trading name")}<input value={form.businessTradingName} onChange={(event) => updateField("businessTradingName", event.target.value)} /></label>
-                <label>{L("Business ABN/ACN")}<input value={form.businessAbnAcn} onChange={(event) => updateField("businessAbnAcn", event.target.value)} /></label>
-                <label>{L("Business structure")}<input value={form.businessStructure} onChange={(event) => updateField("businessStructure", event.target.value)} placeholder="Sole trader, company, trust, partnership" /></label>
-                <label>{L("Annual business turnover")}<input value={form.annualBusinessTurnover} onChange={(event) => updateField("annualBusinessTurnover", event.target.value)} /></label>
-                <label>{L("Net profit before tax")}<input value={form.netProfitBeforeTax} onChange={(event) => updateField("netProfitBeforeTax", event.target.value)} /></label>
-                <label>{L("Commercial security address")}<input value={form.commercialSecurityAddress} onChange={(event) => updateField("commercialSecurityAddress", event.target.value)} /></label>
-                <label>{L("Lease/rental income")}<input value={form.commercialLeaseIncome} onChange={(event) => updateField("commercialLeaseIncome", event.target.value)} /></label>
-                <label>{L("Purpose of funds")}<input value={form.commercialFundsPurpose} onChange={(event) => updateField("commercialFundsPurpose", event.target.value)} /></label>
-              </div>
-            </div>
-          )}
+          <DynamicLoanSections form={form} language={language} onChange={updateField} />
           <label className="client-wide-field">{L("Existing debts / comments")}<textarea value={form.existingDebtsSummary} onChange={(event) => updateField("existingDebtsSummary", event.target.value)} /></label>
           <label className="client-wide-field">{L("Anything else for your broker")}<textarea value={form.clientNotes} onChange={(event) => updateField("clientNotes", event.target.value)} /></label>
         </section>

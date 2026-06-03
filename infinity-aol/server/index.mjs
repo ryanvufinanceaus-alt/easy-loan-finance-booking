@@ -667,6 +667,86 @@ function applyClientIntakeToNote(note, intake) {
     "gstRegistered",
     "yearsTrading",
     "monthlyTurnover",
+    "propertyFoundStatus",
+    "purchasePrice",
+    "sourceOfDeposit",
+    "contractStatus",
+    "auctionDate",
+    "settlementDate",
+    "financeClauseDate",
+    "propertyUsage",
+    "fhogEligible",
+    "constructionDetails",
+    "currentInterestRate",
+    "currentLoanRepaymentType",
+    "currentRateType",
+    "fixedExpiryDate",
+    "offsetRedrawBalance",
+    "propertyEstimatedValue",
+    "cashOutAmount",
+    "cashOutPurpose",
+    "debtConsolidationDebts",
+    "payoutDetails",
+    "arrearsHistory",
+    "borrowerEntity",
+    "abnAcn",
+    "companyTrustDirectorsGuarantors",
+    "commercialPropertyAddress",
+    "commercialPropertyType",
+    "commercialPurchasePrice",
+    "commercialZoning",
+    "commercialOccupancy",
+    "commercialLeaseDetails",
+    "commercialAnnualRent",
+    "commercialTenantDetails",
+    "currentCommercialLoanDetails",
+    "commercialIncomeEvidence",
+    "commercialFinancialsAvailable",
+    "commercialCashOutPurposeEvidence",
+    "businessLegalName",
+    "entityType",
+    "abnStartDate",
+    "industry",
+    "businessOwnersDirectors",
+    "businessLoanPurpose",
+    "businessLoanAmount",
+    "businessLoanTerm",
+    "businessSecurityType",
+    "existingBusinessDebts",
+    "atoDebtPaymentPlan",
+    "bankStatementsAvailable",
+    "basAvailable",
+    "taxReturnsAvailable",
+    "equipmentQuoteInvoice",
+    "vehicleApplicantType",
+    "vehicleMake",
+    "vehicleModel",
+    "vehicleYear",
+    "vehicleVariant",
+    "vehicleVin",
+    "vehicleRego",
+    "vehicleOdometer",
+    "saleType",
+    "dealerInvoiceAvailable",
+    "privateSellerDetails",
+    "balloonResidual",
+    "insuranceStatus",
+    "vehicleRefinancePayout",
+    "businessUsePercentage",
+    "chattelMortgageRequired",
+    "personalLoanPurpose",
+    "personalLoanAmount",
+    "personalLoanTerm",
+    "personalSecurityType",
+    "fundingTimeframe",
+    "quoteInvoiceAvailable",
+    "personalDebtConsolidationDetails",
+    "paydayLoans",
+    "bnplUse",
+    "gamblingTransactions",
+    "dishonoursHistory",
+    "hardshipHistory",
+    "recentDeclines",
     "sourceUrl"
   ];
   for (const field of fields) {
@@ -694,7 +774,7 @@ function normalizeClientIntakeSubmission(body = {}) {
     secondApplicantSurname,
     body.secondApplicantName
   );
-  return {
+  const base = {
     ...body,
     clientName,
     firstName,
@@ -706,34 +786,486 @@ function normalizeClientIntakeSubmission(body = {}) {
     secondApplicantMiddleName,
     secondApplicantSurname,
     secondApplicantNameSearch: normalizeSearchText(secondApplicantName),
-    loanAmount: Number(body.loanAmount || 0),
-    propertyValue: Number(body.propertyValue || 0),
-    depositEquity: Number(body.depositEquity || 0),
+    dateOfBirth: normalizeAuDate(body.dateOfBirth),
+    secondApplicantDateOfBirth: normalizeAuDate(body.secondApplicantDateOfBirth),
+    dependant1Dob: normalizeAuDate(body.dependant1Dob),
+    dependant2Dob: normalizeAuDate(body.dependant2Dob),
+    dependant3Dob: normalizeAuDate(body.dependant3Dob),
+    dependant4Dob: normalizeAuDate(body.dependant4Dob),
+    currentAddressFromDate: normalizeAuDate(body.currentAddressFromDate),
+    previousAddressFromDate: normalizeAuDate(body.previousAddressFromDate),
+    employmentFromDate: normalizeAuDate(body.employmentFromDate),
+    previousEmploymentFromDate: normalizeAuDate(body.previousEmploymentFromDate),
+    previousEmploymentToDate: normalizeAuDate(body.previousEmploymentToDate),
+    secondApplicantCurrentAddressFromDate: normalizeAuDate(body.secondApplicantCurrentAddressFromDate),
+    secondApplicantEmploymentFromDate: normalizeAuDate(body.secondApplicantEmploymentFromDate),
+    secondApplicantPreviousEmploymentFromDate: normalizeAuDate(body.secondApplicantPreviousEmploymentFromDate),
+    secondApplicantPreviousEmploymentToDate: normalizeAuDate(body.secondApplicantPreviousEmploymentToDate),
+    auctionDate: normalizeAuDate(body.auctionDate),
+    settlementDate: normalizeAuDate(body.settlementDate),
+    financeClauseDate: normalizeAuDate(body.financeClauseDate),
+    fixedExpiryDate: normalizeAuDate(body.fixedExpiryDate),
+    abnStartDate: normalizeAuDate(body.abnStartDate),
+    loanAmount: toNumber(body.loanAmount),
+    propertyValue: toNumber(body.propertyValue),
+    depositEquity: toNumber(body.depositEquity),
     dependants: Number(body.dependants || 0),
-    annualIncome: Number(body.annualIncome || 0),
-    secondAnnualIncome: Number(body.secondAnnualIncome || 0),
-    rentalIncomeAnnual: Number(body.rentalIncomeAnnual || 0),
-    generalExpenses: Number(body.generalExpenses || 0),
-    applicant1Expenses: Number(body.applicant1Expenses || 0),
-    applicant2Expenses: Number(body.applicant2Expenses || 0),
-    applicant1PrivateHealthAmount: Number(body.applicant1PrivateHealthAmount || 0),
-    applicant2PrivateHealthAmount: Number(body.applicant2PrivateHealthAmount || 0),
-    realEstateAssetValue: Number(body.realEstateAssetValue || 0),
-    cashSavingsAmount: Number(body.cashSavingsAmount || 0),
-    motorVehicleValue: Number(body.motorVehicleValue || 0),
-    homeContentsValue: Number(body.homeContentsValue || 0),
+    secondApplicantDependants: Number(body.secondApplicantDependants || 0),
+    annualIncome: toNumber(body.annualIncome),
+    secondAnnualIncome: toNumber(body.secondAnnualIncome),
+    rentalIncomeAnnual: toNumber(body.rentalIncomeAnnual),
+    generalExpenses: toNumber(body.generalExpenses),
+    applicant1Expenses: toNumber(body.applicant1Expenses),
+    applicant2Expenses: toNumber(body.applicant2Expenses),
+    applicant1PrivateHealthAmount: toNumber(body.applicant1PrivateHealthAmount),
+    applicant2PrivateHealthAmount: toNumber(body.applicant2PrivateHealthAmount),
+    realEstateAssetValue: toNumber(body.realEstateAssetValue),
+    cashSavingsAmount: toNumber(body.cashSavingsAmount),
+    motorVehicleValue: toNumber(body.motorVehicleValue),
+    homeContentsValue: toNumber(body.homeContentsValue),
     loanTermYears: Number(body.loanTermYears || 30),
-    hemMonthly: Number(body.hemMonthly || 0),
-    financialAssetBuffer: Number(body.financialAssetBuffer || 0),
-    annualBusinessTurnover: Number(body.annualBusinessTurnover || 0),
-    netProfitBeforeTax: Number(body.netProfitBeforeTax || 0),
-    commercialLeaseIncome: Number(body.commercialLeaseIncome || 0),
-    vehiclePrice: Number(body.vehiclePrice || 0),
-    tradeInDeposit: Number(body.tradeInDeposit || 0),
-    currentLoanBalance: Number(body.currentLoanBalance || 0),
-    currentRepayment: Number(body.currentRepayment || 0),
-    monthlyTurnover: Number(body.monthlyTurnover || 0),
-    offsetRequested: Boolean(body.offsetRequested)
+    hemMonthly: toNumber(body.hemMonthly),
+    financialAssetBuffer: toNumber(body.financialAssetBuffer),
+    purchasePrice: toNumber(body.purchasePrice),
+    propertyEstimatedValue: toNumber(body.propertyEstimatedValue),
+    cashOutAmount: toNumber(body.cashOutAmount),
+    offsetRedrawBalance: toNumber(body.offsetRedrawBalance),
+    annualBusinessTurnover: toNumber(body.annualBusinessTurnover),
+    netProfitBeforeTax: toNumber(body.netProfitBeforeTax),
+    commercialLeaseIncome: toNumber(body.commercialLeaseIncome),
+    commercialPurchasePrice: toNumber(body.commercialPurchasePrice),
+    commercialAnnualRent: toNumber(body.commercialAnnualRent),
+    businessLoanAmount: toNumber(body.businessLoanAmount),
+    monthlyTurnover: toNumber(body.monthlyTurnover),
+    vehiclePrice: toNumber(body.vehiclePrice),
+    tradeInDeposit: toNumber(body.tradeInDeposit),
+    vehicleYear: toNumber(body.vehicleYear),
+    vehicleOdometer: toNumber(body.vehicleOdometer),
+    balloonResidual: toNumber(body.balloonResidual),
+    businessUsePercentage: toNumber(body.businessUsePercentage),
+    personalLoanAmount: toNumber(body.personalLoanAmount),
+    currentLoanBalance: toNumber(body.currentLoanBalance),
+    currentRepayment: toNumber(body.currentRepayment),
+    offsetRequested: toBoolean(body.offsetRequested)
+  };
+  return attachClientIntakePayloads(base, body);
+}
+
+function toNumber(value) {
+  const cleaned = String(value ?? "").replace(/[$,\s]/g, "");
+  if (!cleaned) return 0;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toBoolean(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return /^(true|yes|1)$/i.test(value.trim());
+  return Boolean(value);
+}
+
+function normalizeAuDate(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const match = raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (!match) return raw;
+  const [, day, month, year] = match;
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
+
+function loanTypeKey(loanType = "") {
+  if (/refinance/i.test(loanType)) return "refinance";
+  if (/commercial/i.test(loanType)) return "commercialLoan";
+  if (/business/i.test(loanType)) return "businessLoan";
+  if (/car/i.test(loanType)) return "carLoan";
+  if (/personal/i.test(loanType)) return "personalLoan";
+  return "homeLoan";
+}
+
+const requiredByLoanType = {
+  homeLoan: ["propertyFoundStatus", "sourceOfDeposit", "contractStatus", "propertyUsage"],
+  refinance: ["currentLender", "currentLoanBalance", "currentInterestRate", "currentRepayment", "currentLoanRepaymentType", "currentRateType", "propertyEstimatedValue", "arrearsHistory"],
+  commercialLoan: ["borrowerEntity", "abnAcn", "companyTrustDirectorsGuarantors", "commercialPropertyAddress", "commercialPropertyType", "commercialPurchasePrice", "commercialOccupancy", "commercialIncomeEvidence", "commercialFinancialsAvailable"],
+  businessLoan: ["businessLegalName", "businessTradingName", "abnAcn", "entityType", "gstRegistered", "abnStartDate", "industry", "businessAddress", "businessOwnersDirectors", "businessLoanPurpose", "businessLoanAmount", "businessLoanTerm", "businessSecurityType", "monthlyTurnover", "annualBusinessTurnover", "netProfitBeforeTax", "bankStatementsAvailable", "basAvailable", "taxReturnsAvailable"],
+  carLoan: ["vehicleUse", "vehicleApplicantType", "vehicleCondition", "vehicleMake", "vehicleModel", "vehicleYear", "vehiclePrice", "saleType", "insuranceStatus"],
+  personalLoan: ["personalLoanPurpose", "personalLoanAmount", "personalLoanTerm", "personalSecurityType", "fundingTimeframe", "quoteInvoiceAvailable", "paydayLoans", "bnplUse", "gamblingTransactions", "dishonoursHistory", "hardshipHistory", "recentDeclines"]
+};
+
+const requiredLabels = {
+  firstName: "First / given name(s)",
+  surname: "Family name / surname",
+  dateOfBirth: "Date of birth",
+  email: "Email",
+  mobile: "Mobile",
+  loanType: "Loan type",
+  loanPurpose: "Loan purpose",
+  loanAmount: "Loan amount",
+  address: "Current residential address",
+  currentSuburb: "Suburb",
+  currentState: "State",
+  currentAddressFromDate: "Address from date",
+  currentResidentialStatus: "Residential status",
+  employmentType: "Employment type",
+  employerName: "Employer / business name",
+  employmentFromDate: "Employment from date",
+  annualIncome: "Main income p.a.",
+  generalExpenses: "Monthly living expenses",
+  secondApplicantFirstName: "Second applicant first name",
+  secondApplicantSurname: "Second applicant surname",
+  secondApplicantDateOfBirth: "Second applicant date of birth",
+  secondAnnualIncome: "Second applicant income p.a.",
+  propertyFoundStatus: "Property found status",
+  sourceOfDeposit: "Source of deposit",
+  contractStatus: "Contract status",
+  propertyUsage: "Property use",
+  currentLender: "Current lender",
+  currentLoanBalance: "Current loan balance",
+  currentInterestRate: "Current interest rate",
+  currentRepayment: "Monthly repayment",
+  currentLoanRepaymentType: "Current repayment type",
+  currentRateType: "Current rate type",
+  propertyEstimatedValue: "Estimated property value",
+  arrearsHistory: "Missed repayments / arrears",
+  borrowerEntity: "Borrower entity",
+  abnAcn: "ABN / ACN",
+  companyTrustDirectorsGuarantors: "Company, trust, directors and guarantors",
+  commercialPropertyAddress: "Commercial property address",
+  commercialPropertyType: "Commercial property type",
+  commercialPurchasePrice: "Commercial value / purchase price",
+  commercialOccupancy: "Commercial occupancy",
+  commercialIncomeEvidence: "Commercial income evidence",
+  commercialFinancialsAvailable: "Commercial financials available",
+  businessLegalName: "Business legal name",
+  businessTradingName: "Trading name",
+  entityType: "Entity type",
+  gstRegistered: "GST registered",
+  abnStartDate: "ABN start date",
+  industry: "Industry",
+  businessAddress: "Business address",
+  businessOwnersDirectors: "Owners / directors",
+  businessLoanPurpose: "Business loan purpose",
+  businessLoanAmount: "Business loan amount",
+  businessLoanTerm: "Business loan term",
+  businessSecurityType: "Business security type",
+  monthlyTurnover: "Monthly revenue",
+  annualBusinessTurnover: "Annual turnover",
+  netProfitBeforeTax: "Net profit",
+  bankStatementsAvailable: "Bank statements available",
+  basAvailable: "BAS available",
+  taxReturnsAvailable: "Tax returns available",
+  vehicleUse: "Vehicle use",
+  vehicleApplicantType: "Vehicle applicant type",
+  vehicleCondition: "Vehicle condition",
+  vehicleMake: "Vehicle make",
+  vehicleModel: "Vehicle model",
+  vehicleYear: "Vehicle year",
+  vehiclePrice: "Vehicle purchase price",
+  saleType: "Seller type",
+  insuranceStatus: "Insurance status",
+  personalLoanPurpose: "Personal loan purpose",
+  personalLoanAmount: "Personal loan amount",
+  personalLoanTerm: "Personal loan term",
+  personalSecurityType: "Personal security type",
+  fundingTimeframe: "Funding timeframe",
+  quoteInvoiceAvailable: "Quote / invoice available",
+  paydayLoans: "Payday loans",
+  bnplUse: "BNPL usage",
+  gamblingTransactions: "Gambling transactions",
+  dishonoursHistory: "Dishonours",
+  hardshipHistory: "Hardship history",
+  recentDeclines: "Recent loan declines"
+};
+
+function valuePresent(value) {
+  if (typeof value === "boolean") return true;
+  if (typeof value === "number") return value !== 0;
+  return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
+function buildValidationStatus(submission) {
+  const required = [
+    "firstName",
+    "surname",
+    "dateOfBirth",
+    "email",
+    "mobile",
+    "loanType",
+    "loanPurpose",
+    "loanAmount",
+    "address",
+    "currentSuburb",
+    "currentState",
+    "currentAddressFromDate",
+    "currentResidentialStatus",
+    "employmentType",
+    "annualIncome",
+    "generalExpenses",
+    ...(submission.hasSecondApplicant === "Yes" || /married|defacto/i.test(submission.maritalStatus || "") ? ["secondApplicantFirstName", "secondApplicantSurname", "secondApplicantDateOfBirth", "secondAnnualIncome"] : []),
+    ...(requiredByLoanType[loanTypeKey(submission.loanType)] || [])
+  ];
+  if (!/unemployed|retired/i.test(submission.employmentType || "")) required.push("employerName", "employmentFromDate");
+  if (submission.contractStatus === "Auction") required.push("auctionDate");
+  if (submission.propertyFoundStatus === "Yes") required.push("purchasePrice", "settlementDate");
+  if (submission.currentRateType === "Fixed") required.push("fixedExpiryDate");
+  if (submission.saleType === "Dealer") required.push("dealerInvoiceAvailable");
+  if (submission.saleType === "Private sale") required.push("privateSellerDetails");
+  if (submission.vehicleUse === "Business") required.push("businessUsePercentage", "chattelMortgageRequired");
+  if (submission.personalLoanPurpose === "Debt consolidation") required.push("personalDebtConsolidationDetails");
+  const missingFields = [...new Set(required)].filter((key) => !valuePresent(submission[key])).map((key) => ({
+    key,
+    label: requiredLabels[key] || key
+  }));
+  const warnings = [];
+  if (submission.loanTermYears && ![25, 30, 40].includes(Number(submission.loanTermYears))) warnings.push({ key: "loanTermYears", message: "Loan term is outside the common template values." });
+  if (submission.creditIssue === "Yes" || submission.arrearsHistory === "Yes") warnings.push({ key: "creditHistory", message: "Broker review required for credit history." });
+  return {
+    ok: missingFields.length === 0,
+    missingFields,
+    warnings,
+    generatedAt: new Date().toISOString()
+  };
+}
+
+function buildNormalisedPayload(submission, validationStatus) {
+  return {
+    applicants: [
+      {
+        role: "primary",
+        firstName: submission.firstName,
+        surname: submission.surname,
+        legalName: submission.clientName,
+        dateOfBirth: submission.dateOfBirth,
+        email: submission.email,
+        mobile: submission.mobile,
+        residencyStatus: submission.residencyStatus,
+        visaSubclass: submission.visaSubclass || "",
+        maritalStatus: submission.maritalStatus,
+        dependants: submission.dependants,
+        address: {
+          current: submission.address,
+          suburb: submission.currentSuburb,
+          state: submission.currentState,
+          fromDate: submission.currentAddressFromDate,
+          residentialStatus: submission.currentResidentialStatus,
+          previous: submission.previousAddress
+        }
+      },
+      ...(submission.secondApplicantName ? [{
+        role: "secondary",
+        firstName: submission.secondApplicantFirstName,
+        surname: submission.secondApplicantSurname,
+        legalName: submission.secondApplicantName,
+        dateOfBirth: submission.secondApplicantDateOfBirth,
+        email: submission.secondApplicantEmail,
+        mobile: submission.secondApplicantMobile,
+        residencyStatus: submission.secondApplicantResidencyStatus,
+        visaSubclass: submission.secondApplicantVisaSubclass || "",
+        maritalStatus: submission.secondApplicantMaritalStatus,
+        dependants: submission.secondApplicantDependants,
+        address: {
+          current: submission.secondApplicantAddress || submission.address,
+          suburb: submission.secondApplicantCurrentSuburb,
+          state: submission.secondApplicantCurrentState,
+          fromDate: submission.secondApplicantCurrentAddressFromDate,
+          residentialStatus: submission.secondApplicantCurrentResidentialStatus,
+          previous: submission.secondApplicantPreviousAddress
+        }
+      }] : [])
+    ],
+    employment: {
+      primary: {
+        type: submission.employmentType,
+        employerName: submission.employerName,
+        jobTitle: submission.occupation || submission.jobTitle || "",
+        basis: submission.employmentBasis,
+        fromDate: submission.employmentFromDate
+      },
+      secondary: submission.secondApplicantName ? {
+        type: submission.secondApplicantEmploymentType,
+        employerName: submission.secondApplicantEmployerName,
+        jobTitle: submission.secondApplicantJobTitle,
+        basis: submission.secondApplicantEmploymentBasis,
+        fromDate: submission.secondApplicantEmploymentFromDate
+      } : null
+    },
+    income: {
+      primaryAnnual: submission.annualIncome,
+      secondaryAnnual: submission.secondAnnualIncome,
+      rentalAnnual: submission.rentalIncomeAnnual,
+      monthlyTurnover: submission.monthlyTurnover,
+      annualBusinessTurnover: submission.annualBusinessTurnover,
+      netProfitBeforeTax: submission.netProfitBeforeTax
+    },
+    assets: {
+      cashSavingsAmount: submission.cashSavingsAmount,
+      cashSavingsBank: submission.cashSavingsBank,
+      realEstateAssetAddress: submission.realEstateAssetAddress,
+      realEstateAssetValue: submission.realEstateAssetValue,
+      motorVehicleModelYear: submission.motorVehicleModelYear,
+      motorVehicleValue: submission.motorVehicleValue,
+      financialAssetBuffer: submission.financialAssetBuffer
+    },
+    liabilities: {
+      existingDebtsSummary: submission.existingDebtsSummary,
+      currentLender: submission.currentLender,
+      currentLoanBalance: submission.currentLoanBalance,
+      currentRepayment: submission.currentRepayment,
+      currentInterestRate: submission.currentInterestRate,
+      arrearsHistory: submission.arrearsHistory
+    },
+    expenses: {
+      generalMonthly: submission.generalExpenses,
+      applicant1Monthly: submission.applicant1Expenses,
+      applicant2Monthly: submission.applicant2Expenses,
+      hemMonthly: submission.hemMonthly
+    },
+    loanRequest: {
+      loanType: submission.loanType,
+      loanPurpose: submission.loanPurpose,
+      loanAmount: submission.loanAmount || submission.businessLoanAmount || submission.personalLoanAmount,
+      loanTermYears: submission.loanTermYears,
+      repaymentType: submission.repaymentType,
+      ratePreference: submission.ratePreference,
+      offsetRequested: submission.offsetRequested,
+      propertyFoundStatus: submission.propertyFoundStatus,
+      purchasePrice: submission.purchasePrice,
+      sourceOfDeposit: submission.sourceOfDeposit,
+      contractStatus: submission.contractStatus,
+      settlementDate: submission.settlementDate,
+      financeClauseDate: submission.financeClauseDate,
+      cashOutAmount: submission.cashOutAmount,
+      cashOutPurpose: submission.cashOutPurpose
+    },
+    securityProperties: {
+      propertyLocation: submission.propertyLocation,
+      propertyType: submission.propertyType,
+      propertyUsage: submission.propertyUsage,
+      propertyValue: submission.propertyValue || submission.propertyEstimatedValue,
+      commercialPropertyAddress: submission.commercialPropertyAddress,
+      commercialPropertyType: submission.commercialPropertyType,
+      commercialPurchasePrice: submission.commercialPurchasePrice,
+      commercialOccupancy: submission.commercialOccupancy
+    },
+    businesses: {
+      borrowerEntity: submission.borrowerEntity,
+      businessLegalName: submission.businessLegalName,
+      businessTradingName: submission.businessTradingName,
+      abnAcn: submission.abnAcn || submission.businessAbnAcn,
+      entityType: submission.entityType || submission.businessStructure,
+      gstRegistered: submission.gstRegistered,
+      abnStartDate: submission.abnStartDate,
+      industry: submission.industry,
+      businessOwnersDirectors: submission.businessOwnersDirectors,
+      businessLoanPurpose: submission.businessLoanPurpose,
+      commercialLeaseDetails: submission.commercialLeaseDetails,
+      commercialAnnualRent: submission.commercialAnnualRent,
+      commercialTenantDetails: submission.commercialTenantDetails,
+      commercialIncomeEvidence: submission.commercialIncomeEvidence,
+      commercialFinancialsAvailable: submission.commercialFinancialsAvailable,
+      existingBusinessDebts: submission.existingBusinessDebts,
+      atoDebtPaymentPlan: submission.atoDebtPaymentPlan
+    },
+    vehicles: {
+      vehicleUse: submission.vehicleUse,
+      vehicleApplicantType: submission.vehicleApplicantType,
+      vehicleCondition: submission.vehicleCondition,
+      make: submission.vehicleMake,
+      model: submission.vehicleModel,
+      year: submission.vehicleYear,
+      variant: submission.vehicleVariant,
+      vin: submission.vehicleVin,
+      rego: submission.vehicleRego,
+      odometer: submission.vehicleOdometer,
+      purchasePrice: submission.vehiclePrice,
+      sellerType: submission.saleType,
+      privateSellerDetails: submission.privateSellerDetails,
+      balloonResidual: submission.balloonResidual,
+      insuranceStatus: submission.insuranceStatus,
+      businessUsePercentage: submission.businessUsePercentage,
+      chattelMortgageRequired: submission.chattelMortgageRequired
+    },
+    documents: {
+      bankStatementsAvailable: submission.bankStatementsAvailable,
+      basAvailable: submission.basAvailable,
+      taxReturnsAvailable: submission.taxReturnsAvailable,
+      quoteInvoiceAvailable: submission.quoteInvoiceAvailable,
+      dealerInvoiceAvailable: submission.dealerInvoiceAvailable,
+      equipmentQuoteInvoice: submission.equipmentQuoteInvoice
+    },
+    consents: {
+      privacyAndCreditConsent: submission.privacyAndCreditConsent || ""
+    },
+    brokerNotes: {
+      clientNotes: submission.clientNotes,
+      creditIssue: submission.creditIssue,
+      personalLoanRisks: {
+        paydayLoans: submission.paydayLoans,
+        bnplUse: submission.bnplUse,
+        gamblingTransactions: submission.gamblingTransactions,
+        dishonoursHistory: submission.dishonoursHistory,
+        hardshipHistory: submission.hardshipHistory,
+        recentDeclines: submission.recentDeclines
+      }
+    },
+    validationStatus
+  };
+}
+
+function buildPlatformPayload(platform, normalisedPayload) {
+  return {
+    platform,
+    generatedAt: new Date().toISOString(),
+    applicants: normalisedPayload.applicants,
+    employment: normalisedPayload.employment,
+    income: normalisedPayload.income,
+    assets: normalisedPayload.assets,
+    liabilities: normalisedPayload.liabilities,
+    expenses: normalisedPayload.expenses,
+    loanRequest: normalisedPayload.loanRequest,
+    securityProperties: normalisedPayload.securityProperties,
+    businesses: normalisedPayload.businesses,
+    vehicles: normalisedPayload.vehicles,
+    documents: normalisedPayload.documents,
+    consents: normalisedPayload.consents,
+    brokerNotes: normalisedPayload.brokerNotes,
+    validationStatus: normalisedPayload.validationStatus
+  };
+}
+
+function buildBrokerReviewSummary(normalisedPayload) {
+  const primary = normalisedPayload.applicants[0]?.legalName || "Client";
+  const coApplicant = normalisedPayload.applicants[1]?.legalName;
+  const loan = normalisedPayload.loanRequest;
+  const lines = [
+    `${primary}${coApplicant ? ` and ${coApplicant}` : ""}`,
+    `${loan.loanType || "Loan"} - ${loan.loanPurpose || "purpose not set"}`,
+    `Requested amount: $${Number(loan.loanAmount || 0).toLocaleString("en-AU")}`,
+    `Income: $${Number(normalisedPayload.income.primaryAnnual || 0).toLocaleString("en-AU")} primary${normalisedPayload.income.secondaryAnnual ? `, $${Number(normalisedPayload.income.secondaryAnnual).toLocaleString("en-AU")} secondary` : ""}`,
+    `Living expenses: $${Number(normalisedPayload.expenses.generalMonthly || normalisedPayload.expenses.hemMonthly || 0).toLocaleString("en-AU")} / month`,
+    normalisedPayload.validationStatus.ok ? "Validation: complete" : `Validation: ${normalisedPayload.validationStatus.missingFields.length} missing item(s)`
+  ];
+  return lines.filter(Boolean);
+}
+
+function attachClientIntakePayloads(base, rawBody = {}) {
+  const rawSubmission = { ...rawBody };
+  delete rawSubmission.rawSubmission;
+  delete rawSubmission.normalisedPayload;
+  delete rawSubmission.infinityPayload;
+  delete rawSubmission.aolPayload;
+  delete rawSubmission.validationStatus;
+  delete rawSubmission.brokerReviewSummary;
+  const validationStatus = buildValidationStatus(base);
+  const normalisedPayload = buildNormalisedPayload(base, validationStatus);
+  return {
+    ...base,
+    rawSubmission,
+    normalisedPayload,
+    infinityPayload: buildPlatformPayload("infinity", normalisedPayload),
+    aolPayload: buildPlatformPayload("aol", normalisedPayload),
+    validationStatus,
+    brokerReviewSummary: buildBrokerReviewSummary(normalisedPayload)
   };
 }
 
@@ -1166,7 +1698,9 @@ app.get("/api/client-intakes", (request, response) => {
   if (!canReadLoanSubmissions(request)) return response.status(403).json({ error: "Broker access required for Loan Form Submissions." });
   const rows = clientIntakes.map((intake) => {
     const note = callNotes.find((item) => item.id === intake.callNoteId) || {};
+    const submission = intake.submission || {};
     return {
+      ...submission,
       id: intake.id,
       token: intake.token,
       callNoteId: intake.callNoteId,
@@ -1174,59 +1708,29 @@ app.get("/api/client-intakes", (request, response) => {
       status: intake.status,
       createdAt: intake.createdAt,
       submittedAt: intake.submittedAt,
-      clientName: note.clientName || intake.submission?.clientName || "",
-      firstName: note.firstName || intake.submission?.firstName || "",
-      middleName: note.middleName || intake.submission?.middleName || "",
-      surname: note.surname || intake.submission?.surname || "",
-      clientNameSearch: note.clientNameSearch || intake.submission?.clientNameSearch || "",
-      secondApplicantName: note.secondApplicantName || intake.submission?.secondApplicantName || "",
-      secondApplicantFirstName: note.secondApplicantFirstName || intake.submission?.secondApplicantFirstName || "",
-      secondApplicantMiddleName: note.secondApplicantMiddleName || intake.submission?.secondApplicantMiddleName || "",
-      secondApplicantSurname: note.secondApplicantSurname || intake.submission?.secondApplicantSurname || "",
-      secondApplicantNameSearch: note.secondApplicantNameSearch || intake.submission?.secondApplicantNameSearch || "",
-      secondApplicantDateOfBirth: intake.submission?.secondApplicantDateOfBirth || "",
-      secondApplicantMobile: intake.submission?.secondApplicantMobile || "",
-      secondApplicantEmail: intake.submission?.secondApplicantEmail || "",
-      secondApplicantResidencyStatus: intake.submission?.secondApplicantResidencyStatus || "",
-      secondApplicantVisaSubclass: intake.submission?.secondApplicantVisaSubclass || "",
-      secondApplicantMaritalStatus: intake.submission?.secondApplicantMaritalStatus || "",
-      secondApplicantDependants: intake.submission?.secondApplicantDependants || "",
-      secondApplicantAddress: intake.submission?.secondApplicantAddress || "",
-      secondApplicantCurrentSuburb: intake.submission?.secondApplicantCurrentSuburb || "",
-      secondApplicantCurrentState: intake.submission?.secondApplicantCurrentState || "",
-      secondApplicantCurrentAddressFromDate: intake.submission?.secondApplicantCurrentAddressFromDate || "",
-      secondApplicantCurrentResidentialStatus: intake.submission?.secondApplicantCurrentResidentialStatus || "",
-      secondApplicantPreviousAddress: intake.submission?.secondApplicantPreviousAddress || "",
-      secondApplicantPreviousSuburb: intake.submission?.secondApplicantPreviousSuburb || "",
-      secondApplicantPreviousState: intake.submission?.secondApplicantPreviousState || "",
-      secondApplicantPreviousPostcode: intake.submission?.secondApplicantPreviousPostcode || "",
-      secondApplicantPreviousResidentialStatus: intake.submission?.secondApplicantPreviousResidentialStatus || "",
-      secondApplicantEmploymentType: intake.submission?.secondApplicantEmploymentType || "",
-      secondApplicantEmployerName: intake.submission?.secondApplicantEmployerName || "",
-      secondApplicantBusinessAddress: intake.submission?.secondApplicantBusinessAddress || "",
-      secondApplicantJobTitle: intake.submission?.secondApplicantJobTitle || "",
-      secondApplicantEmploymentBasis: intake.submission?.secondApplicantEmploymentBasis || "",
-      secondApplicantEmploymentFromDate: intake.submission?.secondApplicantEmploymentFromDate || "",
-      secondApplicantEmploymentContactName: intake.submission?.secondApplicantEmploymentContactName || "",
-      secondApplicantEmploymentContactNumber: intake.submission?.secondApplicantEmploymentContactNumber || "",
-      secondApplicantPreviousBusinessName: intake.submission?.secondApplicantPreviousBusinessName || "",
-      secondApplicantPreviousJobTitle: intake.submission?.secondApplicantPreviousJobTitle || "",
-      secondApplicantPreviousEmploymentBasis: intake.submission?.secondApplicantPreviousEmploymentBasis || "",
-      secondApplicantPreviousEmploymentFromDate: intake.submission?.secondApplicantPreviousEmploymentFromDate || "",
-      secondApplicantPreviousEmploymentToDate: intake.submission?.secondApplicantPreviousEmploymentToDate || "",
-      mobile: note.mobile || intake.submission?.mobile || "",
-      email: note.email || intake.submission?.email || "",
-      loanType: note.loanType || intake.submission?.loanType || "",
-      loanPurpose: note.loanPurpose || intake.submission?.loanPurpose || "",
-      loanAmount: note.loanAmount || intake.submission?.loanAmount || 0,
-      propertyValue: note.propertyValue || intake.submission?.propertyValue || 0,
-      depositEquity: note.depositEquity || intake.submission?.depositEquity || 0,
-      propertyLocation: note.propertyLocation || intake.submission?.propertyLocation || "",
-      annualIncome: note.annualIncome || intake.submission?.annualIncome || 0,
-      secondAnnualIncome: note.secondAnnualIncome || intake.submission?.secondAnnualIncome || 0,
-      hemMonthly: note.hemMonthly || intake.submission?.hemMonthly || 0,
-      financialAssetBuffer: note.financialAssetBuffer || intake.submission?.financialAssetBuffer || 0,
-      clientNotes: intake.submission?.clientNotes || "",
+      clientName: note.clientName || submission.clientName || "",
+      firstName: note.firstName || submission.firstName || "",
+      middleName: note.middleName || submission.middleName || "",
+      surname: note.surname || submission.surname || "",
+      clientNameSearch: note.clientNameSearch || submission.clientNameSearch || "",
+      secondApplicantName: note.secondApplicantName || submission.secondApplicantName || "",
+      secondApplicantFirstName: note.secondApplicantFirstName || submission.secondApplicantFirstName || "",
+      secondApplicantMiddleName: note.secondApplicantMiddleName || submission.secondApplicantMiddleName || "",
+      secondApplicantSurname: note.secondApplicantSurname || submission.secondApplicantSurname || "",
+      secondApplicantNameSearch: note.secondApplicantNameSearch || submission.secondApplicantNameSearch || "",
+      mobile: note.mobile || submission.mobile || "",
+      email: note.email || submission.email || "",
+      loanType: note.loanType || submission.loanType || "",
+      loanPurpose: note.loanPurpose || submission.loanPurpose || "",
+      loanAmount: note.loanAmount || submission.loanAmount || 0,
+      propertyValue: note.propertyValue || submission.propertyValue || 0,
+      depositEquity: note.depositEquity || submission.depositEquity || 0,
+      propertyLocation: note.propertyLocation || submission.propertyLocation || "",
+      annualIncome: note.annualIncome || submission.annualIncome || 0,
+      secondAnnualIncome: note.secondAnnualIncome || submission.secondAnnualIncome || 0,
+      hemMonthly: note.hemMonthly || submission.hemMonthly || 0,
+      financialAssetBuffer: note.financialAssetBuffer || submission.financialAssetBuffer || 0,
+      clientNotes: submission.clientNotes || "",
       lastSavedAt: intake.lastSavedAt || intake.updatedAt || intake.submittedAt || null,
       lastEditedBy: intake.lastEditedBy || "",
       factFindExportedAt: intake.factFindExportedAt || null,

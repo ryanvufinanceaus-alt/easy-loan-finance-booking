@@ -1992,6 +1992,29 @@ pre {
   padding: 8px 12px;
 }
 
+.missing-data-report {
+  background: #fff7ed;
+  border-top: 1px solid #fed7aa;
+  color: #7c2d12;
+  padding: 16px clamp(18px, 3vw, 32px);
+}
+
+.missing-data-report strong {
+  display: block;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.missing-data-report p {
+  margin: 0 0 8px;
+}
+
+.missing-data-report ul {
+  columns: 2;
+  margin: 0;
+  padding-left: 18px;
+}
+
 .commercial-panel,
 .conditional-panel {
   background: #f5f8f5;
