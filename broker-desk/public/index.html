@@ -1555,7 +1555,7 @@ const NAV=[
   {id:'loanbook',  label:'Loan Book',     role:'notsupp', section:'Income', ico:'<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>'},
   {id:'commissions',label:'Commissions',  role:'notsupp', ico:'<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'},
   {id:'invoices',  label:'Invoices',      role:'notsupp', ico:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/>'},
-  {id:'revenue',   label:'Revenue',        role:'notsupp', ico:'<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-5"/>'},
+  {id:'revenue',   label:'Tracking',       role:'notsupp', ico:'<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-5"/>'},
   // \u2500\u2500 TOOLS \u2500\u2500
   {id:'documents', label:'Documents',     role:'notsupp', section:'Tools', ico:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'},
   // \u2500\u2500 REFERENCE \u2500\u2500
@@ -11850,61 +11850,68 @@ function rRevenue(){
 }
 
 // ---- Reconciliation engine (frontend) ----
+function _revNameKey(s){ return String(s||'').toLowerCase().replace(/[^a-z\s]/g,' ').split(/\s+/).filter(Boolean).sort().join(' '); }
 function _revReconcile(){
   var loans=(S.loanBook||[]).filter(function(l){ return S.user.role==='admin'?true:l.brokerId===S.user.id; });
   var rows=S.commRows||[];
-  // latest statement month present (bounds the "missing" window)
-  var latest='';
-  rows.forEach(function(r){ if(r.periodMonth>latest)latest=r.periodMonth; });
-  // index rows by ref
-  var byRef={};
+  var myComm=S.commissions||[];
+  // statement coverage; expectation window runs to current month - 1 (trail paid in arrears)
+  var latest=''; rows.forEach(function(r){ if(r.periodMonth>latest)latest=r.periodMonth; });
+  var nowMk=_revMonthKey(new Date());
+  var endMonth=_revAddMonths(nowMk,-1);
+  if(latest>endMonth) endMonth=latest;
+  // index statement rows by ref and by normalized client name
+  var byRef={}, byName={};
   rows.forEach(function(r){
-    var k=String(r.ref||'').trim(); if(!k)return;
-    (byRef[k]=byRef[k]||[]).push(r);
+    var k=String(r.ref||'').trim(); if(k)(byRef[k]=byRef[k]||[]).push(r);
+    var nk=_revNameKey(r.clientRaw); if(nk)(byName[nk]=byName[nk]||[]).push(r);
   });
   var refsUsed={};
   var missingUpfront=[],missingTrail=[],variance=[],matched=0;
   var now=Date.now();
   loans.forEach(function(l){
+    var st=String(l.status||'').toLowerCase();
+    if(st==='closed'||st==='discharged'||st==='paid out'||st==='refinanced') return;
+    var settleMk=_revMonthKey(l.settlementDate); if(!settleMk) return;
     var ref=String(l.finsureRef||'').trim();
-    if(!ref) return; // not linked yet -> skip (shown in Loans tab)
-    refsUsed[ref]=true;
-    var lr=byRef[ref]||[];
-    var ups=lr.filter(function(r){return /up/i.test(r.type);});
-    var trails=lr.filter(function(r){return /trail/i.test(r.type);});
-    var settleMk=_revMonthKey(l.settlementDate);
-    // Upfront: expected once. Flag missing only if settled > ~60 days ago.
+    var nameKey=_revNameKey(l.clientName);
+    // statement rows for this loan: by ref if linked, else by client name
+    var lr = (ref&&byRef[ref]) ? byRef[ref] : (byName[nameKey]||[]);
+    if(ref) refsUsed[ref]=true;
+    lr.forEach(function(r){ if(r.ref) refsUsed[String(r.ref).trim()]=true; });
+    var stUp=lr.filter(function(r){return /up/i.test(r.type);});
+    var stTrailByM={}; lr.forEach(function(r){ if(/trail/i.test(r.type)&&r.periodMonth) stTrailByM[r.periodMonth]=r; });
+    // also count what you've already recorded yourself (Commissions tab)
+    var mc=myComm.filter(function(c){ return c.loanId===l.id; });
+    var mcUp=mc.filter(function(c){return /up/i.test(c.type);});
+    var mcTrailByM={}; mc.forEach(function(c){ if(/trail/i.test(c.type)&&c.period) mcTrailByM[_revMonthKey(c.period)||c.period]=c; });
+    // estimates ("tam tinh")
+    var estUp=_revNum(l.upfrontAmount)||_revNum(l.loanAmount)*(_revNum(l.upfrontRate)/100);
+    var estTrail=_revNum(l.trailMonthly)||_revNum(l.loanAmount)*(_revNum(l.trailRate)/100)/12;
+    // UPFRONT
     var settledMs=new Date(l.settlementDate).getTime();
-    if(ups.length===0 && settleMk){
-      if(!isNaN(settledMs) && (now-settledMs)>55*86400000){
-        missingUpfront.push({loan:l,ref:ref});
-      }
-    } else matched+=ups.length;
-    // Trail: expected each month from settle+1 .. latest statement month
-    if(settleMk && latest){
-      var trailMonths={}; trails.forEach(function(r){ if(r.periodMonth)trailMonths[r.periodMonth]=r; });
-      var mk=_revAddMonths(settleMk,1);
-      var guard=0;
-      while(mk<=latest && guard<120){
-        if(trailMonths[mk]) matched++;
-        else missingTrail.push({loan:l,ref:ref,month:mk});
-        mk=_revAddMonths(mk,1); guard++;
-      }
-      // variance: sort trail by month, flag big drops
-      var sorted=trails.slice().sort(function(a,b){return a.periodMonth<b.periodMonth?-1:1;});
-      for(var i=1;i<sorted.length;i++){
-        var prev=_revNum(sorted[i-1].commission), cur=_revNum(sorted[i].commission);
-        if(prev>5 && cur>0 && cur < prev*0.55){
-          variance.push({loan:l,ref:ref,month:sorted[i].periodMonth,prev:prev,cur:cur,pct:Math.round((1-cur/prev)*100)});
-        }
-      }
+    if(stUp.length===0 && mcUp.length===0){
+      if(!isNaN(settledMs)&&(now-settledMs)>55*86400000) missingUpfront.push({loan:l,ref:ref,est:estUp});
+    } else matched++;
+    // TRAIL months: settle+1 .. endMonth
+    var mk=_revAddMonths(settleMk,1),guard=0;
+    while(mk<=endMonth && guard<120){
+      if(stTrailByM[mk]||mcTrailByM[mk]) matched++;
+      else missingTrail.push({loan:l,ref:ref,month:mk,est:estTrail});
+      mk=_revAddMonths(mk,1); guard++;
+    }
+    // variance from statement trails
+    var sorted=Object.keys(stTrailByM).sort().map(function(m){return stTrailByM[m];});
+    for(var i=1;i<sorted.length;i++){
+      var prev=_revNum(sorted[i-1].commission),cur=_revNum(sorted[i].commission);
+      if(prev>5&&cur>0&&cur<prev*0.55) variance.push({loan:l,ref:ref,month:sorted[i].periodMonth,prev:prev,cur:cur,pct:Math.round((1-cur/prev)*100)});
     }
   });
-  // unknown: rows whose ref matches no loan
+  // unknown: statement rows whose ref matched no loan
   var unknownMap={};
-  rows.forEach(function(r){ var k=String(r.ref||'').trim(); if(k && !refsUsed[k]) unknownMap[k]=r; });
+  rows.forEach(function(r){ var k=String(r.ref||'').trim(); if(k&&!refsUsed[k]) unknownMap[k]=r; });
   var unknown=Object.keys(unknownMap).map(function(k){return unknownMap[k];});
-  return {latest:latest, matched:matched, missingUpfront:missingUpfront, missingTrail:missingTrail, variance:variance, unknown:unknown};
+  return {latest:latest,endMonth:endMonth,matched:matched,missingUpfront:missingUpfront,missingTrail:missingTrail,variance:variance,unknown:unknown};
 }
 
 function rRevRecon(){
@@ -11926,18 +11933,20 @@ function rRevRecon(){
     +kpi('Unknown payment',rec.unknown.length,'#60A5FA')+'</div>';
   // Missing items table
   var items=[];
-  rec.missingUpfront.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref,issue:'Missing upfront',color:'#EF4444'}); });
-  rec.missingTrail.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref,issue:'Missing trail '+_revMonthLabel(x.month),color:'#EF4444'}); });
-  rec.variance.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref,issue:'Trail down '+x.pct+'% '+_revMonthLabel(x.month),color:'#FB923C'}); });
-  rec.unknown.forEach(function(r){ items.push({client:r.clientRaw||'(unknown)',lender:r.lenderRaw||'',ref:r.ref,issue:'Unknown payment - not in loan book',color:'#60A5FA'}); });
+  rec.missingUpfront.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',issue:'Missing upfront',est:x.est||0,color:'#EF4444'}); });
+  rec.missingTrail.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',issue:'Missing trail '+_revMonthLabel(x.month),est:x.est||0,color:'#EF4444'}); });
+  rec.variance.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref,issue:'Trail down '+x.pct+'% '+_revMonthLabel(x.month),est:0,color:'#FB923C'}); });
+  rec.unknown.forEach(function(r){ items.push({client:r.clientRaw||'(unknown)',lender:r.lenderRaw||'',ref:r.ref,issue:'Unknown payment - not in loan book',est:0,color:'#60A5FA'}); });
+  var totalEst=items.reduce(function(s,it){return s+(_revNum(it.est)||0);},0);
   if(items.length===0){
-    h+='<div class="card" style="padding:30px;text-align:center;color:#34D399;">All matched. Nothing missing within imported statements.</div>';
+    h+='<div class="card" style="padding:30px;text-align:center;color:#34D399;">All matched. Nothing missing within the expected window (up to '+_revMonthLabel(rec.endMonth)+').</div>';
   } else {
-    h+='<div style="font-weight:700;color:#c9d1d9;font-size:13px;margin-bottom:8px;">Items to query Finsure ('+items.length+')</div>';
-    h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th>Ref #</th><th>Issue</th></tr></thead><tbody>';
+    h+='<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;"><div style="font-weight:700;color:#c9d1d9;font-size:13px;">Items to query Finsure ('+items.length+')</div><div style="font-size:12px;color:#8b949e;">Est. outstanding: <span style="color:#D4A843;font-weight:700;">$'+totalEst.toLocaleString(undefined,{maximumFractionDigits:2})+'</span></div></div>';
+    h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th>Ref #</th><th>Issue</th><th style="text-align:right;">Est. $</th></tr></thead><tbody>';
     items.forEach(function(it){
       h+='<tr><td style="font-weight:600;color:#c9d1d9;">'+esc(it.client||'')+'</td><td>'+esc(it.lender||'')+'</td><td style="font-family:monospace;font-size:11px;">'+esc(it.ref||'')+'</td>'
-        +'<td><span style="background:'+it.color+'18;color:'+it.color+';border:1px solid '+it.color+'33;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600;">'+esc(it.issue)+'</span></td></tr>';
+        +'<td><span style="background:'+it.color+'18;color:'+it.color+';border:1px solid '+it.color+'33;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600;">'+esc(it.issue)+'</span></td>'
+        +'<td style="text-align:right;color:#c9d1d9;">'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'-')+'</td></tr>';
     });
     h+='</tbody></table>';
     // Email draft
@@ -11957,22 +11966,23 @@ function rRevRecon(){
 
 function _revEmailText(){
   var items=S._revMissingItems||[];
-  var mk=_revReconcile().latest;
-  var lines='Hi team,\n\nReconciling our commissions'+(mk?(' for '+_revMonthLabel(mk)):'')+'. The following items appear missing or off from the statement. Could you please verify?\n\n';
-  lines+='Client\tLender\tRef #\tIssue\n';
-  items.forEach(function(it){ lines+=(it.client||'')+'\t'+(it.lender||'')+'\t'+(it.ref||'')+'\t'+it.issue+'\n'; });
-  lines+='\nThanks,\nRyan\nEasy Loan Finance';
+  var mk=_revReconcile().endMonth;
+  var tot=items.reduce(function(s,it){return s+(_revNum(it.est)||0);},0);
+  var lines='Hi team,\n\nReconciling our commissions'+(mk?(' up to '+_revMonthLabel(mk)):'')+'. The following items appear missing or short from the statements. Could you please verify?\n\n';
+  lines+='Client\tLender\tRef #\tIssue\tEst. amount\n';
+  items.forEach(function(it){ lines+=(it.client||'')+'\t'+(it.lender||'')+'\t'+(it.ref||'')+'\t'+it.issue+'\t'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'')+'\n'; });
+  lines+='\nEstimated total outstanding: ~$'+tot.toLocaleString(undefined,{maximumFractionDigits:2})+'\n(Estimates are indicative, calculated from our loan records.)\n\nThanks,\nRyan\nEasy Loan Finance';
   return lines;
 }
 function _revCopyEmail(){ _revClip(_revEmailText()); toast('Email text copied - paste into Outlook'); }
 function _revCopyTable(){
   var items=S._revMissingItems||[];
-  var t='Client\tLender\tRef #\tIssue\n'+items.map(function(it){return (it.client||'')+'\t'+(it.lender||'')+'\t'+(it.ref||'')+'\t'+it.issue;}).join('\n');
+  var t='Client\tLender\tRef #\tIssue\tEst. amount\n'+items.map(function(it){return (it.client||'')+'\t'+(it.lender||'')+'\t'+(it.ref||'')+'\t'+it.issue+'\t'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'');}).join('\n');
   _revClip(t); toast('Table copied (paste into Excel/email)');
 }
 function _revDownloadCsv(){
   var items=S._revMissingItems||[];
-  var csv='Client,Lender,Ref #,Issue\n'+items.map(function(it){return '"'+(it.client||'')+'","'+(it.lender||'')+'","'+(it.ref||'')+'","'+it.issue+'"';}).join('\n');
+  var csv='Client,Lender,Ref #,Issue,Est amount\n'+items.map(function(it){return '"'+(it.client||'')+'","'+(it.lender||'')+'","'+(it.ref||'')+'","'+it.issue+'","'+(it.est>0?_revNum(it.est).toFixed(2):'')+'"';}).join('\n');
   var blob=new Blob([csv],{type:'text/csv'}); var a=document.createElement('a');
   a.href=URL.createObjectURL(blob); a.download='finsure-missing-'+(new Date().toISOString().slice(0,10))+'.csv'; a.click();
 }
