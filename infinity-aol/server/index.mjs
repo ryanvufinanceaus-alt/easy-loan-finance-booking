@@ -17,10 +17,17 @@ export const app = express();
 const port = Number(process.env.PORT || 8797);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distPath = path.resolve(__dirname, "../dist");
-const dataDir = process.env.INFINITY_AOL_DATA_DIR || path.resolve(__dirname, "data");
+const legacyDataDir = path.resolve(__dirname, "data");
+const defaultDataDir = process.env.NODE_ENV === "production" ? "/var/data" : legacyDataDir;
+const dataDir = path.resolve(process.env.INFINITY_AOL_DATA_DIR || process.env.DATA_DIR || defaultDataDir);
+const backupDir = path.resolve(process.env.INFINITY_AOL_BACKUP_DIR || process.env.BACKUP_DIR || path.join(dataDir, "backups"));
+const legacyBackupDir = path.join(dataDir, "legacy-json-backup");
+const uploadsDir = path.join(dataDir, "uploads");
+const generatedDir = path.join(dataDir, "generated");
+const migrationReportPath = path.join(dataDir, "migration-report.json");
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
-const useSupabaseStore = Boolean(supabaseUrl && supabaseServiceRoleKey);
+const useSupabaseStore = process.env.SUPABASE_ENABLED === "true" && Boolean(supabaseUrl && supabaseServiceRoleKey);
 const storePrefix = process.env.INFINITY_AOL_STORE_PREFIX || "infinity_aol";
 const historyPath = path.resolve(dataDir, "caseHistory.json");
 const preparedArchivePath = path.resolve(dataDir, "preparedPayloads.json");
@@ -41,6 +48,16 @@ const auditLog = [];
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 12 } });
 const notificationEmail = process.env.EASYFLOW_NOTIFY_EMAIL || process.env.BOOKING_NOTIFY_EMAIL || process.env.NOTIFY_EMAIL || "hello@easyloanfinance.com.au";
 const notificationFrom = process.env.EASYFLOW_FROM_EMAIL || "Easy Loan Finance <ryan.vufinanceaus@gmail.com>";
+const storageState = {
+  primary: dataDir === legacyDataDir ? "local-dev-json" : "render-disk-json",
+  dataDir,
+  backupDir,
+  legacyBackupDir,
+  migrationReportPath,
+  supabaseSync: useSupabaseStore,
+  lastWriteAt: null,
+  lastBackupAt: null
+};
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
@@ -72,6 +89,71 @@ function readJsonFile(filePath, fallback) {
 function writeJsonFile(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function ensureStorageFolders() {
+  for (const folder of [dataDir, backupDir, legacyBackupDir, uploadsDir, generatedDir]) {
+    fs.mkdirSync(folder, { recursive: true });
+  }
+}
+
+function migrateLegacyJsonToDataDir() {
+  ensureStorageFolders();
+  const files = [
+    "caseHistory.json",
+    "preparedPayloads.json",
+    "comparisonSnapshots.json",
+    "callNotes.json",
+    "localCases.json",
+    "clientIntakes.json"
+  ];
+  const report = {
+    started_at: new Date().toISOString(),
+    data_dir: dataDir,
+    legacy_data_dir: legacyDataDir,
+    copied_legacy_files: [],
+    seeded_live_files: [],
+    skipped_existing_live_files: [],
+    errors: []
+  };
+
+  for (const file of files) {
+    const legacyPath = path.join(legacyDataDir, file);
+    const livePath = path.join(dataDir, file);
+    try {
+      if (fs.existsSync(legacyPath)) {
+        fs.copyFileSync(legacyPath, path.join(legacyBackupDir, file));
+        report.copied_legacy_files.push(file);
+        if (!fs.existsSync(livePath)) {
+          fs.copyFileSync(legacyPath, livePath);
+          report.seeded_live_files.push(file);
+        } else {
+          report.skipped_existing_live_files.push(file);
+        }
+      } else if (!fs.existsSync(livePath)) {
+        writeJsonFile(livePath, file.endsWith("History.json") || file.endsWith("Snapshots.json") ? {} : []);
+        report.seeded_live_files.push(file);
+      }
+    } catch (error) {
+      report.errors.push({ file, message: error.message });
+    }
+  }
+
+  report.completed_at = new Date().toISOString();
+  writeJsonFile(migrationReportPath, report);
+}
+
+function persistBackupSnapshot() {
+  try {
+    ensureStorageFolders();
+    const backup = buildInfinityAolBackup();
+    const todayPath = path.join(backupDir, `${new Date().toISOString().slice(0, 10)}-backup.json`);
+    writeJsonFile(path.join(backupDir, "latest-backup.json"), backup);
+    if (!fs.existsSync(todayPath)) writeJsonFile(todayPath, backup);
+    storageState.lastBackupAt = new Date().toISOString();
+  } catch (error) {
+    console.warn(`Infinity AOL backup snapshot failed: ${error.message}`);
+  }
 }
 
 function storeKey(name) {
@@ -125,6 +207,8 @@ async function readStoredJson(name, filePath, fallback) {
 function writeStoredJson(name, filePath, value) {
   try {
     writeJsonFile(filePath, value);
+    storageState.lastWriteAt = new Date().toISOString();
+    persistBackupSnapshot();
   } catch (error) {
     console.warn(`Infinity AOL local write failed for ${name}: ${error.message}`);
   }
@@ -518,7 +602,9 @@ function buildInfinityAolBackup() {
   return {
     exportedAt: new Date().toISOString(),
     service: "infinity-aol",
-    storage: useSupabaseStore ? "supabase-app-kv" : "local-json-fallback",
+    storage: storageState.primary,
+    dataDir,
+    backupDir,
     callNotes,
     clientIntakes,
     localCases,
@@ -1624,10 +1710,16 @@ function prepareCase(caseData, source = "prepare", options = {}) {
   return prepared;
 }
 
+migrateLegacyJsonToDataDir();
 await hydrateStoredData();
+persistBackupSnapshot();
 
 app.get("/api/health", (_request, response) => {
   response.json({ ok: true, service: "Infinity AOL AutoFill Assistant" });
+});
+
+app.get("/api/storage/status", (_request, response) => {
+  response.json(storageState);
 });
 
 app.get("/api/cases", (_request, response) => {

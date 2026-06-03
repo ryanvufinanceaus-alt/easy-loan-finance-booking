@@ -2174,6 +2174,10 @@ createServer(async (req, res) => {
         return;
       }
       if (url.pathname.startsWith("/api/auth/")) return await handleApi(req, res, url);
+      if (url.pathname === "/api/storage/status") {
+        forwardToInfinityAolApp(req, res, url);
+        return;
+      }
       if (/^\/api\/brokers(?:\/|$)/.test(url.pathname)) {
         if (!requireInfinityAolLogin(req, res, url)) return;
         return await handleApi(req, res, url);

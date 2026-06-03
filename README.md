@@ -140,3 +140,22 @@ Health check: /api/health
 ```
 
 Keep the root directory blank unless this app is inside a subfolder of a larger repository.
+
+## Render Persistent Disk For EasyFlow Data
+
+After adding a Render Persistent Disk mounted at `/var/data`, set these environment variables on the same Render service:
+
+```text
+NODE_ENV=production
+INFINITY_AOL_DATA_DIR=/var/data
+INFINITY_AOL_BACKUP_DIR=/var/data/backups
+SUPABASE_ENABLED=false
+```
+
+Then redeploy and open:
+
+```text
+https://loan-submissions-management.easyloanfinance.com.au/api/storage/status
+```
+
+It should return `"primary":"render-disk-json"`. Client Call, Loan Form, Loan Form Submissions, EasyFlow payloads, migration report, legacy JSON backup, and backup snapshots will be stored under `/var/data`.
