@@ -1709,8 +1709,12 @@ app.get("/api/client-intakes", (request, response) => {
       token: intake.token,
       callNoteId: intake.callNoteId,
       brokerUser: intake.brokerUser || note.brokerUser || "",
+      source: intake.source || (note.sourceChannel === "Loan Form" ? "public-loan-form" : "client-call-link"),
       status: intake.status,
       createdAt: intake.createdAt,
+      linkCreatedAt: intake.linkCreatedAt || intake.createdAt || null,
+      lastLinkCopiedAt: intake.lastLinkCopiedAt || null,
+      linkCopyCount: Number(intake.linkCopyCount || 0),
       submittedAt: intake.submittedAt,
       clientName: note.clientName || submission.clientName || "",
       firstName: note.firstName || submission.firstName || "",
@@ -1956,8 +1960,23 @@ app.post("/api/call-notes/:noteId/intake-link", (request, response) => {
   const index = callNotes.findIndex((item) => item.id === request.params.noteId);
   if (index === -1) return response.status(404).json({ error: "Call note not found" });
 
+  const now = new Date().toISOString();
   const existing = clientIntakes.find((item) => item.callNoteId === request.params.noteId && item.status !== "expired");
   if (existing) {
+    Object.assign(existing, {
+      source: existing.source || "client-call-link",
+      lastLinkCopiedAt: now,
+      linkCopyCount: Number(existing.linkCopyCount || 0) + 1
+    });
+    callNotes[index] = {
+      ...callNotes[index],
+      intakeToken: existing.token,
+      intakeStatus: existing.status === "submitted" ? "submitted" : "sent",
+      intakeLinkLastCopiedAt: now,
+      updatedAt: now
+    };
+    persistClientIntakes();
+    persistCallNotes();
     return response.json({
       ...existing,
       url: `${loanFormBaseUrl(request)}/loan-form/${existing.token}`,
@@ -1970,14 +1989,18 @@ app.post("/api/call-notes/:noteId/intake-link", (request, response) => {
     token: crypto.randomBytes(18).toString("hex"),
     callNoteId: request.params.noteId,
     brokerUser: callNotes[index].brokerUser,
+    source: "client-call-link",
     status: "sent",
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    linkCreatedAt: now,
+    lastLinkCopiedAt: now,
+    linkCopyCount: 1,
     submittedAt: null,
     submission: null
   };
   clientIntakes.unshift(intake);
   persistClientIntakes();
-  callNotes[index] = { ...callNotes[index], intakeToken: intake.token, intakeStatus: "sent", updatedAt: new Date().toISOString() };
+  callNotes[index] = { ...callNotes[index], intakeToken: intake.token, intakeStatus: "sent", intakeLinkLastCopiedAt: now, updatedAt: now };
   persistCallNotes();
   response.status(201).json({
     ...intake,
@@ -2082,8 +2105,12 @@ app.post("/api/client-intake/public", (request, response) => {
     token: crypto.randomBytes(18).toString("hex"),
     callNoteId: note.id,
     brokerUser: note.brokerUser,
+    source: "public-loan-form",
     status: "submitted",
     createdAt: now,
+    linkCreatedAt: now,
+    lastLinkCopiedAt: null,
+    linkCopyCount: 0,
     submittedAt: now,
     submission
   };
@@ -2125,7 +2152,13 @@ app.post("/api/client-intake/:token", (request, response) => {
 
   const now = new Date().toISOString();
   const submission = normalizeClientIntakeSubmission(request.body || {});
-  clientIntakes[intakeIndex] = { ...clientIntakes[intakeIndex], status: "submitted", submittedAt: now, submission };
+  clientIntakes[intakeIndex] = {
+    ...clientIntakes[intakeIndex],
+    source: clientIntakes[intakeIndex].source || "client-call-link",
+    status: "submitted",
+    submittedAt: now,
+    submission
+  };
   callNotes[noteIndex] = applyClientIntakeToNote(callNotes[noteIndex], submission);
   const localCase = upsertLocalCaseFromCallNote(noteIndex, "loan-form-submitted");
   persistClientIntakes();

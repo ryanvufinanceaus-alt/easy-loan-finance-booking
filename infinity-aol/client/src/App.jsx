@@ -2549,6 +2549,16 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     setMessage(`Loaded ${note.id}`);
   }
 
+  function loanFormStatus(item) {
+    if (item.status === "submitted" || item.intakeStatus === "submitted") return "Loan form submitted";
+    if (item.intakeToken || item.status === "sent") return "Loan form link sent";
+    return "No loan form link";
+  }
+
+  function intakeSourceLabel(intake) {
+    return intake.source === "public-loan-form" ? "Public Loan Form" : "Client Call linked";
+  }
+
   function toggleRedFlag(flag) {
     setRedFlags((items) => (items.includes(flag) ? items.filter((item) => item !== flag) : [...items, flag]));
   }
@@ -2642,7 +2652,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     try {
       const intake = await api(`/api/call-notes/${note.id}/intake-link`, { method: "POST", body: "{}" });
       await navigator.clipboard?.writeText(intake.url).catch(() => {});
-      setMessage(`Loan Form link copied: ${intake.url}`);
+      setMessage(`Loan Form link copied for ${note.clientName || note.id}. It stays linked to call note ${note.id}.`);
       await refreshNotes();
       if (canViewLoanSubmissions) await refreshIntakes();
     } catch (err) {
@@ -2890,7 +2900,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                       {newlyAddedIntakes.length ? newlyAddedIntakes.map((intake) => (
                         <button key={`new-${intake.id}`} type="button" onClick={() => loadIntake(intake)}>
                           <strong>{[intake.clientName, intake.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
-                          <span>{intake.submittedAt ? new Date(intake.submittedAt).toLocaleString() : "Form link sent"}</span>
+                          <span>{intakeSourceLabel(intake)} | {intake.submittedAt ? new Date(intake.submittedAt).toLocaleString() : "Form link sent"}</span>
                         </button>
                       )) : <span>No records yet.</span>}
                     </div>
@@ -2901,7 +2911,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                       {recentlyEditedIntakes.length ? recentlyEditedIntakes.map((intake) => (
                         <button key={`edit-${intake.id}`} type="button" onClick={() => loadIntake(intake)}>
                           <strong>{[intake.clientName, intake.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
-                          <span>{intake.lastSavedAt ? `Edited ${new Date(intake.lastSavedAt).toLocaleString()}` : `Updated ${new Date(intake.updatedAt).toLocaleString()}`}</span>
+                          <span>{intakeSourceLabel(intake)} | {intake.lastSavedAt ? `Edited ${new Date(intake.lastSavedAt).toLocaleString()}` : `Updated ${new Date(intake.updatedAt).toLocaleString()}`}</span>
                         </button>
                       )) : <span>No edits yet.</span>}
                     </div>
@@ -2914,7 +2924,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                         <span className="submission-client-cell">
                           <strong>{intake.clientName || "Unnamed client"}</strong>
                           <small>{intake.secondApplicantName ? `Second applicant: ${intake.secondApplicantName}` : intake.id}</small>
-                          <small>{intake.convertedCaseId || intake.callNoteId}</small>
+                          <small>{intakeSourceLabel(intake)} | {intake.convertedCaseId || intake.callNoteId}</small>
                         </span>
                         <span className="submission-contact-cell">
                           <strong>{intake.mobile || "No mobile"}</strong>
@@ -2926,7 +2936,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                         </span>
                         <span>
                           <strong>{intake.lastSavedAt ? "Edited" : "Added"}</strong>
-                          <small>{intake.lastSavedAt ? new Date(intake.lastSavedAt).toLocaleString() : intake.submittedAt ? new Date(intake.submittedAt).toLocaleString() : `Sent ${new Date(intake.createdAt).toLocaleString()}`}</small>
+                          <small>{loanFormStatus(intake)} | {intake.lastSavedAt ? new Date(intake.lastSavedAt).toLocaleString() : intake.submittedAt ? new Date(intake.submittedAt).toLocaleString() : `Sent ${new Date(intake.createdAt).toLocaleString()}`}</small>
                         </span>
                       </button>
                       <div>
@@ -3152,10 +3162,11 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                   <button type="button" onClick={() => loadNote(note)}>
                     <strong>{[note.clientName, note.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
                     <span>{note.convertedCaseId || note.status} | {new Date(note.updatedAt || note.createdAt).toLocaleString()}</span>
+                    <small>{loanFormStatus(note)}</small>
                   </button>
                   <div>
                     {!note.convertedCaseId && <button type="button" onClick={() => convertSelected(note)}>Draft case</button>}
-                    <button type="button" onClick={() => createIntakeLink(note)}>Copy intake link</button>
+                    <button type="button" onClick={() => createIntakeLink(note)}>Copy Loan Form link</button>
                     {note.convertedCaseId && <button type="button" onClick={onOpenAutofill}>Open Autofill</button>}
                     <button type="button" className="danger-link" onClick={() => deleteNote(note)}>Delete</button>
                   </div>
