@@ -37,11 +37,32 @@ const mockAolPath = `${appBasePath}/mock-infinity-aol`;
 const brandLogoSrc = "/elf-logo.png";
 
 function pageTitle() {
-  if (isLoanSubmissionsRoute) return "Loan Records - Easy Loan Finance";
+  if (isLoanSubmissionsRoute) return "Loan Form Submissions Management - Easy Loan Finance";
   if (isClientCallHost || location.pathname.includes("client-call")) return "Client Call - Easy Loan Finance";
   if (isLoanFormHost) return "Loan Form - Easy Loan Finance";
   if (isEasyFlowAiHost) return "EasyFlow AI - Easy Loan Finance";
   return "EasyFlow AI - Infinity & AOL Automation";
+}
+
+function appMark(appName) {
+  if (/submissions/i.test(appName)) return { code: "LS", label: "Loan Form Submissions" };
+  if (/client call/i.test(appName)) return { code: "CC", label: "Client Call" };
+  if (/loan form/i.test(appName)) return { code: "LF", label: "Loan Form" };
+  return { code: "EF", label: "EasyFlow AI" };
+}
+
+function SystemBrand({ appName, compact = false }) {
+  const mark = appMark(appName);
+  return (
+    <div className={`brand-block system-brand ${compact ? "compact-brand" : ""}`}>
+      <img className="brand-logo" src={brandLogoSrc} alt="Easy Loan Finance" />
+      <span className="app-mark" aria-label={mark.label}>{mark.code}</span>
+      <div>
+        <span>Easy Loan Finance</span>
+        <strong>{appName}</strong>
+      </div>
+    </div>
+  );
 }
 
 function appThemeClass() {
@@ -521,11 +542,7 @@ function InternalLoginPage() {
     <main className="internal-login-shell">
       <section className="internal-login-card">
         <div className="internal-login-brand">
-          <img className="brand-logo" src={brandLogoSrc} alt="Easy Loan Finance" />
-          <div>
-            <span>Easy Loan Finance</span>
-            <strong>{appName}</strong>
-          </div>
+          <SystemBrand appName={appName} compact />
         </div>
         <div className="internal-login-copy">
           <span>Staff only</span>
@@ -576,7 +593,7 @@ function WorkflowGuide({ selectedCaseId, prepared, documentDraft }) {
   ];
 
   return (
-    <section className="workflow-guide" aria-label="Autofill workflow">
+    <section className="workflow-guide" aria-label="EasyFlow AI workflow">
       {steps.map((step) => (
         <div className={step.done ? "done" : ""} key={step.title}>
           <CheckCircle2 size={16} />
@@ -2305,6 +2322,7 @@ function ClientLoanFormHeader({ title, description, language = "en", onLanguageC
       <div className="client-form-hero-top">
         <div className="client-form-brand">
           <img src="/elf-logo.png" alt="Easy Loan Finance" />
+          <span className="app-mark client-form-mark" aria-label="Loan Form">LF</span>
           <div>
             <span>Easy Loan Finance</span>
             <strong>Quick Loan, Easy Life</strong>
@@ -2799,13 +2817,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   return (
     <main className={`notes-shell ${appThemeClass()} ${isLoanSubmissionsRoute ? "submissions-shell" : ""}`}>
       <aside className="notes-sidebar">
-        <div className="brand-block">
-          <img className="brand-logo" src={brandLogoSrc} alt="Easy Loan Finance" />
-          <div>
-            <span>Easy Loan Finance</span>
-            <strong>{isLoanSubmissionsRoute ? "Loan Form Submissions Management" : "Client Call Intake"}</strong>
-          </div>
-        </div>
+        <SystemBrand appName={isLoanSubmissionsRoute ? "Loan Form Submissions Management" : "Client Call Intake"} />
         <TeamSettingsPanel appName={isLoanSubmissionsRoute ? "Loan Form Submissions Management" : "Client Call Intake"} />
         <label className="note-search">
           Search clients
@@ -2853,7 +2865,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
             <strong>{session?.email || "Broker user"}</strong>
             <button className="ghost-button" type="button" onClick={() => refreshIntakes().catch((err) => setError(err.message))}>Refresh</button>
             <button className="primary-button" type="button" disabled={!selectedIntake} onClick={() => onOpenAutofill?.()}>
-              <Play size={16} /> Prepare EasyFlow
+              <Play size={16} /> Prepare in EasyFlow AI
             </button>
             <button className="ghost-button" type="button" onClick={async () => {
               await api("/api/auth/logout", { method: "POST", body: "{}" }).catch(() => {});
@@ -2889,8 +2901,8 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
         {activePanel === "submissions" ? (
           <div className="submission-management">
             <section className="panel note-panel recent-note-panel">
-              <div className="panel-title"><FileJson size={18} /><h2>Loan Form Records</h2></div>
-              <p className="panel-helper inbox-helper">Broker-only data store linked with Client Call Intake and EasyFlow AI. Review client data, export files, and prepare clean payloads for Infinity/AOL.</p>
+              <div className="panel-title"><FileJson size={18} /><h2>Loan Form Submissions</h2></div>
+              <p className="panel-helper inbox-helper">Broker-only data store linked with Client Call Intake and EasyFlow AI. Open submitted data, export files, and prepare clean payloads for Infinity/AOL.</p>
               {canViewLoanSubmissions ? (
                 <>
                 {!search.trim() && <div className="submission-smart-groups">
@@ -2940,16 +2952,16 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                         </span>
                       </button>
                       <div>
-                        <button type="button" onClick={() => loadIntake(intake)}>Review</button>
+                        <button type="button" onClick={() => loadIntake(intake)}>{intake.status === "submitted" ? "Open Submission" : "Open Link Record"}</button>
                         <button type="button" onClick={async () => {
                           await navigator.clipboard?.writeText(intake.url).catch(() => {});
                           setMessage(`Loan Form link copied: ${intake.url}`);
-                        }}>Copy link</button>
+                        }}>Copy Loan Form link</button>
                         <button type="button" onClick={() => downloadFactFind(intake)}><Download size={13} /> Fact Find</button>
                         <button type="button" onClick={() => {
                           loadIntake(intake);
                           onOpenAutofill?.();
-                        }}><Play size={13} /> EasyFlow</button>
+                        }}><Play size={13} /> EasyFlow AI</button>
                       </div>
                     </div>
                   )) : <div className="case-search-empty"><strong>No loan form submissions found.</strong><span>When clients submit the loan form, their fact-find details will appear here for broker review.</span></div>}
@@ -2964,7 +2976,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
               )}
             </section>
             {canViewLoanSubmissions && <section className="panel note-panel submission-editor-panel">
-              <div className="panel-title"><FileJson size={18} /><h2>Edit Client Information</h2></div>
+              <div className="panel-title"><FileJson size={18} /><h2>Edit Loan Form Submission</h2></div>
               {selectedIntake ? (
                 <>
                   <div className="submission-editor-summary">
@@ -2979,6 +2991,11 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                       <small>{selectedIntake.lastEditedBy ? `Edited by ${selectedIntake.lastEditedBy}` : "Original client submission"}</small>
                     </div>
                   </div>
+                  {selectedIntake.status !== "submitted" && (
+                    <div className="info-banner compact">
+                      This is a Loan Form link record only. The full submission fields will appear after the client submits the Loan Form.
+                    </div>
+                  )}
                   <div className="submission-editor-sections">
                     <section>
                       <h3>Overview</h3>
@@ -3082,7 +3099,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
 
           <section className="panel note-panel call-key-details-panel">
             <div className="panel-title"><ShieldCheck size={18} /><h2>Key Client Details</h2></div>
-            <p className="panel-helper">Capture these early if the call allows. They sync into Loan Form, Loan Submissions, and EasyFlow AI.</p>
+            <p className="panel-helper">Capture these early if the call allows. They sync into Loan Form, Loan Form Submissions Management, and EasyFlow AI.</p>
             <div className="call-key-detail-groups">
               <div className="call-key-detail-group">
                 <div className="call-key-detail-heading">
@@ -3154,7 +3171,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
           </section>
 
           <section className="panel note-panel recent-note-panel">
-            <div className="panel-title"><History size={18} /><h2>Call Intake Data</h2></div>
+            <div className="panel-title"><History size={18} /><h2>Client Call Intake Data</h2></div>
             <p className="panel-helper inbox-helper">Short phone notes for team visibility. Use this to search calls, copy the Loan Form link, or create the draft internal case.</p>
             <div className="recent-note-list">
               {filteredNotes.length ? filteredNotes.map((note) => (
@@ -3167,7 +3184,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                   <div>
                     {!note.convertedCaseId && <button type="button" onClick={() => convertSelected(note)}>Draft case</button>}
                     <button type="button" onClick={() => createIntakeLink(note)}>Copy Loan Form link</button>
-                    {note.convertedCaseId && <button type="button" onClick={onOpenAutofill}>Open Autofill</button>}
+                    {note.convertedCaseId && <button type="button" onClick={onOpenAutofill}>Open EasyFlow AI</button>}
                     <button type="button" className="danger-link" onClick={() => deleteNote(note)}>Delete</button>
                   </div>
                 </div>
@@ -4244,16 +4261,10 @@ export default function App() {
   return (
     <main className={`app-shell ${appThemeClass()}`}>
       <aside className="case-sidebar">
-        <div className="brand-block">
-          <img className="brand-logo" src={brandLogoSrc} alt="Easy Loan Finance" />
-          <div>
-            <span>Easy Loan Finance</span>
-            <strong>EasyFlow AI</strong>
-          </div>
-        </div>
+        <SystemBrand appName="EasyFlow AI" />
         <button className="ghost-button sidebar-action" type="button" onClick={() => setView("notes")}>
           <ClipboardList size={16} />
-          Client Call
+          Client Call Intake
         </button>
         <TeamSettingsPanel appName="EasyFlow AI" />
         <div className="case-search">
@@ -4484,7 +4495,7 @@ export default function App() {
             <div className="document-panel">
               <div className="template-box">
                 <label>
-                  Autofill template
+                  EasyFlow AI template
                   <select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>
                     {templates.map((template) => (
                       <option key={template.id} value={template.id}>
@@ -4774,7 +4785,7 @@ Financial asset: 30000`}
         <section className="panel">
           <div className="panel-title">
             <ShieldCheck size={18} />
-            <h2>Autofill Safety Log</h2>
+            <h2>EasyFlow AI Safety Log</h2>
           </div>
           <div className="log-table">
             <div className="log-row header">
