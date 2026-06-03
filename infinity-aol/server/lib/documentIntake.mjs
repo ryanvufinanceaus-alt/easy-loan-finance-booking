@@ -295,19 +295,41 @@ function manualMoneySuggestion(path, value, reason) {
   return manualSuggestion(path, number, reason);
 }
 
+function splitManualName(fullName = "") {
+  const parts = String(fullName || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return {};
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  return {
+    firstName: parts.slice(0, -1).join(" "),
+    lastName: parts.at(-1)
+  };
+}
+
 export function buildDocumentDraft(files = [], options = {}) {
   const documents = files.map(extractFromFile);
   const selectedTemplate = getTemplate(options.templateId);
   const templateOverrides = parseTemplateOverrides(options.templateOverrides);
   const manualIntake = parseManualIntake(options.manualIntake);
   const template = selectedTemplate ? { ...selectedTemplate, ...(templateOverrides || {}) } : templateOverrides;
+  const primaryName = splitManualName(manualIntake.primaryApplicantName);
+  const secondaryName = splitManualName(manualIntake.secondaryApplicantName);
   const fieldSuggestions = documents.flatMap((doc) => doc.suggestions);
   const manualSuggestions = [
     manualMoneySuggestion("loan.loanAmount", manualIntake.loanAmount, "Broker typed loan amount"),
     manualMoneySuggestion("expenses.livingMonthly", manualIntake.hemMonthly, "Broker typed HEM/living expense"),
     manualMoneySuggestion("assets.cash.value", manualIntake.financialAssetBuffer, "Broker typed financial asset buffer"),
+    manualSuggestion("applicants.primary.firstName", primaryName.firstName, "Broker confirmed primary applicant name"),
+    manualSuggestion("applicants.primary.lastName", primaryName.lastName, "Broker confirmed primary applicant surname"),
     manualMoneySuggestion("applicants.primary.income.baseAnnual", manualIntake.primaryAnnualIncome, "Broker typed primary annual income"),
+    manualSuggestion("applicants.primary.dateOfBirth", manualIntake.primaryDateOfBirth, "Broker typed primary DOB"),
+    manualSuggestion("applicants.primary.mobile", manualIntake.primaryMobile, "Broker typed primary mobile"),
+    manualSuggestion("applicants.primary.email", manualIntake.primaryEmail, "Broker typed primary email"),
+    manualSuggestion("applicants.secondary.firstName", secondaryName.firstName, "Broker confirmed secondary applicant name"),
+    manualSuggestion("applicants.secondary.lastName", secondaryName.lastName, "Broker confirmed secondary applicant surname"),
     manualMoneySuggestion("applicants.secondary.income.baseAnnual", manualIntake.secondaryAnnualIncome, "Broker typed secondary annual income"),
+    manualSuggestion("applicants.secondary.dateOfBirth", manualIntake.secondaryDateOfBirth, "Broker typed secondary DOB"),
+    manualSuggestion("applicants.secondary.mobile", manualIntake.secondaryMobile, "Broker typed secondary mobile"),
+    manualSuggestion("applicants.secondary.email", manualIntake.secondaryEmail, "Broker typed secondary email"),
     manualSuggestion("applicants.primary.id.driversLicenceNo", manualIntake.primaryDriversLicenceNo, "Broker typed primary licence number"),
     manualSuggestion("applicants.primary.id.licenceCardNumber", manualIntake.primaryLicenceCardNumber, "Broker typed primary licence card number"),
     manualSuggestion("applicants.primary.id.licenceExpiryDate", manualIntake.primaryLicenceExpiryDate, "Broker typed primary licence expiry"),
@@ -348,6 +370,33 @@ function applicantForPath(merged, role) {
   return merged.applicants.find((applicant) => applicant.role === role) || null;
 }
 
+function ensureSecondaryApplicant(merged, draft) {
+  const manualIntake = draft?.manualIntake || {};
+  const wantsSecondary =
+    manualIntake.hasSecondApplicant === "Yes" ||
+    manualIntake.secondaryApplicantName ||
+    manualIntake.secondaryAnnualIncome ||
+    manualIntake.secondaryDriversLicenceNo ||
+    manualIntake.secondaryDateOfBirth;
+  if (!wantsSecondary || applicantForPath(merged, "secondary")) return;
+  const primary = applicantForPath(merged, "primary") || {};
+  merged.applicants.push({
+    role: "secondary",
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    dateOfBirth: "",
+    maritalStatus: primary.maritalStatus || "",
+    residencyStatus: "",
+    dependants: primary.dependants || 0,
+    email: "",
+    mobile: "",
+    address: primary.address ? { ...primary.address } : {},
+    employment: {},
+    income: {}
+  });
+}
+
 function splitAddress(fullAddress) {
   const match = String(fullAddress).match(/^(.*?),?\s+([A-Za-z ]+)\s+(NSW|VIC|QLD|SA|WA|TAS|ACT|NT)\s+(\d{4})(?:,\s*Australia)?$/i);
   if (!match) return { line1: fullAddress };
@@ -376,6 +425,8 @@ function applySuggestion(merged, item) {
   const applicant = applicantForPath(merged, applicantMatch[1]);
   if (!applicant) return;
   const fieldPath = applicantMatch[2];
+  if (fieldPath === "firstName" && item.value) applicant.firstName = item.value;
+  if (fieldPath === "lastName" && item.value) applicant.lastName = item.value;
   if (fieldPath === "email" && (!applicant.email || item.confidence >= 0.9)) applicant.email = item.value;
   if (fieldPath === "mobile" && (!applicant.mobile || item.confidence >= 0.9)) applicant.mobile = item.value;
   if (fieldPath === "dateOfBirth" && (!applicant.dateOfBirth || item.confidence >= 0.9)) applicant.dateOfBirth = item.value;
@@ -397,6 +448,11 @@ export function mergeDocumentDraft(caseData, draft) {
 
   const merged = structuredClone(caseData);
   const template = draft.templateConfig;
+
+  if (draft.manualIntake?.hasSecondApplicant === "No") {
+    merged.applicants = merged.applicants.filter((applicant) => applicant.role !== "secondary");
+  }
+  ensureSecondaryApplicant(merged, draft);
 
   for (const item of draft.extracted.fieldSuggestions || []) {
     applySuggestion(merged, item);

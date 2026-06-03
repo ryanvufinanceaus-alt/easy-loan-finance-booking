@@ -144,14 +144,34 @@ function recommendedHem(caseData) {
   return Math.round(withDependants / 100) * 100;
 }
 
+function caseHasSecondApplicant(caseData, manualIntake = {}) {
+  if (manualIntake.hasSecondApplicant === "Yes") return true;
+  if (manualIntake.hasSecondApplicant === "No") return false;
+  return Boolean(
+    caseData?.applicants?.some((applicant) => applicant.role === "secondary") ||
+      manualIntake.secondaryApplicantName ||
+      manualIntake.secondaryAnnualIncome ||
+      manualIntake.secondaryDriversLicenceNo
+  );
+}
+
 function initialManualIntake(caseData) {
   if (!caseData) return {};
   const primary = caseData.applicants.find((applicant) => applicant.role === "primary") || {};
   const secondary = caseData.applicants.find((applicant) => applicant.role === "secondary") || {};
   return {
+    hasSecondApplicant: secondary.firstName || secondary.lastName || secondary.income?.baseAnnual ? "Yes" : "No",
+    primaryApplicantName: [primary.firstName, primary.middleName, primary.lastName].filter(Boolean).join(" ") || primary.name || "",
+    secondaryApplicantName: [secondary.firstName, secondary.middleName, secondary.lastName].filter(Boolean).join(" ") || secondary.name || "",
     loanAmount: caseData.loan?.loanAmount || "",
     primaryAnnualIncome: primary.income?.baseAnnual || "",
     secondaryAnnualIncome: secondary.income?.baseAnnual || "",
+    primaryDateOfBirth: primary.dateOfBirth || "",
+    secondaryDateOfBirth: secondary.dateOfBirth || "",
+    primaryMobile: primary.mobile || "",
+    secondaryMobile: secondary.mobile || "",
+    primaryEmail: primary.email || "",
+    secondaryEmail: secondary.email || "",
     primaryDriversLicenceNo: primary.id?.driversLicenceNo || "",
     primaryLicenceExpiryDate: primary.id?.licenceExpiryDate || "",
     primaryLicenceCardNumber: primary.id?.licenceCardNumber || "",
@@ -2472,33 +2492,52 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function updateMaritalStatus(value) {
-    setForm((current) => ({
+  function clearSecondApplicantFields(current) {
+    return {
       ...current,
-      maritalStatus: value,
-      hasSecondApplicant: /married|defacto/i.test(value) ? "Yes" : current.hasSecondApplicant
-    }));
+      hasSecondApplicant: "No",
+      secondApplicantName: "",
+      secondApplicantFirstName: "",
+      secondApplicantMiddleName: "",
+      secondApplicantSurname: "",
+      secondApplicantDateOfBirth: "",
+      secondApplicantMobile: "",
+      secondApplicantEmail: "",
+      secondApplicantAddress: "",
+      secondApplicantResidencyStatus: "Australian citizen",
+      secondApplicantMaritalStatus: "Single",
+      secondApplicantDependants: "0",
+      secondApplicantEmployerName: "",
+      secondApplicantJobTitle: "",
+      secondAnnualIncome: ""
+    };
+  }
+
+  function updateMaritalStatus(value) {
+    setForm((current) => {
+      const next = { ...current, maritalStatus: value };
+      if (/married|defacto/i.test(value)) {
+        return {
+          ...next,
+          hasSecondApplicant: "Yes",
+          secondApplicantMaritalStatus: current.secondApplicantMaritalStatus || value
+        };
+      }
+      return clearSecondApplicantFields(next);
+    });
   }
 
   function updateSecondApplicantChoice(value) {
-    setForm((current) => ({
-      ...current,
-      hasSecondApplicant: value,
-      secondApplicantName: value === "Yes" ? current.secondApplicantName : "",
-      secondApplicantFirstName: value === "Yes" ? current.secondApplicantFirstName : "",
-      secondApplicantMiddleName: value === "Yes" ? current.secondApplicantMiddleName : "",
-      secondApplicantSurname: value === "Yes" ? current.secondApplicantSurname : "",
-      secondApplicantDateOfBirth: value === "Yes" ? current.secondApplicantDateOfBirth : "",
-      secondApplicantMobile: value === "Yes" ? current.secondApplicantMobile : "",
-      secondApplicantEmail: value === "Yes" ? current.secondApplicantEmail : "",
-      secondApplicantAddress: value === "Yes" ? current.secondApplicantAddress : "",
-      secondApplicantResidencyStatus: value === "Yes" ? (current.secondApplicantResidencyStatus || "Australian citizen") : "Australian citizen",
-      secondApplicantMaritalStatus: value === "Yes" ? (current.secondApplicantMaritalStatus || current.maritalStatus || "Single") : "Single",
-      secondApplicantDependants: value === "Yes" ? (current.secondApplicantDependants || "0") : "0",
-      secondApplicantEmployerName: value === "Yes" ? current.secondApplicantEmployerName : "",
-      secondApplicantJobTitle: value === "Yes" ? current.secondApplicantJobTitle : "",
-      secondAnnualIncome: value === "Yes" ? current.secondAnnualIncome : ""
-    }));
+    setForm((current) => {
+      if (value !== "Yes") return clearSecondApplicantFields(current);
+      return {
+        ...current,
+        hasSecondApplicant: "Yes",
+        secondApplicantResidencyStatus: current.secondApplicantResidencyStatus || "Australian citizen",
+        secondApplicantMaritalStatus: current.secondApplicantMaritalStatus || current.maritalStatus || "Single",
+        secondApplicantDependants: current.secondApplicantDependants || "0"
+      };
+    });
   }
 
   function loadNote(note) {
@@ -2538,8 +2577,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
       );
       const hasSecondApplicantForSave =
         form.hasSecondApplicant === "Yes" ||
-        /married|defacto/i.test(form.maritalStatus || "") ||
-        Boolean(secondaryLegalName);
+        /married|defacto/i.test(form.maritalStatus || "");
       const callPayload = {
         ...form,
         clientName: primaryLegalName,
@@ -2735,16 +2773,9 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [submissionDirty]);
 
-  const callSecondApplicantName = composeLegalName(
-    form.secondApplicantFirstName,
-    form.secondApplicantMiddleName,
-    form.secondApplicantSurname,
-    form.secondApplicantName
-  );
   const callHasSecondApplicant =
     form.hasSecondApplicant === "Yes" ||
-    /married|defacto/i.test(form.maritalStatus || "") ||
-    Boolean(callSecondApplicantName);
+    /married|defacto/i.test(form.maritalStatus || "");
 
   return (
     <main className={`notes-shell ${appThemeClass()} ${isLoanSubmissionsRoute ? "submissions-shell" : ""}`}>
@@ -3838,7 +3869,7 @@ export default function App() {
     const intake = { ...initialManualIntake(caseData), ...saved };
     setManualIntake(intake);
     setHemMonthly(Number(saved.hemMonthly || caseData.expenses?.livingMonthly || recommendedHem(caseData)));
-    setHemProfileKey(saved.hemProfileKey || ((caseData.applicants?.length || 1) > 1 ? "coupleStandard" : "singleStandard"));
+    setHemProfileKey(saved.hemProfileKey || (caseHasSecondApplicant(caseData, intake) ? "coupleStandard" : "singleStandard"));
     setFinancialAssetBuffer(Number(saved.financialAssetBuffer || 30000));
   }, [caseData]);
 
@@ -3893,12 +3924,49 @@ export default function App() {
     return JSON.parse(templateJson);
   }
 
+  const easyFlowHasSecondApplicant = caseHasSecondApplicant(caseData, manualIntake);
+  const primaryCaseApplicant = caseData?.applicants?.find((applicant) => applicant.role === "primary") || {};
+  const secondaryCaseApplicant = caseData?.applicants?.find((applicant) => applicant.role === "secondary") || {};
+  const primaryLinkedName = manualIntake.primaryApplicantName || [primaryCaseApplicant.firstName, primaryCaseApplicant.middleName, primaryCaseApplicant.lastName].filter(Boolean).join(" ");
+  const secondaryLinkedName = manualIntake.secondaryApplicantName || [secondaryCaseApplicant.firstName, secondaryCaseApplicant.middleName, secondaryCaseApplicant.lastName].filter(Boolean).join(" ");
+
+  function updateEasyFlowSecondApplicant(value) {
+    setManualIntake((current) => {
+      if (value !== "Yes") {
+        return {
+          ...current,
+          hasSecondApplicant: "No",
+          secondaryApplicantName: "",
+          secondaryAnnualIncome: "",
+          secondaryDateOfBirth: "",
+          secondaryMobile: "",
+          secondaryEmail: "",
+          secondaryDriversLicenceNo: "",
+          secondaryLicenceCardNumber: "",
+          secondaryLicenceExpiryDate: ""
+        };
+      }
+      return {
+        ...current,
+        hasSecondApplicant: "Yes",
+        secondaryApplicantName: current.secondaryApplicantName || secondaryLinkedName || "",
+        secondaryAnnualIncome: current.secondaryAnnualIncome || secondaryCaseApplicant.income?.baseAnnual || ""
+      };
+    });
+  }
+
   function currentManualIntake() {
+    const hasSecondApplicant = caseHasSecondApplicant(caseData, manualIntake);
     return {
       ...manualIntake,
+      hasSecondApplicant: hasSecondApplicant ? "Yes" : "No",
+      secondaryApplicantName: hasSecondApplicant ? manualIntake.secondaryApplicantName : "",
       loanAmount: parseMoneyInput(manualIntake.loanAmount),
       primaryAnnualIncome: parseMoneyInput(manualIntake.primaryAnnualIncome),
-      secondaryAnnualIncome: parseMoneyInput(manualIntake.secondaryAnnualIncome),
+      secondaryAnnualIncome: hasSecondApplicant ? parseMoneyInput(manualIntake.secondaryAnnualIncome) : 0,
+      secondaryDriversLicenceNo: hasSecondApplicant ? manualIntake.secondaryDriversLicenceNo : "",
+      secondaryLicenceCardNumber: hasSecondApplicant ? manualIntake.secondaryLicenceCardNumber : "",
+      secondaryLicenceExpiryDate: hasSecondApplicant ? manualIntake.secondaryLicenceExpiryDate : "",
       hemMonthly,
       hemProfileKey,
       financialAssetBuffer
@@ -4133,8 +4201,10 @@ export default function App() {
   const queuedFiles = [...documents, ...ocrTextFiles];
   const extractedRows = [
     ["Loan amount", manualIntake.loanAmount ? currency(parseMoneyInput(manualIntake.loanAmount)) : prepared?.payload?.loan?.loanAmount ? currency(prepared.payload.loan.loanAmount) : "Not set"],
+    ["Primary applicant", primaryLinkedName || "Not selected"],
+    ["Second applicant", easyFlowHasSecondApplicant ? (secondaryLinkedName || "Joint applicant") : "No"],
     ["Primary income", manualIntake.primaryAnnualIncome ? currency(parseMoneyInput(manualIntake.primaryAnnualIncome)) : "CRM/file"],
-    ["Secondary income", manualIntake.secondaryAnnualIncome ? currency(parseMoneyInput(manualIntake.secondaryAnnualIncome)) : caseData?.applicants?.length > 1 ? "CRM/file" : "N/A"],
+    ["Secondary income", easyFlowHasSecondApplicant ? (manualIntake.secondaryAnnualIncome ? currency(parseMoneyInput(manualIntake.secondaryAnnualIncome)) : "CRM/file") : "N/A"],
     ["HEM / living", currency(hemMonthly)],
     ["Financial asset", currency(financialAssetBuffer)],
     ["Files queued", String(queuedFiles.length)],
@@ -4256,6 +4326,31 @@ export default function App() {
             </div>
             <div className="quick-input-grid">
               <label>
+                Primary applicant
+                <input
+                  value={manualIntake.primaryApplicantName || primaryLinkedName || ""}
+                  onChange={(event) => setManualIntake((value) => ({ ...value, primaryApplicantName: event.target.value }))}
+                  placeholder="Linked from call/form"
+                />
+              </label>
+              <label>
+                Second applicant
+                <select value={easyFlowHasSecondApplicant ? "Yes" : "No"} onChange={(event) => updateEasyFlowSecondApplicant(event.target.value)}>
+                  <option>No</option>
+                  <option>Yes</option>
+                </select>
+              </label>
+              {easyFlowHasSecondApplicant && (
+                <label>
+                  Second applicant name
+                  <input
+                    value={manualIntake.secondaryApplicantName || secondaryLinkedName || ""}
+                    onChange={(event) => setManualIntake((value) => ({ ...value, secondaryApplicantName: event.target.value }))}
+                    placeholder="Linked from call/form"
+                  />
+                </label>
+              )}
+              <label>
                 Loan amount
                 <input
                   value={manualIntake.loanAmount || ""}
@@ -4271,14 +4366,34 @@ export default function App() {
                   placeholder="$130,600"
                 />
               </label>
+              {easyFlowHasSecondApplicant && (
+                <label>
+                  Secondary annual income
+                  <input
+                    value={manualIntake.secondaryAnnualIncome || ""}
+                    onChange={(event) => setManualIntake((value) => ({ ...value, secondaryAnnualIncome: event.target.value }))}
+                    placeholder="$80,000"
+                  />
+                </label>
+              )}
               <label>
-                Secondary annual income
+                Primary DOB
                 <input
-                  value={manualIntake.secondaryAnnualIncome || ""}
-                  onChange={(event) => setManualIntake((value) => ({ ...value, secondaryAnnualIncome: event.target.value }))}
-                  placeholder="Leave blank for single applicant"
+                  value={manualIntake.primaryDateOfBirth || ""}
+                  onChange={(event) => setManualIntake((value) => ({ ...value, primaryDateOfBirth: event.target.value }))}
+                  placeholder="DD-MM-YYYY"
                 />
               </label>
+              {easyFlowHasSecondApplicant && (
+                <label>
+                  Secondary DOB
+                  <input
+                    value={manualIntake.secondaryDateOfBirth || ""}
+                    onChange={(event) => setManualIntake((value) => ({ ...value, secondaryDateOfBirth: event.target.value }))}
+                    placeholder="DD-MM-YYYY"
+                  />
+                </label>
+              )}
               <label>
                 Primary licence no.
                 <input
@@ -4298,10 +4413,10 @@ export default function App() {
                 <input
                   value={manualIntake.primaryLicenceExpiryDate || ""}
                   onChange={(event) => setManualIntake((value) => ({ ...value, primaryLicenceExpiryDate: event.target.value }))}
-                  placeholder="YYYY-MM-DD"
+                  placeholder="DD-MM-YYYY"
                 />
               </label>
-              {caseData?.applicants?.length > 1 && (
+              {easyFlowHasSecondApplicant && (
                 <>
                   <label>
                     Secondary licence no.
@@ -4322,7 +4437,7 @@ export default function App() {
                     <input
                       value={manualIntake.secondaryLicenceExpiryDate || ""}
                       onChange={(event) => setManualIntake((value) => ({ ...value, secondaryLicenceExpiryDate: event.target.value }))}
-                      placeholder="YYYY-MM-DD"
+                      placeholder="DD-MM-YYYY"
                     />
                   </label>
                 </>
