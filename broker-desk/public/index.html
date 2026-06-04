@@ -1972,7 +1972,8 @@ function _renderModal(){
       m==='changePass'?rChangePass():
       m==='tfaSetup'?rTfaSetup():
       m==='bulkEmail'?rBulkEmail():
-      m==='revPreview'?rRevPreviewModal():'';
+      m==='revPreview'?rRevPreviewModal():
+      m==='revSync'?rRevSyncModal():'';
   } catch(e) {
     mc.innerHTML='';
     console.error(e);toast('Modal error: '+e.message,1);
@@ -11922,6 +11923,7 @@ function rRevRecon(){
   // Upload
   h+='<div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">'
     +'<label class="btn-gold" style="font-size:13px;padding:9px 16px;cursor:pointer;">Upload Finsure statement (.xlsx)<input type="file" accept=".xlsx,.xls,.csv" style="display:none;" onchange="_revParseFile(this)"></label>'
+    +((S.commRows||[]).length?'<button class="btn-sec" style="font-size:13px;padding:9px 16px;" onclick="_revOpenSync()">Sync to Commissions</button>':'')
     +'<span style="font-size:12px;color:#6b7280;">'+(rec.latest?('Statements up to '+_revMonthLabel(rec.latest)):'No statement imported yet')+'</span>'
     +(unlinked?'<span style="font-size:12px;color:#FB923C;">'+unlinked+' loan(s) not linked to a Ref # &mdash; see Loans tab</span>':'')+'</div>';
   // KPIs
@@ -12144,6 +12146,74 @@ async function _revSaveLoan(id){
   var r=await gs_('updateLoanRevenue',S.tok,id,{finsureRef:ref.trim(),repaymentType:rep,trailRate:rate});
   if(r&&r.ok){ var l=(S.loanBook||[]).find(function(x){return x.id===id;}); if(l){l.finsureRef=ref.trim();l.repaymentType=rep;l.trailRate=rate;} toast('Saved'); render(); }
   else toast((r&&r.msg)||'Save failed',1);
+}
+
+// ---- Sync matched statement rows into Commissions (feeds invoices) ----
+function _revPeriodLabel(mk){ if(!mk)return''; var p=mk.split('-'); return new Date(+p[0],+p[1]-1,1).toLocaleDateString('en-AU',{month:'short',year:'numeric'}); }
+function _revBuildSyncPlan(){
+  var loans=S.loanBook||[], rows=S.commRows||[], existing=S.commissions||[];
+  var loanByRef={}, loanByName={};
+  loans.forEach(function(l){ var r=String(l.finsureRef||'').trim(); if(r)loanByRef[r]=l; var n=_revNameKey(l.clientName); if(n&&!loanByName[n])loanByName[n]=l; });
+  var plan=[], unmatched=0;
+  rows.forEach(function(r){
+    var ref=String(r.ref||'').trim();
+    var loan=(ref&&loanByRef[ref])?loanByRef[ref]:loanByName[_revNameKey(r.clientRaw)];
+    if(!loan){ unmatched++; return; }
+    var type=/trail/i.test(r.type)?'Trail':'Upfront';
+    var amt=_revNum(r.net)||_revNum(r.commission);
+    var period=type==='Trail'?_revPeriodLabel(r.periodMonth):'';
+    plan.push({loanId:loan.id,caseId:loan.caseId||'',brokerId:loan.brokerId||'',brokerName:loan.brokerName||'',clientName:loan.clientName||'',type:type,amount:amt,period:period,periodMonth:r.periodMonth||'',ref:ref,receivedDate:new Date().toISOString().slice(0,10),batchId:r.batchId||''});
+  });
+  function norm(p){ return _revMonthKey(p)||String(p||'').toLowerCase(); }
+  plan.forEach(function(it){
+    var ex=existing.filter(function(c){ return c.loanId===it.loanId&&c.type===it.type&&String(c.status||'').toLowerCase()!=='clawback'&&(it.type==='Trail'?norm(c.period)===norm(it.period||it.periodMonth):true); });
+    if(ex.length){ it._cls=String(ex[0].invoiceNumber||'').trim()?'skip':'update'; }
+    else it._cls='create';
+  });
+  return {plan:plan, create:plan.filter(function(p){return p._cls==='create';}).length, update:plan.filter(function(p){return p._cls==='update';}).length, skip:plan.filter(function(p){return p._cls==='skip';}).length, unmatched:unmatched};
+}
+function _revOpenSync(){ S._revSyncPlan=_revBuildSyncPlan(); openModal('revSync'); }
+function rRevSyncModal(){
+  var sp=S._revSyncPlan; if(!sp)return '';
+  var clsColor={create:'#34D399',update:'#D4A843',skip:'#6b7280'};
+  var clsLabel={create:'New',update:'Update',skip:'Skip (invoiced)'};
+  var body='<div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;">'
+    +'<div style="flex:1;min-width:90px;background:#11161f;border:1px solid #34D39933;border-radius:8px;padding:9px 12px;"><div style="font-size:10px;color:#34D399;font-weight:700;text-transform:uppercase;">Create new</div><div style="font-size:20px;font-weight:800;color:#c9d1d9;">'+sp.create+'</div></div>'
+    +'<div style="flex:1;min-width:90px;background:#11161f;border:1px solid #D4A84333;border-radius:8px;padding:9px 12px;"><div style="font-size:10px;color:#D4A843;font-weight:700;text-transform:uppercase;">Update</div><div style="font-size:20px;font-weight:800;color:#c9d1d9;">'+sp.update+'</div></div>'
+    +'<div style="flex:1;min-width:90px;background:#11161f;border:1px solid #6b728033;border-radius:8px;padding:9px 12px;"><div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Skip (invoiced)</div><div style="font-size:20px;font-weight:800;color:#c9d1d9;">'+sp.skip+'</div></div>'
+    +(sp.unmatched?'<div style="flex:1;min-width:90px;background:#11161f;border:1px solid #60A5FA33;border-radius:8px;padding:9px 12px;"><div style="font-size:10px;color:#60A5FA;font-weight:700;text-transform:uppercase;">Unmatched</div><div style="font-size:20px;font-weight:800;color:#c9d1d9;">'+sp.unmatched+'</div></div>':'')+'</div>';
+  if(sp.unmatched) body+='<div style="font-size:11px;color:#60A5FA;margin-bottom:10px;">'+sp.unmatched+' row(s) could not match a loan (no Ref# link / name mismatch) - link them in the Loans tab, then sync again.</div>';
+  body+='<div style="max-height:48vh;overflow:auto;border:1px solid #1e2430;border-radius:8px;"><table class="tbl"><thead><tr><th>Action</th><th>Client</th><th>Type</th><th>Period</th><th style="text-align:right;">Net $</th></tr></thead><tbody>';
+  sp.plan.slice(0,300).forEach(function(it){
+    body+='<tr><td><span style="color:'+clsColor[it._cls]+';font-weight:600;font-size:11px;">'+clsLabel[it._cls]+'</span></td><td>'+esc(it.clientName)+'</td><td>'+esc(it.type)+'</td><td>'+esc(it.period||'-')+'</td><td style="text-align:right;">$'+_revNum(it.amount).toFixed(2)+'</td></tr>';
+  });
+  body+='</tbody></table></div>';
+  return '<div class="m-ct"><div class="m-box">'
+    +'<div style="padding:16px 20px;border-bottom:1px solid #1e2430;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;"><div style="font-size:15px;font-weight:700;color:#c9d1d9;">Sync to Commissions</div>'
+    +'<button class="btn-ghost" onclick="closeModal()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>'
+    +'<div style="padding:18px 20px;overflow-y:auto;max-height:70vh;"><div style="font-size:11px;color:#6b7280;margin-bottom:12px;line-height:1.6;">Net amounts (after split) become Received commissions you can invoice, each stamped with its Finsure Ref#. The Ref# is also linked back to the loan so future statements auto-match. Protected: invoiced records are never changed, an existing different Ref# is never overwritten (flagged instead), and any amount change keeps the old value in notes.</div>'+body+'</div>'
+    +'<div style="padding:14px 20px;border-top:1px solid #1e2430;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;"><button class="btn-sec" onclick="closeModal()">Cancel</button><button class="btn-gold" onclick="_revConfirmSync()">Sync '+(sp.create+sp.update)+' records</button></div>'
+    +'</div></div>';
+}
+async function _revConfirmSync(){
+  var sp=S._revSyncPlan; if(!sp)return;
+  var list=sp.plan.filter(function(p){return p._cls!=='skip';}).map(function(p){return {loanId:p.loanId,caseId:p.caseId,brokerId:p.brokerId,brokerName:p.brokerName,clientName:p.clientName,type:p.type,amount:p.amount,period:p.period,periodMonth:p.periodMonth,ref:p.ref,receivedDate:p.receivedDate,batchId:p.batchId};});
+  showLoad();
+  var r=await gs_('syncCommissions',S.tok,list);
+  if(r&&r.ok){
+    var cr=await gs_('getCommissions',S.tok); if(cr&&cr.ok)S.commissions=cr.data||[];
+    var lb=await gs_('getLoanBook',S.tok); if(lb&&lb.ok)S.loanBook=lb.data||[];
+    hideLoad();
+    var msg='Synced: '+r.created+' new, '+r.updated+' updated, '+r.skipped+' skipped';
+    if(r.linked) msg+=' | '+r.linked+' Ref# linked';
+    toast(msg);
+    closeModal();
+    if(r.conflicts&&r.conflicts.length){
+      alert('Ref# conflicts (old ref kept, NOT overwritten) - review in Loans tab:\n\n'+r.conflicts.map(function(c){return '- '+c.client+': loan has '+c.existing+', statement says '+c.fromStatement;}).join('\n'));
+    }
+    render();
+  }
+  else { hideLoad(); toast((r&&r.msg)||'Sync failed',1); }
 }
 
 // ---- Batches tab ----
