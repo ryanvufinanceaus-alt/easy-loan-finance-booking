@@ -11810,17 +11810,33 @@ async function clearActivity_(){
 // reconcile vs settled loans -> show missing/variance -> draft email to Finsure.
 // ============================================================================
 function _revNum(v){ if(v==null)return 0; var s=String(v).replace(/[^0-9.\-]/g,''); var n=parseFloat(s); return isNaN(n)?0:n; }
+// Strict month detector for blind column scans: only real month labels
+// (YYYY-MM, Mon-YY, Mon YYYY, bare month). Rejects ref numbers / amounts.
+function _revMonthStrict(v, fy){
+  if(v==null||v==='')return '';
+  if(Object.prototype.toString.call(v)==='[object Date]'){ return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0'); }
+  var t=String(v).trim();
+  function yr(y){ y=String(y); return y.length<=2?'20'+('0'+y).slice(-2):y; }
+  function out(y,mo){ return y+'-'+('0'+mo).slice(-2); }
+  var mn=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  var m=/^(\d{4})-(\d{1,2})(?:-\d{1,2})?(?:[ T].*)?$/.exec(t); if(m&&+m[2]>=1&&+m[2]<=12)return out(m[1],+m[2]); // YYYY-MM[-DD][ time]
+  m=/^([a-z]{3,9})[-\s\/]+(\d{2,4})$/i.exec(t); if(m){var i=mn.indexOf(m[1].toLowerCase().slice(0,3)); if(i>=0)return out(yr(m[2]),i+1);}
+  m=/^([a-z]{3,9})$/i.exec(t); if(m){var j=mn.indexOf(m[1].toLowerCase().slice(0,3)); if(j>=0&&fy)return out(fy,j+1);}
+  m=/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(t); if(m){var mo=+m[1]>12?+m[2]:+m[1]; if(mo>=1&&mo<=12)return out(yr(m[3]),mo);} // M/D/Y (US)
+  return '';
+}
 function _revMonthKey(v, fallbackYear){
   if(v==null||v==='')return '';
   if(Object.prototype.toString.call(v)==='[object Date]'){ return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0'); }
   var t=String(v).trim();
-  var m=/^(\d{4})-(\d{2})/.exec(t); if(m)return m[1]+'-'+m[2];
-  m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(t); if(m)return m[3]+'-'+String(m[2]).padStart(2,'0'); // dd/mm/yyyy
+  function yr(y){ y=String(y); return y.length<=2 ? '20'+('0'+y).slice(-2) : y; }
   var mn=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
-  m=/([a-z]{3,9})\s+(\d{4})/i.exec(t);
-  if(m){ var i=mn.indexOf(m[1].toLowerCase().slice(0,3)); if(i>=0)return m[2]+'-'+String(i+1).padStart(2,'0'); }
-  m=/^([a-z]{3,9})$/i.exec(t);
-  if(m){ var j=mn.indexOf(m[1].toLowerCase().slice(0,3)); if(j>=0&&fallbackYear)return fallbackYear+'-'+String(j+1).padStart(2,'0'); }
+  var m=/^(\d{4})-(\d{1,2})\b/.exec(t); if(m)return m[1]+'-'+('0'+m[2]).slice(-2);
+  m=/([a-z]{3,9})[-\s\/]+(\d{2,4})/i.exec(t); // Mon-YY / Mon YYYY / Mon/YY
+  if(m){ var i=mn.indexOf(m[1].toLowerCase().slice(0,3)); if(i>=0)return yr(m[2])+'-'+('0'+(i+1)).slice(-2); }
+  m=/^([a-z]{3,9})$/i.exec(t); // bare month -> use fallback year
+  if(m){ var j=mn.indexOf(m[1].toLowerCase().slice(0,3)); if(j>=0&&fallbackYear)return fallbackYear+'-'+('0'+(j+1)).slice(-2); }
+  var dt=new Date(t); if(!isNaN(dt.getTime())&&/[\/\-]|\d{4}/.test(t)) return dt.getFullYear()+'-'+('0'+(dt.getMonth()+1)).slice(-2);
   return '';
 }
 function _revAddMonths(monthKey, n){
@@ -11998,81 +12014,103 @@ function _revParseFile(input){
   reader.onload=function(e){
     try{
       var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});
-      var ws=wb.Sheets[wb.SheetNames[0]];
-      var aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''});
-      S._revPreview=_revExtract(aoa, f.name);
+      var allRows=[];
+      wb.SheetNames.forEach(function(sn){
+        var aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:''});
+        allRows=allRows.concat(_revExtract(aoa).rows);
+      });
+      // de-dupe identical ref|type|month within this one upload (keep last seen)
+      var seen={},dedup=[];
+      allRows.forEach(function(o){ var k=(o.ref||'')+'|'+o.type+'|'+(o.periodMonth||''); seen[k]=o; });
+      Object.keys(seen).forEach(function(k){ dedup.push(seen[k]); });
+      var maxPm=''; dedup.forEach(function(o){ if(o.periodMonth>maxPm)maxPm=o.periodMonth; });
+      S._revPreview={fileName:f.name, periodMonth:maxPm, rows:dedup};
       openModal('revPreview');
     }catch(err){ toast('Parse error: '+err.message,1); }
   };
   reader.readAsArrayBuffer(f);
 }
-// Heuristic extractor: find header rows (contain Ref# + Commission), map columns by
-// keyword, parse data rows under each header block. Skips Total/blank/note rows.
-function _revExtract(aoa, fileName){
-  var out=[]; var fallbackYear=new Date().getFullYear();
-  var find=function(cells,re){ for(var i=0;i<cells.length;i++){ if(re.test(String(cells[i]||'')))return i; } return -1; };
-  // detect a year hint from any settlement date in the file
-  for(var r=0;r<aoa.length;r++){ for(var c=0;c<aoa[r].length;c++){ var mm=/(\d{4})-\d{2}-\d{2}/.exec(String(aoa[r][c]||'')); if(mm){fallbackYear=mm[1];break;} } }
+function _revFindAll(cells,re){ var x=[]; for(var i=0;i<cells.length;i++){ if(re.test(String(cells[i]||'')))x.push(i); } return x; }
+function _revFindIn(cells,re,from,to){ for(var i=from;i<=to&&i<cells.length;i++){ if(re.test(String(cells[i]||'')))return i; } return -1; }
+// Build one record from a column block of a data row.
+function _revRowFromBlock(d,mp,fy){
+  var ref=mp.ref>=0?String(d[mp.ref]||'').trim():'';
+  var client=mp.client>=0?String(d[mp.client]||'').trim():'';
+  if(!ref && !client) return null;
+  if(/total/i.test(client)) return null;
+  var comm=mp.commission>=0?_revNum(d[mp.commission]):0;
+  var bal=mp.balance>=0?_revNum(d[mp.balance]):0;
+  var sd=mp.settleDate>=0?String(d[mp.settleDate]||'').slice(0,10):'';
+  var sa=mp.settledAmount>=0?_revNum(d[mp.settledAmount]):0;
+  if(!ref && !comm && !bal) return null; // junk row
+  // detect a real month label in this block (header col first, then strict scan, skipping settlement-date col)
+  var pm=mp.period>=0?_revMonthStrict(d[mp.period],fy):'';
+  if(!pm){ for(var c=mp.be;c>=mp.bs;c--){ if(c===mp.settleDate) continue; var k=_revMonthStrict(d[c],fy); if(k){ pm=k; break; } } }
+  // Classify by commission size relative to balance: trail is tiny (~0.01%/mo of balance),
+  // upfront is large (~0.5-0.7% of loan). This separates them far more reliably than month presence.
+  var base=bal>0?bal:sa;
+  var ratio=base>0?Math.abs(comm)/base:0;
+  var type;
+  if(comm!==0 && base>0) type = ratio<0.0015 ? 'Trail' : 'Upfront';
+  else type = (pm || (bal>0&&sa>0&&Math.abs(bal-sa)>1)) ? 'Trail' : 'Upfront';
+  if(type==='Upfront') pm=_revMonthKey(sd,fy);
+  else if(!pm) pm=_revMonthKey(sd,fy);
+  return {ref:ref,type:type,periodMonth:pm,clientRaw:client,
+    lenderRaw:mp.lender>=0?String(d[mp.lender]||'').trim():'',
+    brokerRaw:mp.broker>=0?String(d[mp.broker]||'').trim():'',
+    settledAmount:sa||'',settleDate:sd,balanceW:bal||(type==='Trail'?sa:'')||'',
+    commission:comm||'',gst:mp.gst>=0?_revNum(d[mp.gst]):'',
+    net:mp.net>=0?_revNum(d[mp.net]):'',splitPct:mp.split>=0?_revNum(d[mp.split]):''};
+}
+// Extractor: handles 1+ column blocks per header row (upfront left + trail right),
+// multiple stacked header sections, and unlabeled trail period columns.
+function _revExtract(aoa){
+  var out=[]; var fy=new Date().getFullYear();
+  for(var r=0;r<aoa.length;r++){ for(var c=0;c<(aoa[r]||[]).length;c++){ var mm=/(\d{4})-\d{2}-\d{2}/.exec(String(aoa[r][c]||'')); if(mm){fy=mm[1];break;} } }
+  var refRe=/ref\s*#|reference|account|loan\s*(no|number)/i, commRe=/commission/i;
   var rr=0;
   while(rr<aoa.length){
     var row=aoa[rr]||[];
-    var refCol=find(row,/ref\s*#|reference|account|loan\s*(no|number)/i);
-    var commCol=find(row,/^commission$|commission/i);
-    if(refCol>=0 && commCol>=0){
-      // header found at rr. Build column map (search the whole header row).
-      var map={
-        split:find(row,/%\s*split|^split/i),
-        broker:find(row,/broker/i),
-        lender:find(row,/lender/i),
-        client:find(row,/client|customer|borrower|applicant/i),
-        ref:refCol,
-        settledAmount:find(row,/settled.*amount|loan amount/i),
-        settleDate:find(row,/settlement date|settled date/i),
-        commission:commCol,
-        gst:find(row,/^gst$/i),
-        net:find(row,/remitted|net/i),
-        period:find(row,/period|payment month|^month/i),
-        balance:find(row,/balance|outstanding/i)
-      };
+    var refCols=_revFindAll(row,refRe), commCols=_revFindAll(row,commRe);
+    if(refCols.length && commCols.length){
+      // block starts = %Split or Broker Name, merging adjacent (within 2 cols)
+      var raw=_revFindAll(row,/%\s*split|broker\s*name/i).sort(function(a,b){return a-b;});
+      var starts=[]; raw.forEach(function(c){ if(!starts.length||c-starts[starts.length-1]>2)starts.push(c); });
+      if(!starts.length) starts=[0];
+      var blocks=[];
+      for(var k=0;k<starts.length;k++){
+        var bs=starts[k], be=(k+1<starts.length?starts[k+1]-1:row.length-1);
+        if(refCols.some(function(c){return c>=bs&&c<=be;})) blocks.push({bs:bs,be:be});
+      }
+      if(!blocks.length) blocks=[{bs:0,be:row.length-1}];
+      var maps=blocks.map(function(b){ return {
+        bs:b.bs, be:b.be,
+        split:_revFindIn(row,/%\s*split|^split/i,b.bs,b.be),
+        broker:_revFindIn(row,/broker/i,b.bs,b.be),
+        lender:_revFindIn(row,/lender/i,b.bs,b.be),
+        client:_revFindIn(row,/client|customer|borrower|applicant/i,b.bs,b.be),
+        ref:_revFindIn(row,refRe,b.bs,b.be),
+        settledAmount:_revFindIn(row,/settled.*amount|loan amount/i,b.bs,b.be),
+        settleDate:_revFindIn(row,/settlement date|settled date/i,b.bs,b.be),
+        commission:_revFindIn(row,commRe,b.bs,b.be),
+        gst:_revFindIn(row,/^gst$/i,b.bs,b.be),
+        net:_revFindIn(row,/remitted|net/i,b.bs,b.be),
+        period:_revFindIn(row,/period|payment month|^month|paid month/i,b.bs,b.be),
+        balance:_revFindIn(row,/balance|outstanding/i,b.bs,b.be)
+      }; });
       rr++;
-      // parse data rows until a row that looks like a new header or is empty/total
       while(rr<aoa.length){
         var d=aoa[rr]||[];
         var joined=d.join('').trim();
         if(joined===''){ rr++; continue; }
-        if(/total\s*for|^total/i.test(String(d[map.client>=0?map.client:0]||'')) || /total\s*for/i.test(joined)){ rr++; continue; }
-        // new header?
-        if(find(d,/ref\s*#|reference/i)>=0 && find(d,/commission/i)>=0){ break; }
-        var ref=map.ref>=0?String(d[map.ref]||'').trim():'';
-        var client=map.client>=0?String(d[map.client]||'').trim():'';
-        if(!ref && !client){ rr++; continue; }
-        var comm=map.commission>=0?_revNum(d[map.commission]):0;
-        var bal=map.balance>=0?_revNum(d[map.balance]):0;
-        var settleDate=map.settleDate>=0?String(d[map.settleDate]||'').slice(0,10):'';
-        // type guess: has a period/month value, or balance present & differs from settled -> Trail
-        var periodVal=map.period>=0?d[map.period]:'';
-        var settledAmt=map.settledAmount>=0?_revNum(d[map.settledAmount]):0;
-        var type='Upfront';
-        if((periodVal&&_revMonthKey(periodVal,fallbackYear)) || (bal>0 && Math.abs(bal-settledAmt)>1)) type='Trail';
-        var pm = type==='Trail'
-          ? (_revMonthKey(periodVal,fallbackYear) || _revMonthKey(settleDate,fallbackYear))
-          : _revMonthKey(settleDate,fallbackYear);
-        out.push({
-          ref:ref, type:type, periodMonth:pm,
-          clientRaw:client, lenderRaw:map.lender>=0?String(d[map.lender]||'').trim():'',
-          brokerRaw:map.broker>=0?String(d[map.broker]||'').trim():'',
-          settledAmount:settledAmt||'', settleDate:settleDate,
-          balanceW:bal||(type==='Trail'?settledAmt:'')||'',
-          commission:comm||'', gst:map.gst>=0?_revNum(d[map.gst]):'',
-          net:map.net>=0?_revNum(d[map.net]):'', splitPct:map.split>=0?_revNum(d[map.split]):''
-        });
+        if(_revFindAll(d,refRe).length && _revFindAll(d,commRe).length) break; // next header
+        if(/total\s*for|^total/i.test(joined)){ rr++; continue; }
+        maps.forEach(function(mp){ var rec=_revRowFromBlock(d,mp,fy); if(rec) out.push(rec); });
         rr++;
       }
     } else rr++;
   }
-  // derive batch period = most common/max period month
-  var maxPm=''; out.forEach(function(o){ if(o.periodMonth>maxPm)maxPm=o.periodMonth; });
-  return {fileName:fileName, periodMonth:maxPm, rows:out};
+  return {rows:out};
 }
 
 function rRevPreviewModal(){
