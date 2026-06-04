@@ -217,7 +217,7 @@ export function buildInfinityTemplate(caseData) {
       currentAddress: primary?.address?.line1 ? `${primary.address.line1}, ${primary.address.suburb} ${primary.address.state} ${primary.address.postcode}, Australia` : "",
       numberOfDependants: primary?.dependants ?? 0,
       currentHousingSituation: caseData.clientProfile?.currentHousingSituation || "",
-      permanentInAustralia: primary?.residencyStatus ? "Yes" : "",
+      permanentInAustralia: primary?.permanentInAustralia || (primary?.residencyStatus ? "Yes" : ""),
       driversLicenceNo: primary?.id?.driversLicenceNo || "",
       licenceExpiryDate: primary?.id?.licenceExpiryDate || "",
       licenceState: primary?.id?.licenceState || "",

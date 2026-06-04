@@ -67,7 +67,7 @@ export function buildAolTemplate(caseData, infinity) {
       gender: primary.gender || "",
       maritalStatus: primary.maritalStatus || "",
       hasDependants: primary.dependants > 0 ? "Yes" : "No",
-      permanentResident: primary.residencyStatus ? "Yes" : "",
+      permanentResident: primary.permanentInAustralia || (primary.residencyStatus ? "Yes" : ""),
       residencyStatus: /citizen/i.test(primary.residencyStatus || "") ? "Citizen" : primary.residencyStatus || "",
       firstHomeBuyer: "No",
       employeeOfLender: "No",

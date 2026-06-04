@@ -724,6 +724,13 @@ const emptyCallNote = {
   secondApplicantMiddleName: "",
   secondApplicantSurname: "",
   secondApplicantDateOfBirth: "",
+  secondApplicantGender: "",
+  secondApplicantPermanentInAustralia: "Yes",
+  secondApplicantDriversLicenceNo: "",
+  secondApplicantLicenceCardNumber: "",
+  secondApplicantLicenceExpiryDate: "",
+  secondApplicantLicenceState: "",
+  secondApplicantLicenceClass: "C",
   secondApplicantMobile: "",
   secondApplicantEmail: "",
   secondApplicantAddress: "",
@@ -745,10 +752,24 @@ const emptyCallNote = {
   propertyLocation: "",
   timeline: "",
   dateOfBirth: "",
+  gender: "",
+  permanentInAustralia: "Yes",
+  driversLicenceNo: "",
+  licenceCardNumber: "",
+  licenceExpiryDate: "",
+  licenceState: "",
+  licenceClass: "C",
   address: "",
   residencyStatus: "Australian citizen",
   maritalStatus: "Single",
   dependants: "0",
+  currentSuburb: "",
+  currentState: "",
+  currentPostcode: "",
+  currentAddressFromDate: "",
+  currentResidentialStatus: "",
+  postSettlementAddress: "",
+  mailingAddress: "",
   employmentType: "PAYG",
   employerName: "",
   occupation: "",
@@ -858,7 +879,9 @@ const defaultHemProfiles = {
 };
 
 const maritalStatusOptions = ["Single", "Married", "Divorced", "Widowed"];
-const residentialStatusOptions = ["Own home", "Own home with mortgage", "Renting", "Boarding"];
+const genderOptions = ["Female", "Male", "Other / prefer not to say"];
+const licenceStateOptions = ["SA", "NSW", "VIC", "QLD", "WA", "TAS", "ACT", "NT"];
+const residentialStatusOptions = ["Boarding", "Renting", "Own home with mortgage", "Own home without mortgage", "Living with parents"];
 const residencyOptions = ["Australian Citizen", "Australian PR", "Australian TR", "NZ Citizen"];
 const employmentTypeOptions = ["PAYG", "Self - employed", "Unemployed", "Retired"];
 const employmentBasisOptions = ["Full-time", "Part-time", "Contract", "Temporary", "Internship"];
@@ -2364,8 +2387,15 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     secondApplicantFirstName: "",
     secondApplicantMiddleName: "",
     secondApplicantSurname: "",
-    secondApplicantDateOfBirth: "",
-    secondApplicantMobile: "",
+  secondApplicantDateOfBirth: "",
+  secondApplicantGender: "",
+  secondApplicantPermanentInAustralia: "Yes",
+  secondApplicantDriversLicenceNo: "",
+  secondApplicantLicenceCardNumber: "",
+  secondApplicantLicenceExpiryDate: "",
+  secondApplicantLicenceState: "",
+  secondApplicantLicenceClass: "C",
+  secondApplicantMobile: "",
     secondApplicantEmail: "",
     secondApplicantResidencyStatus: "",
     secondApplicantVisaSubclass: "",
@@ -2519,6 +2549,13 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
       secondApplicantMiddleName: "",
       secondApplicantSurname: "",
       secondApplicantDateOfBirth: "",
+      secondApplicantGender: "",
+      secondApplicantPermanentInAustralia: "Yes",
+      secondApplicantDriversLicenceNo: "",
+      secondApplicantLicenceCardNumber: "",
+      secondApplicantLicenceExpiryDate: "",
+      secondApplicantLicenceState: "",
+      secondApplicantLicenceClass: "C",
       secondApplicantMobile: "",
       secondApplicantEmail: "",
       secondApplicantAddress: "",
@@ -3108,10 +3145,18 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                 </div>
                 <div className="note-form-grid">
                   <DateField label="DOB" value={form.dateOfBirth} onChange={(value) => updateField("dateOfBirth", value)} />
+                  <label>Gender<select value={form.gender} onChange={(event) => updateField("gender", event.target.value)}><option value="">Please select</option>{genderOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
                   <label>Address<input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
                   <label>Residency<select value={form.residencyStatus} onChange={(event) => updateField("residencyStatus", event.target.value)}>{residencyOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                  <label>Permanent in Australia<select value={form.permanentInAustralia} onChange={(event) => updateField("permanentInAustralia", event.target.value)}>{yesNoOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
                   <label>Marital<select value={form.maritalStatus} onChange={(event) => updateMaritalStatus(event.target.value)}><option>Single</option><option>Married</option><option>Defacto</option><option>Separated</option></select></label>
                   <label>Dependants<input value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)} /></label>
+                  <label>Current housing situation<select value={form.currentResidentialStatus} onChange={(event) => updateField("currentResidentialStatus", event.target.value)}><option value="">Please select</option>{residentialStatusOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                  <label>Driver licence no.<input value={form.driversLicenceNo} onChange={(event) => updateField("driversLicenceNo", event.target.value)} /></label>
+                  <label>Licence card no.<input value={form.licenceCardNumber} onChange={(event) => updateField("licenceCardNumber", event.target.value)} /></label>
+                  <DateField label="Licence expiry" value={form.licenceExpiryDate} onChange={(value) => updateField("licenceExpiryDate", value)} />
+                  <label>Licence state<select value={form.licenceState} onChange={(event) => updateField("licenceState", event.target.value)}><option value="">Please select</option>{licenceStateOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                  <label>Licence class<input value={form.licenceClass} onChange={(event) => updateField("licenceClass", event.target.value)} placeholder="C" /></label>
                   <label>Main income p.a.<input value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} placeholder="Rough income is OK" /></label>
                   <label>Employer<input value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
                   <label>Occupation<input value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
@@ -3128,12 +3173,19 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                     <label>Given name(s)<input value={form.secondApplicantFirstName} onChange={(event) => updateField("secondApplicantFirstName", event.target.value)} placeholder="As shown on ID" /></label>
                     <label>Surname<input value={form.secondApplicantSurname} onChange={(event) => updateField("secondApplicantSurname", event.target.value)} /></label>
                     <DateField label="DOB" value={form.secondApplicantDateOfBirth} onChange={(value) => updateField("secondApplicantDateOfBirth", value)} />
+                    <label>Gender<select value={form.secondApplicantGender} onChange={(event) => updateField("secondApplicantGender", event.target.value)}><option value="">Please select</option>{genderOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
                     <label>Mobile<input value={form.secondApplicantMobile} onChange={(event) => updateField("secondApplicantMobile", event.target.value)} placeholder="Leave blank if same contact" /></label>
                     <label>Email<input value={form.secondApplicantEmail} onChange={(event) => updateField("secondApplicantEmail", event.target.value)} placeholder="Leave blank if same email" /></label>
                     <label>Address<input value={form.secondApplicantAddress} onChange={(event) => updateField("secondApplicantAddress", event.target.value)} placeholder="Leave blank if same address" /></label>
                     <label>Residency<select value={form.secondApplicantResidencyStatus || "Australian citizen"} onChange={(event) => updateField("secondApplicantResidencyStatus", event.target.value)}>{residencyOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                    <label>Permanent in Australia<select value={form.secondApplicantPermanentInAustralia} onChange={(event) => updateField("secondApplicantPermanentInAustralia", event.target.value)}>{yesNoOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
                     <label>Marital<select value={form.secondApplicantMaritalStatus || form.maritalStatus} onChange={(event) => updateField("secondApplicantMaritalStatus", event.target.value)}><option>Single</option><option>Married</option><option>Defacto</option><option>Separated</option></select></label>
                     <label>Dependants<input value={form.secondApplicantDependants || "0"} onChange={(event) => updateField("secondApplicantDependants", event.target.value)} /></label>
+                    <label>Driver licence no.<input value={form.secondApplicantDriversLicenceNo} onChange={(event) => updateField("secondApplicantDriversLicenceNo", event.target.value)} /></label>
+                    <label>Licence card no.<input value={form.secondApplicantLicenceCardNumber} onChange={(event) => updateField("secondApplicantLicenceCardNumber", event.target.value)} /></label>
+                    <DateField label="Licence expiry" value={form.secondApplicantLicenceExpiryDate} onChange={(value) => updateField("secondApplicantLicenceExpiryDate", value)} />
+                    <label>Licence state<select value={form.secondApplicantLicenceState} onChange={(event) => updateField("secondApplicantLicenceState", event.target.value)}><option value="">Please select</option>{licenceStateOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                    <label>Licence class<input value={form.secondApplicantLicenceClass} onChange={(event) => updateField("secondApplicantLicenceClass", event.target.value)} placeholder="C" /></label>
                     <label>Income p.a.<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
                     <label>Employer<input value={form.secondApplicantEmployerName} onChange={(event) => updateField("secondApplicantEmployerName", event.target.value)} /></label>
                     <label>Occupation<input value={form.secondApplicantJobTitle} onChange={(event) => updateField("secondApplicantJobTitle", event.target.value)} /></label>
@@ -3213,6 +3265,13 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
     secondApplicantSurname: "",
     hasSecondApplicant: "No",
     secondApplicantDateOfBirth: "",
+    secondApplicantGender: "",
+    secondApplicantPermanentInAustralia: "Yes",
+    secondApplicantDriversLicenceNo: "",
+    secondApplicantLicenceCardNumber: "",
+    secondApplicantLicenceExpiryDate: "",
+    secondApplicantLicenceState: "",
+    secondApplicantLicenceClass: "C",
     secondApplicantMobile: "",
     secondApplicantEmail: "",
     secondApplicantResidencyStatus: "Australian Citizen",
@@ -3222,6 +3281,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
     secondApplicantAddress: "",
     secondApplicantCurrentSuburb: "",
     secondApplicantCurrentState: "",
+    secondApplicantCurrentPostcode: "",
     secondApplicantCurrentAddressFromDate: "",
     secondApplicantCurrentResidentialStatus: "",
     secondApplicantPreviousAddress: "",
@@ -3253,6 +3313,13 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
     propertyLocation: "",
     timeline: "",
     dateOfBirth: "",
+    gender: "",
+    permanentInAustralia: "Yes",
+    driversLicenceNo: "",
+    licenceCardNumber: "",
+    licenceExpiryDate: "",
+    licenceState: "",
+    licenceClass: "C",
     address: "",
     residencyStatus: "Australian Citizen",
     maritalStatus: "Single",
@@ -3263,8 +3330,11 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
     dependant4Dob: "",
     currentSuburb: "",
     currentState: "",
+    currentPostcode: "",
     currentAddressFromDate: "",
     currentResidentialStatus: "",
+    postSettlementAddress: "",
+    mailingAddress: "",
     previousAddress: "",
     previousSuburb: "",
     previousState: "",
@@ -3667,10 +3737,12 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
               secondApplicantEmail: value === "Yes" ? current.secondApplicantEmail : ""
             }))} options={yesNoOptions} />
             <DateField language={language} required label="Date of birth" value={form.dateOfBirth} onChange={(value) => updateField("dateOfBirth", value)} />
+            <SelectField language={language} label="Gender" value={form.gender} onChange={(value) => updateField("gender", value)} options={genderOptions} />
             <label>{L("Email")}<input required value={form.email} onChange={(event) => updateField("email", event.target.value)} placeholder="example@example.com" /></label>
             <label>{L("Mobile")}<input required value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
             <SelectField language={language} required label="Marital Status" value={form.maritalStatus} onChange={updateMaritalStatus} options={maritalStatusOptions} />
             <SelectField language={language} required label="Residential Status" value={form.residencyStatus} onChange={(value) => updateField("residencyStatus", value)} options={residencyOptions} />
+            <SelectField language={language} label="Permanent in Australia" value={form.permanentInAustralia} onChange={(value) => updateField("permanentInAustralia", value)} options={yesNoOptions} />
             <label>{L("Visa Sub-class")}<input value={form.visaSubclass || ""} onChange={(event) => updateField("visaSubclass", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             <label>{L("Number of Dependents")}<select required value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)}>{[0, 1, 2, 3, 4].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
             {Array.from({ length: dependantCount }, (_, index) => {
@@ -3685,15 +3757,35 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
               <label>{L("Second applicant first / given name(s)")}<input required value={form.secondApplicantFirstName} onChange={(event) => updateField("secondApplicantFirstName", event.target.value)} /><span className="field-help">{L("Enter names exactly as shown on ID. Vietnamese accents are OK.")}</span></label>
               <label>{L("Second applicant family name / surname")}<input required value={form.secondApplicantSurname} onChange={(event) => updateField("secondApplicantSurname", event.target.value)} /></label>
               <DateField language={language} required label="Date of birth" value={form.secondApplicantDateOfBirth} onChange={(value) => updateField("secondApplicantDateOfBirth", value)} />
+              <SelectField language={language} label="Gender" value={form.secondApplicantGender} onChange={(value) => updateField("secondApplicantGender", value)} options={genderOptions} />
               <label>{L("Second applicant email")}<input value={form.secondApplicantEmail} onChange={(event) => updateField("secondApplicantEmail", event.target.value)} placeholder="Leave blank if same contact email" /></label>
               <label>{L("Second applicant mobile")}<input value={form.secondApplicantMobile} onChange={(event) => updateField("secondApplicantMobile", event.target.value)} placeholder="Leave blank if same contact mobile" /></label>
               <SelectField language={language} required label="Second applicant residency" value={form.secondApplicantResidencyStatus} onChange={(value) => updateField("secondApplicantResidencyStatus", value)} options={residencyOptions} />
+              <SelectField language={language} label="Permanent in Australia" value={form.secondApplicantPermanentInAustralia} onChange={(value) => updateField("secondApplicantPermanentInAustralia", value)} options={yesNoOptions} />
               <label>{L("Second applicant visa")}<input value={form.secondApplicantVisaSubclass} onChange={(event) => updateField("secondApplicantVisaSubclass", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
               <SelectField language={language} label="Marital Status" value={form.secondApplicantMaritalStatus} onChange={(value) => updateField("secondApplicantMaritalStatus", value)} options={maritalStatusOptions} />
               <label>{L("Number of Dependents")}<select value={form.secondApplicantDependants} onChange={(event) => updateField("secondApplicantDependants", event.target.value)}>{[0, 1, 2, 3, 4].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
               <SelectField language={language} label="Second applicant employment" value={form.secondApplicantEmploymentType} onChange={(value) => updateField("secondApplicantEmploymentType", value)} options={employmentTypeOptions} />
               <label>{L("Employer Name")}<input value={form.secondApplicantEmployerName} onChange={(event) => updateField("secondApplicantEmployerName", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             </div>
+          </div>}
+        </section>
+
+        <section>
+          <h2>{L("Driver Licence / ID")}</h2>
+          <div className="client-intake-grid">
+            <label>{L("Driver licence no.")}<input value={form.driversLicenceNo} onChange={(event) => updateField("driversLicenceNo", event.target.value)} /></label>
+            <label>{L("Licence card no.")}<input value={form.licenceCardNumber} onChange={(event) => updateField("licenceCardNumber", event.target.value)} /></label>
+            <DateField language={language} label="Licence expiry" value={form.licenceExpiryDate} onChange={(value) => updateField("licenceExpiryDate", value)} />
+            <SelectField language={language} label="Licence state" value={form.licenceState} onChange={(value) => updateField("licenceState", value)} options={licenceStateOptions} />
+            <label>{L("Licence Class")}<input value={form.licenceClass} onChange={(event) => updateField("licenceClass", event.target.value)} placeholder="C" /></label>
+          </div>
+          {hasSecondApplicant && <div className="client-intake-grid second-applicant-panel">
+            <label>{L("Second applicant licence no.")}<input value={form.secondApplicantDriversLicenceNo} onChange={(event) => updateField("secondApplicantDriversLicenceNo", event.target.value)} /></label>
+            <label>{L("Second applicant card no.")}<input value={form.secondApplicantLicenceCardNumber} onChange={(event) => updateField("secondApplicantLicenceCardNumber", event.target.value)} /></label>
+            <DateField language={language} label="Second applicant licence expiry" value={form.secondApplicantLicenceExpiryDate} onChange={(value) => updateField("secondApplicantLicenceExpiryDate", value)} />
+            <SelectField language={language} label="Second applicant licence state" value={form.secondApplicantLicenceState} onChange={(value) => updateField("secondApplicantLicenceState", value)} options={licenceStateOptions} />
+            <label>{L("Second applicant licence class")}<input value={form.secondApplicantLicenceClass} onChange={(event) => updateField("secondApplicantLicenceClass", event.target.value)} placeholder="C" /></label>
           </div>}
         </section>
 
@@ -3712,8 +3804,11 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
             <label>{L("Current residential address")}<input required value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
             <label>{L("Suburb")}<input required value={form.currentSuburb} onChange={(event) => updateField("currentSuburb", event.target.value)} /></label>
             <label>{L("State")}<input required value={form.currentState} onChange={(event) => updateField("currentState", event.target.value)} /></label>
+            <label>{L("Postcode")}<input value={form.currentPostcode} onChange={(event) => updateField("currentPostcode", event.target.value)} /></label>
             <DateField language={language} required label="From Date" value={form.currentAddressFromDate} onChange={(value) => updateField("currentAddressFromDate", value)} />
             <SelectField language={language} required label="Residential Status" value={form.currentResidentialStatus} onChange={(value) => updateField("currentResidentialStatus", value)} options={residentialStatusOptions} />
+            <label>{L("Post settlement address")}<input value={form.postSettlementAddress} onChange={(event) => updateField("postSettlementAddress", event.target.value)} placeholder="Leave blank if same as current address" /></label>
+            <label>{L("Mailing address")}<input value={form.mailingAddress} onChange={(event) => updateField("mailingAddress", event.target.value)} placeholder="Leave blank if same as current address" /></label>
             <label>{L("Previous residential address")}<input value={form.previousAddress} onChange={(event) => updateField("previousAddress", event.target.value)} /><span className="field-help">{L("Only enter previous address if current address is less than 3 years.")}</span></label>
             <label>{L("Previous suburb")}<input value={form.previousSuburb} onChange={(event) => updateField("previousSuburb", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             <label>{L("Previous state")}<input value={form.previousState} onChange={(event) => updateField("previousState", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
@@ -3727,6 +3822,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
             <label>{L("Current residential address")}<input value={form.secondApplicantAddress} onChange={(event) => updateField("secondApplicantAddress", event.target.value)} placeholder="Leave blank if same as main applicant" /></label>
             <label>{L("Suburb")}<input value={form.secondApplicantCurrentSuburb} onChange={(event) => updateField("secondApplicantCurrentSuburb", event.target.value)} /></label>
             <label>{L("State")}<input value={form.secondApplicantCurrentState} onChange={(event) => updateField("secondApplicantCurrentState", event.target.value)} /></label>
+            <label>{L("Postcode")}<input value={form.secondApplicantCurrentPostcode} onChange={(event) => updateField("secondApplicantCurrentPostcode", event.target.value)} /></label>
             <DateField language={language} label="From Date" value={form.secondApplicantCurrentAddressFromDate} onChange={(value) => updateField("secondApplicantCurrentAddressFromDate", value)} help="Leave blank if same as main applicant." />
             <SelectField language={language} label="Residential Status" value={form.secondApplicantCurrentResidentialStatus} onChange={(value) => updateField("secondApplicantCurrentResidentialStatus", value)} options={residentialStatusOptions} help="Leave blank if same as main applicant." />
             <label>{L("Previous residential address")}<input value={form.secondApplicantPreviousAddress} onChange={(event) => updateField("secondApplicantPreviousAddress", event.target.value)} /><span className="field-help">{L("Only enter previous address if current address is less than 3 years.")}</span></label>
