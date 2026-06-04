@@ -3153,7 +3153,6 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                   <label>Dependants<input value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)} /></label>
                   <label>Current housing situation<select value={form.currentResidentialStatus} onChange={(event) => updateField("currentResidentialStatus", event.target.value)}><option value="">Please select</option>{residentialStatusOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
                   <label>Driver licence no.<input value={form.driversLicenceNo} onChange={(event) => updateField("driversLicenceNo", event.target.value)} /></label>
-                  <label>Licence card no.<input value={form.licenceCardNumber} onChange={(event) => updateField("licenceCardNumber", event.target.value)} /></label>
                   <DateField label="Licence expiry" value={form.licenceExpiryDate} onChange={(value) => updateField("licenceExpiryDate", value)} />
                   <label>Licence state<select value={form.licenceState} onChange={(event) => updateField("licenceState", event.target.value)}><option value="">Please select</option>{licenceStateOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
                   <label>Licence class<input value={form.licenceClass} onChange={(event) => updateField("licenceClass", event.target.value)} placeholder="C" /></label>
@@ -3182,7 +3181,6 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                     <label>Marital<select value={form.secondApplicantMaritalStatus || form.maritalStatus} onChange={(event) => updateField("secondApplicantMaritalStatus", event.target.value)}><option>Single</option><option>Married</option><option>Defacto</option><option>Separated</option></select></label>
                     <label>Dependants<input value={form.secondApplicantDependants || "0"} onChange={(event) => updateField("secondApplicantDependants", event.target.value)} /></label>
                     <label>Driver licence no.<input value={form.secondApplicantDriversLicenceNo} onChange={(event) => updateField("secondApplicantDriversLicenceNo", event.target.value)} /></label>
-                    <label>Licence card no.<input value={form.secondApplicantLicenceCardNumber} onChange={(event) => updateField("secondApplicantLicenceCardNumber", event.target.value)} /></label>
                     <DateField label="Licence expiry" value={form.secondApplicantLicenceExpiryDate} onChange={(value) => updateField("secondApplicantLicenceExpiryDate", value)} />
                     <label>Licence state<select value={form.secondApplicantLicenceState} onChange={(event) => updateField("secondApplicantLicenceState", event.target.value)}><option value="">Please select</option>{licenceStateOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
                     <label>Licence class<input value={form.secondApplicantLicenceClass} onChange={(event) => updateField("secondApplicantLicenceClass", event.target.value)} placeholder="C" /></label>
@@ -3775,14 +3773,12 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
           <h2>{L("Driver Licence / ID")}</h2>
           <div className="client-intake-grid">
             <label>{L("Driver licence no.")}<input value={form.driversLicenceNo} onChange={(event) => updateField("driversLicenceNo", event.target.value)} /></label>
-            <label>{L("Licence card no.")}<input value={form.licenceCardNumber} onChange={(event) => updateField("licenceCardNumber", event.target.value)} /></label>
             <DateField language={language} label="Licence expiry" value={form.licenceExpiryDate} onChange={(value) => updateField("licenceExpiryDate", value)} />
             <SelectField language={language} label="Licence state" value={form.licenceState} onChange={(value) => updateField("licenceState", value)} options={licenceStateOptions} />
             <label>{L("Licence Class")}<input value={form.licenceClass} onChange={(event) => updateField("licenceClass", event.target.value)} placeholder="C" /></label>
           </div>
           {hasSecondApplicant && <div className="client-intake-grid second-applicant-panel">
             <label>{L("Second applicant licence no.")}<input value={form.secondApplicantDriversLicenceNo} onChange={(event) => updateField("secondApplicantDriversLicenceNo", event.target.value)} /></label>
-            <label>{L("Second applicant card no.")}<input value={form.secondApplicantLicenceCardNumber} onChange={(event) => updateField("secondApplicantLicenceCardNumber", event.target.value)} /></label>
             <DateField language={language} label="Second applicant licence expiry" value={form.secondApplicantLicenceExpiryDate} onChange={(value) => updateField("secondApplicantLicenceExpiryDate", value)} />
             <SelectField language={language} label="Second applicant licence state" value={form.secondApplicantLicenceState} onChange={(value) => updateField("secondApplicantLicenceState", value)} options={licenceStateOptions} />
             <label>{L("Second applicant licence class")}<input value={form.secondApplicantLicenceClass} onChange={(event) => updateField("secondApplicantLicenceClass", event.target.value)} placeholder="C" /></label>
@@ -4532,13 +4528,6 @@ export default function App() {
                 />
               </label>
               <label>
-                Primary card no.
-                <input
-                  value={manualIntake.primaryLicenceCardNumber || ""}
-                  onChange={(event) => setManualIntake((value) => ({ ...value, primaryLicenceCardNumber: event.target.value }))}
-                />
-              </label>
-              <label>
                 Primary expiry
                 <input
                   value={manualIntake.primaryLicenceExpiryDate || ""}
@@ -4553,13 +4542,6 @@ export default function App() {
                     <input
                       value={manualIntake.secondaryDriversLicenceNo || ""}
                       onChange={(event) => setManualIntake((value) => ({ ...value, secondaryDriversLicenceNo: event.target.value }))}
-                    />
-                  </label>
-                  <label>
-                    Secondary card no.
-                    <input
-                      value={manualIntake.secondaryLicenceCardNumber || ""}
-                      onChange={(event) => setManualIntake((value) => ({ ...value, secondaryLicenceCardNumber: event.target.value }))}
                     />
                   </label>
                   <label>
