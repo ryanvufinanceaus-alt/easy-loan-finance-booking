@@ -11898,10 +11898,13 @@ function _revReconcile(){
     lr.forEach(function(r){ if(r.ref) refsUsed[String(r.ref).trim()]=true; });
     var stUp=lr.filter(function(r){return /up/i.test(r.type);});
     var stTrailByM={}; lr.forEach(function(r){ if(/trail/i.test(r.type)&&r.periodMonth) stTrailByM[r.periodMonth]=r; });
-    // also count what you've already recorded yourself (Commissions tab)
-    var mc=myComm.filter(function(c){ return c.loanId===l.id; });
-    var mcUp=mc.filter(function(c){return /up/i.test(c.type);});
-    var mcTrailByM={}; mc.forEach(function(c){ if(/trail/i.test(c.type)&&c.period) mcTrailByM[_revMonthKey(c.period)||c.period]=c; });
+    // also count what you've already recorded yourself (match by loanId OR caseId,
+    // since settle-created placeholders carry caseId but no loanId). Only RECEIVED
+    // commissions count as actual money in; Pending placeholders do NOT suppress a flag.
+    var mc=myComm.filter(function(c){ return (c.loanId&&c.loanId===l.id) || (c.caseId&&l.caseId&&c.caseId===l.caseId); });
+    var recv=function(c){ return String(c.status||'').toLowerCase()==='received'; };
+    var mcUp=mc.filter(function(c){return /up/i.test(c.type)&&recv(c);});
+    var mcTrailByM={}; mc.forEach(function(c){ if(/trail/i.test(c.type)&&recv(c)&&c.period) mcTrailByM[_revMonthKey(c.period)||c.period]=c; });
     // estimates ("tam tinh")
     var estUp=_revNum(l.upfrontAmount)||_revNum(l.loanAmount)*(_revNum(l.upfrontRate)/100);
     var estTrail=_revNum(l.trailMonthly)||_revNum(l.loanAmount)*(_revNum(l.trailRate)/100)/12;
