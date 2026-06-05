@@ -861,6 +861,7 @@ function _applyLoadData(d){
   S.invoices=d.invoices||[];
   S.activity=d.activity||[];
   S.savedRecipients=d.savedRecipients||S.savedRecipients||[];
+  if(d.invoiceEmailTemplate)S.invoiceEmailTemplate=d.invoiceEmailTemplate;
   if(d.companyInfo)S.companyInfo=Object.assign({},S.companyInfo,d.companyInfo);
   if(d.emailContent)S.emailContent=Object.assign({},S.emailContent,d.emailContent);
   setupSidebar();
@@ -1995,6 +1996,7 @@ function _renderModal(){
       m==='editLoan'?rEditLoan():
       m==='addComm'?rAddComm():
       m==='revEmail'?rRevEmailModal():
+      m==='invEmail'?rInvoiceEmailModal():
       m==='editComm'?rEditComm():
       m==='trailReceipt'?rTrailReceipt():
       m==='exportComm'?rExportComm():
@@ -10396,10 +10398,7 @@ async function _generateInvoicesFromReady(){
   });
   const groupCount=Object.keys(groups).length;
   if(!confirm(`Create ${groupCount} draft invoice(s) from ${ready.length} received commission(s)?\n\n\u00B7 ONE invoice per case \u2014 Upfront and Trail kept separate\n\u00B7 Only commissions already PAID in the Finsure statement are billed\n\u00B7 Cases are never mixed on the same invoice\n\u00B7 Each commission is stamped so it can't be billed twice\n\u00B7 Created as Draft \u2014 review & set recipient before sending`))return;
-  // Broker share % (default 100). Lets you bill a partial share if you split with a referrer.
-  let pctIn=prompt('Broker share % for these invoices?\n\n100 = full commission, 80 = 80%, etc.','100');
-  if(pctIn===null)return; // cancelled
-  let pct=parseFloat(String(pctIn).replace(/[^0-9.]/g,'')); if(!(pct>0))pct=100; if(pct>100)pct=100;
+  // Broker share % comes from each loan/case (managed in Loan Book) \u2014 no prompt, no single value.
   // Due date = last day of the current month (consistent, easy to manage)
   const _eom=new Date(); const _last=new Date(_eom.getFullYear(),_eom.getMonth()+1,0);
   const dueDate=`${_last.getFullYear()}-${String(_last.getMonth()+1).padStart(2,'0')}-${String(_last.getDate()).padStart(2,'0')}`;
@@ -10410,11 +10409,15 @@ async function _generateInvoicesFromReady(){
     const type=/trail/i.test(list[0].type)?'Trail':'Upfront';
     const brokerId=list[0].brokerId||S.user.id;
     const brokerName=list[0].brokerName||'';
+    // Broker share % from the loan this case maps to (default 100)
+    const loanKey=list[0].loanId||list[0].caseId;
+    const loan=(S.loanBook||[]).find(l=>l.id===loanKey||l.caseId===loanKey);
+    const pct=_loanPct(loan);
     const items=list.map(c=>{
       const full=Number(c.amount)||0;
       const amt=Math.round(full*(pct/100)*100)/100;
       return {
-        desc:`${type} commission \u2014 ${c.clientName||''}${c.period?' \u00B7 '+c.period:''}${pct!==100?' ('+pct+'% share)':''}`,
+        desc:`${type} commission \u2014 ${c.clientName||''}${c.period?' \u00B7 '+c.period:''}${pct!==100?' (broker '+pct+'% of $'+full.toFixed(2)+')':''}`,
         source:c.loanId||c.caseId||'',
         commId:c.id,
         grossAmount:full,
@@ -10642,6 +10645,7 @@ function rInvoicesList(){
             <select style="background:#0A0D14;border:1px solid #1e2430;border-radius:6px;padding:3px 7px;color:#c9d1d9;font-size:11px;cursor:pointer;" onchange="updInvoiceStatus('${esc(i.id)}',this.value)">
               ${['Draft','Sent','Paid','Cancelled'].map(s=>`<option value="${s}"${i.status===s?' selected':''}>${s}</option>`).join('')}
             </select>
+            <button class="btn-ghost" onclick="event.stopPropagation();_openInvoiceEmail('${esc(i.id)}')" title="Email this invoice"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg></button>
             <button class="btn-ghost" onclick="openInvoice('${esc(i.id)}')" title="View PDF"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#D4A843" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
             ${S.user.role==='admin'?`<button class="btn-ghost" style="color:#ef4444;" onclick="delInvoice_('${esc(i.id)}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>`:''}
           </div></td>
@@ -11219,6 +11223,113 @@ async function _fixInvoiceLinks(){
     render();
   } else { hideLoad(); toast((r&&r.msg)||'Failed',1); }
 }
+function _openInvoiceEmail(id){
+  var inv=(S.invoices||[]).find(function(i){return i.id===id;});
+  if(!inv){ toast('Invoice not found',1); return; }
+  S.invEmailId=id; S.invEmailTo=inv.issuedToEmail||'';
+  openModal('invEmail');
+}
+function _invoiceTableHtml(inv,items){
+  var th='padding:6px 9px;border:1px solid #d0d5dd;background:#f3f4f6;text-align:left;font-size:13px;';
+  var td='padding:6px 9px;border:1px solid #e5e7eb;font-size:13px;';
+  var rows=(items||[]).map(function(it){return '<tr><td style="'+td+'">'+esc(it.desc||'')+'</td><td style="'+td+'text-align:right;">'+fmtCur(it.amount)+'</td></tr>';}).join('');
+  var gstRow=_isTrueJS(inv.gstIncluded)?('<tr><td style="'+td+'text-align:right;">GST</td><td style="'+td+'text-align:right;">'+fmtCur(inv.gst)+'</td></tr>'):'';
+  return '<table style="border-collapse:collapse;border:1px solid #d0d5dd;margin:10px 0;min-width:320px;">'
+    +'<thead><tr><th style="'+th+'">Invoice '+esc(inv.ref||'')+' \u00B7 '+esc(inv.type||'')+'</th><th style="'+th+'text-align:right;">Amount</th></tr></thead>'
+    +'<tbody>'+rows
+    +'<tr><td style="'+td+'text-align:right;">Subtotal</td><td style="'+td+'text-align:right;">'+fmtCur(inv.subtotal)+'</td></tr>'+gstRow
+    +'<tr><td style="'+td+'text-align:right;font-weight:700;">Total</td><td style="'+td+'text-align:right;font-weight:700;">'+fmtCur(inv.total)+'</td></tr>'
+    +'</tbody></table>';
+}
+function _invoiceBankHtml(co){
+  if(!(co.bsb||co.accountNumber||co.payId||co.accountName))return '';
+  var L=[];
+  if(co.accountName)L.push('Account name: <b>'+esc(co.accountName)+'</b>');
+  if(co.bankName)L.push('Bank: '+esc(co.bankName));
+  if(co.bsb)L.push('BSB: <b>'+esc(co.bsb)+'</b>');
+  if(co.accountNumber)L.push('Account no: <b>'+esc(co.accountNumber)+'</b>');
+  if(co.payId)L.push('PayID: '+esc(co.payId));
+  return '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 14px;margin:10px 0;"><div style="font-size:11px;color:#15803d;font-weight:700;text-transform:uppercase;">Payment details</div><div style="font-size:13px;color:#222;line-height:1.7;">'+L.join('<br>')+'</div>'+(co.paymentNote?('<div style="font-size:11px;color:#555;margin-top:5px;">'+esc(co.paymentNote)+'</div>'):'')+'</div>';
+}
+function _invoiceTableText(inv,items){
+  var t='Invoice '+(inv.ref||'')+' ('+(inv.type||'')+')\n';
+  (items||[]).forEach(function(it){t+='  - '+(it.desc||'')+'  '+fmtCur(it.amount)+'\n';});
+  t+='  Subtotal: '+fmtCur(inv.subtotal)+'\n';
+  if(_isTrueJS(inv.gstIncluded))t+='  GST: '+fmtCur(inv.gst)+'\n';
+  t+='  TOTAL: '+fmtCur(inv.total);
+  return t;
+}
+function _invoiceBankText(co,inv){
+  if(inv.showBank===false)return '';
+  if(!(co.bsb||co.accountNumber||co.payId||co.accountName))return '';
+  var L=['Payment details:'];
+  if(co.accountName)L.push('Account name: '+co.accountName);
+  if(co.bankName)L.push('Bank: '+co.bankName);
+  if(co.bsb)L.push('BSB: '+co.bsb);
+  if(co.accountNumber)L.push('Account no: '+co.accountNumber);
+  if(co.payId)L.push('PayID: '+co.payId);
+  if(co.paymentNote)L.push(co.paymentNote);
+  return L.join('\n');
+}
+function _fillInvoiceTemplate(inv){
+  var tpl=S.invoiceEmailTemplate||{subject:'Invoice {invoiceRef} from {company}',body:'Hi {recipient},\n\n{invoiceTable}\n\n{bankDetails}\n\nKind regards,\n{senderName}\n{company}'};
+  var co=S.companyInfo||{};
+  var items=[]; try{items=JSON.parse(inv.items||'[]');}catch(e){}
+  var per=(typeof _invoicePeriodLabel==='function')?_invoicePeriodLabel(inv,items):(inv.period||'');
+  var map={recipient:inv.issuedTo||'there',company:co.name||'Easy Loan Finance',invoiceRef:inv.ref||'',invoiceType:inv.type||'',period:per?(' for '+per):'',total:fmtCur(inv.total),subtotal:fmtCur(inv.subtotal),gst:fmtCur(inv.gst),dueDate:inv.dueDate||'\u2014',senderName:(S.user&&S.user.name)||''};
+  function repl(s){return String(s||'').replace(/\{(\w+)\}/g,function(mm,k){return (k in map)?map[k]:mm;});}
+  var subject=repl(tpl.subject);
+  var bodyText=repl(tpl.body);
+  var tableHtml=_invoiceTableHtml(inv,items);
+  var bankHtml=(inv.showBank!==false)?_invoiceBankHtml(co):'';
+  var h=bodyText.split('{invoiceTable}').join('\u0001T\u0001').split('{bankDetails}').join('\u0001B\u0001');
+  h=esc(h).replace(/\n/g,'<br>');
+  h=h.split('\u0001T\u0001').join(tableHtml).split('\u0001B\u0001').join(bankHtml);
+  h='<div style="font-family:Calibri,Arial,sans-serif;color:#1a1a1a;font-size:14px;line-height:1.55;">'+h+'</div>';
+  var text=bodyText.split('{invoiceTable}').join(_invoiceTableText(inv,items)).split('{bankDetails}').join(_invoiceBankText(co,inv));
+  return {subject:subject,html:h,text:text};
+}
+function rInvoiceEmailModal(){
+  var inv=(S.invoices||[]).find(function(i){return i.id===S.invEmailId;});
+  if(!inv)return '<div class="m-ct"><div class="m-box" style="padding:20px;">Invoice not found. <button class="btn-sec" onclick="closeModal()">Close</button></div></div>';
+  var f=_fillInvoiceTemplate(inv);
+  var recips=_invoiceRecipientList().filter(function(r){return r.email;});
+  var to=S.invEmailTo||inv.issuedToEmail||'';
+  return '<div class="m-ct"><div class="m-box" style="max-width:820px;width:94vw;display:flex;flex-direction:column;max-height:92vh;">'
+    +'<div style="padding:16px 20px;border-bottom:1px solid #1e2430;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">'
+    +'<div style="font-size:15px;font-weight:700;color:#c9d1d9;">\u2709 Email invoice '+esc(inv.ref||'')+'</div>'
+    +'<button class="btn-ghost" onclick="closeModal()" style="font-size:18px;">\u00D7</button></div>'
+    +'<div style="padding:18px 20px;overflow-y:auto;">'
+    +'<div style="display:grid;grid-template-columns:74px 1fr;gap:9px 10px;align-items:center;margin-bottom:14px;">'
+    +'<div style="font-size:12px;color:#8b949e;">To</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;"><input class="fi" id="inv-em-to" value="'+esc(to)+'" placeholder="recipient@email.com" style="flex:1;min-width:200px;">'
+    +(recips.length?('<select class="fi" style="max-width:200px;" onchange="if(this.value)document.getElementById(\'inv-em-to\').value=this.value;"><option value="">Saved recipients\u2026</option>'+recips.map(function(r){return '<option value="'+esc(r.email)+'">'+esc(r.issuedTo)+'</option>';}).join('')+'</select>'):'')
+    +'</div>'
+    +'<div style="font-size:12px;color:#8b949e;">Subject</div><input class="fi" id="inv-em-subj" value="'+esc(f.subject)+'">'
+    +'</div>'
+    +'<div style="font-size:11px;color:#6b7280;margin-bottom:6px;">Preview (template from Settings \u2192 Sender):</div>'
+    +'<div id="inv-em-body" style="background:#fff;border:1px solid #d0d5dd;border-radius:8px;padding:16px;max-height:40vh;overflow:auto;">'+f.html+'</div>'
+    +'<div style="font-size:11px;color:#8b949e;margin-top:10px;line-height:1.6;">\uD83D\uDCCE Attach the PDF: click <b style="color:#c9d1d9;">Save invoice PDF</b>, then in Outlook attach the saved file. The full invoice details are already in the email body above.</div>'
+    +'</div>'
+    +'<div style="padding:14px 20px;border-top:1px solid #1e2430;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0;">'
+    +'<button class="btn-sec" onclick="_invEmailSavePdf()">Save invoice PDF</button>'
+    +'<button class="btn-sec" onclick="_invEmailOutlook()">Open in Outlook</button>'
+    +'<button class="btn-gold" onclick="_invEmailCopyRich()">Copy email (with details)</button>'
+    +'</div></div></div>';
+}
+async function _invEmailCopyRich(){
+  var el=document.getElementById('inv-em-body'); var html=el?el.innerHTML:'';
+  var inv=(S.invoices||[]).find(function(i){return i.id===S.invEmailId;}); var f=_fillInvoiceTemplate(inv);
+  try{ if(navigator.clipboard&&window.ClipboardItem){ await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([f.text],{type:'text/plain'})})]); toast('Email copied \u2014 paste into Outlook'); } else { _revClip(f.text); toast('Copied as text'); } }
+  catch(e){ _revClip(f.text); toast('Copied as text'); }
+}
+function _invEmailOutlook(){
+  var to=(document.getElementById('inv-em-to')||{}).value||'';
+  var subj=(document.getElementById('inv-em-subj')||{}).value||'';
+  var inv=(S.invoices||[]).find(function(i){return i.id===S.invEmailId;}); var f=_fillInvoiceTemplate(inv);
+  window.location.href='mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(f.text);
+}
+function _invEmailSavePdf(){ S.viewingInvoiceId=S.invEmailId; printInvoice(); }
 async function delInvoice_(id){
   if(!confirm('Delete this invoice? Cannot undo.'))return;
   const r=await gs_('deleteInvoice',S.tok,id);
@@ -11858,8 +11969,15 @@ function rSettingsEmail(e){
       </div>
     </div>
 
+    <div style="background:#0A0D14;border:1px solid #D4A84344;border-radius:9px;padding:14px 16px;">
+      <div style="font-size:11px;color:#D4A843;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">\uD83E\uDDFE Invoice email template</div>
+      <div style="font-size:11.5px;color:#8b949e;line-height:1.6;margin-bottom:11px;">Used when emailing an invoice to a broker / partner. Placeholders auto-fill from the invoice:
+        <span style="color:#c9d1d9;">{recipient} {company} {invoiceRef} {invoiceType} {period} {total} {subtotal} {gst} {dueDate} {senderName}</span>, plus <span style="color:#c9d1d9;">{invoiceTable}</span> (line-item table) and <span style="color:#c9d1d9;">{bankDetails}</span>.</div>
+      <div style="margin-bottom:11px;"><label class="fl">Subject</label><input class="fi" value="${esc(e.invoiceEmailSubject||'')}" oninput="S.emailSettingsDraft.invoiceEmailSubject=this.value" placeholder="Invoice {invoiceRef} from {company}"></div>
+      <div><label class="fl">Body</label><textarea class="fi" rows="9" oninput="S.emailSettingsDraft.invoiceEmailBody=this.value" style="font-family:inherit;line-height:1.6;">${esc(e.invoiceEmailBody||'')}</textarea></div>
+    </div>
+
     <div style="background:#0A0D14;border:1px solid #1e2430;border-radius:9px;padding:13px 15px;">
-      <div style="font-size:11px;color:#D4A843;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:9px;">\uD83E\uDDEA Test current settings</div>
       <div style="display:flex;gap:8px;align-items:flex-end;">
         <div style="flex:1;">
           <label class="fl" style="font-size:11px;">Send a test email to:</label>
@@ -12229,12 +12347,13 @@ function rRevRecon(){
     +kpi('Missing trail',rec.missingTrail.length,'#EF4444')
     +kpi('Variance',rec.variance.length,'#FB923C')
     +kpi('Unknown payment',rec.unknown.length,'#60A5FA')+'</div>';
-  // Missing items table \u2014 broker share % is per-loan (stored on the loan), shown + editable per row.
+  // Missing items \u2014 these are the FULL commission Finsure owes ELF (always 100%).
+  // Broker share % is NOT applied here; it only applies when invoicing a broker.
   var items=[];
-  rec.missingUpfront.forEach(function(x){ var p=_loanPct(x.loan); items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',type:'Upfront',period:'-',settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Missing upfront',loanId:x.loan.id,pct:p,est:(x.est||0)*p/100,color:'#EF4444'}); });
-  rec.missingTrail.forEach(function(x){ var p=_loanPct(x.loan); items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',type:'Trail',period:_revMonthLabel(x.month),settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Missing trail',loanId:x.loan.id,pct:p,est:(x.est||0)*p/100,color:'#EF4444'}); });
-  rec.variance.forEach(function(x){ var p=_loanPct(x.loan); items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref,type:'Trail',period:_revMonthLabel(x.month),settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Trail down '+x.pct+'%',loanId:x.loan.id,pct:p,est:0,color:'#FB923C'}); });
-  rec.unknown.forEach(function(r){ items.push({client:r.clientRaw||'(unknown)',lender:r.lenderRaw||'',ref:r.ref,type:/trail/i.test(r.type)?'Trail':'Upfront',period:_revMonthLabel(r.periodMonth)||'-',settle:'',loanAmt:'',issue:'Unknown payment - not in loan book',loanId:'',pct:null,est:0,color:'#60A5FA'}); });
+  rec.missingUpfront.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',type:'Upfront',period:'-',settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Missing upfront',est:(x.est||0),color:'#EF4444'}); });
+  rec.missingTrail.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',type:'Trail',period:_revMonthLabel(x.month),settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Missing trail',est:(x.est||0),color:'#EF4444'}); });
+  rec.variance.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref,type:'Trail',period:_revMonthLabel(x.month),settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Trail down '+x.pct+'%',est:0,color:'#FB923C'}); });
+  rec.unknown.forEach(function(r){ items.push({client:r.clientRaw||'(unknown)',lender:r.lenderRaw||'',ref:r.ref,type:/trail/i.test(r.type)?'Trail':'Upfront',period:_revMonthLabel(r.periodMonth)||'-',settle:'',loanAmt:'',issue:'Unknown payment - not in loan book',est:0,color:'#60A5FA'}); });
   var totalEst=items.reduce(function(s,it){return s+(_revNum(it.est)||0);},0);
   if(items.length===0){
     h+='<div class="card" style="padding:30px;text-align:center;color:#34D399;">All matched. Nothing missing within the expected window (up to '+_revMonthLabel(rec.endMonth)+').</div>';
@@ -12245,19 +12364,15 @@ function rRevRecon(){
       +'<button class="btn-sec" style="font-size:12px;padding:7px 13px;" onclick="_revOpenEmail()">\u2709 Compose email</button>'
       +'<button class="btn-sec" style="font-size:12px;padding:7px 13px;" onclick="_revDownloadXlsx()">Excel</button>'
       +'</div></div>';
-    h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th>Ref #</th><th>Type</th><th>Period</th><th>Settled</th><th>Issue</th><th style="text-align:center;">Broker %</th><th style="text-align:right;">Est. $</th></tr></thead><tbody>';
+    h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th>Ref #</th><th>Type</th><th>Period</th><th>Settled</th><th>Issue</th><th style="text-align:right;">Est. $ (full)</th></tr></thead><tbody>';
     items.forEach(function(it){
-      var pctCell = it.loanId
-        ? '<input type="number" min="0" max="100" value="'+(it.pct==null?100:it.pct)+'" onchange="_revSetSharePct(\''+esc(it.loanId)+'\',this.value)" style="width:56px;padding:4px 6px;text-align:center;background:#0A0D14;border:1px solid #2d3748;border-radius:6px;color:#c9d1d9;" title="Broker share for this case (saved on the loan)">'
-        : '<span style="color:#4a5568;">\u2014</span>';
       h+='<tr><td style="font-weight:600;color:#c9d1d9;">'+esc(it.client||'')+'</td><td>'+esc(it.lender||'')+'</td><td style="font-family:monospace;font-size:11px;">'+esc(it.ref||'')+'</td>'
         +'<td>'+esc(it.type)+'</td><td>'+esc(it.period||'-')+'</td><td style="font-size:11px;color:#8b949e;">'+esc(String(it.settle||'').slice(0,10)||'-')+'</td>'
         +'<td><span style="background:'+it.color+'18;color:'+it.color+';border:1px solid '+it.color+'33;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600;">'+esc(it.issue)+'</span></td>'
-        +'<td style="text-align:center;">'+pctCell+'</td>'
         +'<td style="text-align:right;color:#c9d1d9;">'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'-')+'</td></tr>';
     });
     h+='</tbody></table>';
-    h+='<div style="margin-top:12px;font-size:12px;color:#8b949e;"><b style="color:#c9d1d9;">Broker %</b> is saved per case (on the loan) and is used everywhere \u2014 the email, PDF and Excel all show each case\'s own share. Email goes to <b style="color:#c9d1d9;">finance@loankit.com.au</b> via <b style="color:#c9d1d9;">Compose email</b> (review then send from Outlook). <a href="#" onclick="_revCopyTable();return false;" style="color:#D4A843;">Copy table (TSV)</a></div>';
+    h+='<div style="margin-top:12px;font-size:12px;color:#8b949e;">Amounts are the <b style="color:#c9d1d9;">full commission Finsure owes Easy Loan Finance (100%)</b> \u2014 broker share is applied later when invoicing a broker, not here. Email goes to <b style="color:#c9d1d9;">finance@loankit.com.au</b> via <b style="color:#c9d1d9;">Compose email</b>. <a href="#" onclick="_revCopyTable();return false;" style="color:#D4A843;">Copy table (TSV)</a></div>';
     S._revMissingItems=items;
   }
   h+='</div>';
@@ -12269,8 +12384,8 @@ function _revEmailText(){
   var mk=_revReconcile().endMonth;
   var tot=items.reduce(function(s,it){return s+(_revNum(it.est)||0);},0);
   var lines='Hi team,\n\nReconciling our commissions'+(mk?(' up to '+_revMonthLabel(mk)):'')+'. The following items appear missing or short from the statements. Could you please verify?\n\n';
-  lines+='Client\tLender\tRef #\tType\tPeriod\tSettled\tIssue\tBroker %\tEst. amount\n';
-  items.forEach(function(it){ lines+=(it.client||'')+'\t'+(it.lender||'')+'\t'+(_revRefDisp(it)||'')+'\t'+(it.type||'')+'\t'+(it.period||'')+'\t'+String(it.settle||'').slice(0,10)+'\t'+it.issue+'\t'+(it.pct==null?'':it.pct+'%')+'\t'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'')+'\n'; });
+  lines+='Client\tLender\tRef #\tType\tPeriod\tSettled\tIssue\tEst. amount\n';
+  items.forEach(function(it){ lines+=(it.client||'')+'\t'+(it.lender||'')+'\t'+(_revRefDisp(it)||'')+'\t'+(it.type||'')+'\t'+(it.period||'')+'\t'+String(it.settle||'').slice(0,10)+'\t'+it.issue+'	'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'')+'\n'; });
   lines+='\nEstimated total outstanding: ~$'+tot.toLocaleString(undefined,{maximumFractionDigits:2})+'\n(Amounts are each case\'s broker share, indicative, from our loan records.)\n\nThanks,\nRyan\nEasy Loan Finance';
   return lines;
 }
@@ -12305,7 +12420,6 @@ function _revEmailHtmlBody(){
       +'<td style="'+td+'">'+esc(it.period||'\u2014')+'</td>'
       +'<td style="'+td+'">'+esc(String(it.settle||'').slice(0,10)||'\u2014')+'</td>'
       +'<td style="'+td+'">'+esc(it.issue||'')+'</td>'
-      +'<td style="'+td+'text-align:center;">'+(it.pct==null?'\u2014':(it.pct+'%'))+'</td>'
       +'<td style="'+td+'text-align:right;">'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'\u2014')+'</td>'
       +'</tr>';
   }).join('');
@@ -12314,10 +12428,10 @@ function _revEmailHtmlBody(){
     +'<p>Reconciling our commissions'+(mk?(' up to '+esc(_revMonthLabel(mk))):'')+'. The following items appear missing or short from the statements. Could you please verify against the references below?</p>'
     +'<table style="border-collapse:collapse;border:1px solid #d0d5dd;">'
     +'<thead><tr>'
-    +'<th style="'+th+'">Client</th><th style="'+th+'">Lender</th><th style="'+th+'">Ref #</th><th style="'+th+'">Type</th><th style="'+th+'">Period</th><th style="'+th+'">Settled</th><th style="'+th+'">Issue</th><th style="'+th+'text-align:center;">Broker %</th><th style="'+th+'text-align:right;">Est. amount</th>'
+    +'<th style="'+th+'">Client</th><th style="'+th+'">Lender</th><th style="'+th+'">Ref #</th><th style="'+th+'">Type</th><th style="'+th+'">Period</th><th style="'+th+'">Settled</th><th style="'+th+'">Issue</th><th style="'+th+'text-align:right;">Est. amount</th>'
     +'</tr></thead><tbody>'+rows+'</tbody></table>'
     +'<p><b>Estimated total outstanding: ~$'+tot.toLocaleString(undefined,{maximumFractionDigits:2})+'</b><br>'
-    +'<span style="color:#666;font-size:12px;">Amounts are each case\'s broker share, indicative, from our loan records.</span></p>'
+    +'<span style="color:#666;font-size:12px;">Amounts are the full commission (100%), indicative, from our loan records.</span></p>'
     +'<p>Thanks,<br>Ryan<br>Easy Loan Finance</p>'
     +'</div>';
 }
@@ -12363,7 +12477,7 @@ function _revOpenOutlook(){
 }
 function _revCopyTable(){
   var items=S._revMissingItems||[];
-  var t='Client\tLender\tRef #\tType\tPeriod\tSettled\tIssue\tBroker %\tEst. amount\n'+items.map(function(it){return (it.client||'')+'\t'+(it.lender||'')+'\t'+(_revRefDisp(it)||'')+'\t'+(it.type||'')+'\t'+(it.period||'')+'\t'+String(it.settle||'').slice(0,10)+'\t'+it.issue+'\t'+(it.pct==null?'':it.pct+'%')+'\t'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'');}).join('\n');
+  var t='Client\tLender\tRef #\tType\tPeriod\tSettled\tIssue\tEst. amount\n'+items.map(function(it){return (it.client||'')+'\t'+(it.lender||'')+'\t'+(_revRefDisp(it)||'')+'\t'+(it.type||'')+'\t'+(it.period||'')+'\t'+String(it.settle||'').slice(0,10)+'\t'+it.issue+'	'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'');}).join('\n');
   _revClip(t); toast('Table copied (paste into Excel/email)');
 }
 function _revDownloadXlsx(){
@@ -12377,13 +12491,13 @@ function _revDownloadXlsx(){
   aoa.push(['Commission Query'+(mk?(' \u2014 '+_revMonthLabel(mk)):'')]);
   aoa.push(['To: finance@loankit.com.au','','Prepared: '+new Date().toLocaleDateString('en-AU')]);
   aoa.push([]);
-  aoa.push(['Client','Lender','Ref #','Type','Period','Settled','Issue','Broker %','Est. amount (AUD)']);
-  items.forEach(function(it){ aoa.push([it.client||'',it.lender||'',_revRefDisp(it)||'',it.type||'',it.period||'',String(it.settle||'').slice(0,10),it.issue||'',(it.pct==null?'':it.pct+'%'),it.est>0?_revNum(it.est):'']); });
+  aoa.push(['Client','Lender','Ref #','Type','Period','Settled','Issue','Est. amount (AUD)']);
+  items.forEach(function(it){ aoa.push([it.client||'',it.lender||'',_revRefDisp(it)||'',it.type||'',it.period||'',String(it.settle||'').slice(0,10),it.issue||'',it.est>0?_revNum(it.est):'']); });
   aoa.push([]);
-  aoa.push(['','','','','','','','Estimated total',tot]);
+  aoa.push(['','','','','','','Estimated total',tot]);
   var ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:32},{wch:18},{wch:16},{wch:9},{wch:12},{wch:12},{wch:24},{wch:10},{wch:16}];
-  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:8}},{s:{r:1,c:0},e:{r:1,c:8}}];
+  ws['!cols']=[{wch:32},{wch:18},{wch:16},{wch:9},{wch:12},{wch:12},{wch:24},{wch:16}];
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:7}},{s:{r:1,c:0},e:{r:1,c:7}}];
   var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Commission Query');
   XLSX.writeFile(wb,'commission-query-'+(new Date().toISOString().slice(0,10))+'.xlsx');
 }
@@ -12396,7 +12510,7 @@ function _revPrintQuery(){
   var mk=_revReconcile().endMonth;
   var tot=items.reduce(function(s,it){return s+(_revNum(it.est)||0);},0);
   var rows=items.map(function(it){
-    return '<tr><td>'+esc(it.client||'')+'</td><td>'+esc(it.lender||'')+'</td><td style="font-family:monospace;">'+esc(_revRefDisp(it)||'')+'</td><td>'+esc(it.type||'')+'</td><td>'+esc(it.period||'-')+'</td><td>'+esc(String(it.settle||'').slice(0,10)||'-')+'</td><td>'+esc(it.issue)+'</td><td style="text-align:center;">'+(it.pct==null?'-':it.pct+'%')+'</td><td style="text-align:right;">'+(it.est>0?'$'+_revNum(it.est).toFixed(2):'-')+'</td></tr>';
+    return '<tr><td>'+esc(it.client||'')+'</td><td>'+esc(it.lender||'')+'</td><td style="font-family:monospace;">'+esc(_revRefDisp(it)||'')+'</td><td>'+esc(it.type||'')+'</td><td>'+esc(it.period||'-')+'</td><td>'+esc(String(it.settle||'').slice(0,10)||'-')+'</td><td>'+esc(it.issue)+'</td><td style="text-align:right;">'+(it.est>0?'$'+_revNum(it.est).toFixed(2):'-')+'</td></tr>';
   }).join('');
   var logo=co.logoUrl?'<img src="'+co.logoUrl+'" style="max-height:54px;max-width:200px;object-fit:contain;">':'<div style="font-size:22px;font-weight:800;color:'+accent+';">'+esc(co.name||'Easy Loan Finance')+'</div>';
   var today=new Date().toLocaleDateString('en-AU',{day:'numeric',month:'long',year:'numeric'});
@@ -12414,7 +12528,7 @@ function _revPrintQuery(){
     +'<div class="hd"><div>'+logo+'</div><div class="co">'+esc(co.name||'')+(co.abn?'<br>ABN '+esc(co.abn):'')+'<br>'+esc(co.address||'')+'<br>'+esc(co.website||'')+(co.email?'<br>'+esc(co.email):'')+'</div></div>'
     +'<h1>Commission Query &mdash; '+(_revMonthLabel(mk)||today)+'</h1>'
     +'<div class="sub">To: Finsure / Loankit Finance (finance@loankit.com.au) &middot; Prepared '+today+' &middot; '+items.length+' item(s)</div>'
-    +'<table><thead><tr><th>Client</th><th>Lender</th><th>Ref #</th><th>Type</th><th>Period</th><th>Settled</th><th>Issue</th><th style="text-align:center;">Broker %</th><th style="text-align:right;">Est. $</th></tr></thead><tbody>'+rows+'</tbody></table>'
+    +'<table><thead><tr><th>Client</th><th>Lender</th><th>Ref #</th><th>Type</th><th>Period</th><th>Settled</th><th>Issue</th><th style="text-align:right;">Est. $</th></tr></thead><tbody>'+rows+'</tbody></table>'
     +'<div class="tot">Estimated total outstanding: $'+tot.toLocaleString(undefined,{maximumFractionDigits:2})+'</div>'
     +'<div class="note">Estimated amounts are each case\'s broker share, indicative, calculated from our loan records (loan amount x rate x broker share). Actual figures are subject to the lender/aggregator commission statement. Please verify the above items and advise.</div>'
     +'<script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script></body></html>';
@@ -12581,8 +12695,8 @@ function rRevLoans(){
   var loans=(S.loanBook||[]).filter(function(l){ return S.user.role==='admin'?true:l.brokerId===S.user.id; });
   var rows=S.commRows||[];
   var h='<div style="overflow-y:auto;max-height:calc(100vh - 170px);padding-right:4px;">';
-  h+='<div style="font-size:12px;color:#8b949e;margin-bottom:12px;">Link each loan to its Finsure Ref # once. After that, every statement matches automatically. Set repayment type + rate to enable offset estimate.</div>';
-  h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th>Loan</th><th>Ref #</th><th>Repay</th><th>Rate %</th><th>Next trail est.</th><th></th></tr></thead><tbody>';
+  h+='<div style="font-size:12px;color:#8b949e;margin-bottom:12px;">Link each loan to its Finsure Ref # once. Set repayment + rate for trail estimate. <b style="color:#c9d1d9;">Broker %</b> = the broker\'s share for invoicing this case (default 100; used by Auto-create invoices). Click Save after editing.</div>';
+  h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th>Loan</th><th>Ref #</th><th>Repay</th><th>Rate %</th><th>Broker %</th><th>Next trail est.</th><th></th></tr></thead><tbody>';
   loans.forEach(function(l){
     var ref=String(l.finsureRef||'').trim();
     var lr=rows.filter(function(r){return String(r.ref||'').trim()===ref && /trail/i.test(r.type);}).sort(function(a,b){return a.periodMonth<b.periodMonth?-1:1;});
@@ -12597,6 +12711,7 @@ function rRevLoans(){
       +'<td><input class="fi" style="width:120px;font-family:monospace;font-size:11px;padding:4px 6px;" value="'+esc(ref)+'" id="rref-'+esc(l.id)+'" placeholder="Ref #"></td>'
       +'<td><select class="fi" style="width:75px;padding:4px;" id="rrep-'+esc(l.id)+'"><option value=""'+(!l.repaymentType?' selected':'')+'>-</option><option'+(l.repaymentType==='P&I'?' selected':'')+'>P&I</option><option'+(l.repaymentType==='IO'?' selected':'')+'>IO</option></select></td>'
       +'<td><input class="fi" style="width:60px;padding:4px 6px;" value="'+esc(l.trailRate||'')+'" id="rrate-'+esc(l.id)+'" placeholder="0.15"></td>'
+      +'<td><input class="fi" style="width:58px;padding:4px 6px;text-align:center;" value="'+esc(l.brokerSharePct!=null&&l.brokerSharePct!==''?l.brokerSharePct:100)+'" id="rbsp-'+esc(l.id)+'" placeholder="100" title="Broker share % for invoicing this case"></td>'
       +'<td style="color:#34D399;font-weight:600;">'+(est>0?'$'+est.toFixed(2):(ref?'-':'link ref'))+'</td>'
       +'<td><button class="btn-sec" style="font-size:11px;padding:4px 9px;" onclick="_revSaveLoan(\''+esc(l.id)+'\')">Save</button></td>'
       +'</tr>';
@@ -12608,8 +12723,10 @@ async function _revSaveLoan(id){
   var ref=(document.getElementById('rref-'+id)||{}).value||'';
   var rep=(document.getElementById('rrep-'+id)||{}).value||'';
   var rate=(document.getElementById('rrate-'+id)||{}).value||'';
-  var r=await gs_('updateLoanRevenue',S.tok,id,{finsureRef:ref.trim(),repaymentType:rep,trailRate:rate});
-  if(r&&r.ok){ var l=(S.loanBook||[]).find(function(x){return x.id===id;}); if(l){l.finsureRef=ref.trim();l.repaymentType=rep;l.trailRate=rate;} toast('Saved'); render(); }
+  var bspRaw=(document.getElementById('rbsp-'+id)||{}).value;
+  var bsp=Math.max(0,Math.min(100,parseFloat(bspRaw)||0)); if(!(bsp>0))bsp=100;
+  var r=await gs_('updateLoanRevenue',S.tok,id,{finsureRef:ref.trim(),repaymentType:rep,trailRate:rate,brokerSharePct:bsp});
+  if(r&&r.ok){ var l=(S.loanBook||[]).find(function(x){return x.id===id;}); if(l){l.finsureRef=ref.trim();l.repaymentType=rep;l.trailRate=rate;l.brokerSharePct=bsp;} _invalidateCache(); toast('Saved'); render(); }
   else toast((r&&r.msg)||'Save failed',1);
 }
 
