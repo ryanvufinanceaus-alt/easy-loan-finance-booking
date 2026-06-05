@@ -1586,9 +1586,9 @@ const NAV=[
   {id:'emails',    label:'Emails',        role:'all',     section:'Communication', ico:'<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>'},
   // \u2500\u2500 INCOME \u2500\u2500 (logical flow: settle \u2192 loan book \u2192 commissions \u2192 invoice)
   {id:'loanbook',  label:'Loan Book',     role:'notsupp', section:'Income', ico:'<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>'},
+  {id:'revenue',   label:'Tracking',       role:'notsupp', ico:'<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-5"/>'},
   {id:'commissions',label:'Commissions',  role:'notsupp', ico:'<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'},
   {id:'invoices',  label:'Invoices',      role:'notsupp', ico:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/>'},
-  {id:'revenue',   label:'Tracking',       role:'notsupp', ico:'<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-5"/>'},
   // \u2500\u2500 TOOLS \u2500\u2500
   {id:'documents', label:'Documents',     role:'notsupp', section:'Tools', ico:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'},
   // \u2500\u2500 REFERENCE \u2500\u2500
@@ -1599,7 +1599,7 @@ const NAV=[
   {id:'activity',  label:'Activity Log',  role:'admin',   ico:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'},
   {id:'settings',  label:'Settings',      role:'admin',   ico:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>'},
 ];
-const HTITLES={dashboard:'Dashboard',pipeline:'Deal Pipeline',cases:'All Cases',tasks:'Task Manager',reminders:'Client Reminders',workflow:'Workflow Guide',emails:'Send Email',loanbook:'Loan Book',commissions:'Income \u00B7 Commission Tracker',invoices:'Invoices',documents:'Documents \u00B7 Generators',team:'Team & Users',lenders:'Lender Management',activity:'Activity Log',settings:'Settings'};
+const HTITLES={dashboard:'Dashboard',pipeline:'Deal Pipeline',cases:'All Cases',tasks:'Task Manager',reminders:'Client Reminders',workflow:'Workflow Guide',emails:'Send Email',loanbook:'Loan Book',commissions:'Income \u00B7 Commission Tracker',revenue:'Tracking \u00B7 Finsure Statements & Reconciliation',invoices:'Invoices',documents:'Documents \u00B7 Generators',team:'Team & Users',lenders:'Lender Management',activity:'Activity Log',settings:'Settings'};
 
 function setupSidebar(){
   if(!S.user)return;
@@ -1993,6 +1993,7 @@ function _renderModal(){
       m==='addLoan'?rAddLoan():
       m==='editLoan'?rEditLoan():
       m==='addComm'?rAddComm():
+      m==='revEmail'?rRevEmailModal():
       m==='editComm'?rEditComm():
       m==='trailReceipt'?rTrailReceipt():
       m==='exportComm'?rExportComm():
@@ -12235,11 +12236,87 @@ function _revEmailText(){
   var tot=items.reduce(function(s,it){return s+(_revNum(it.est)||0);},0);
   var lines='Hi team,\n\nReconciling our commissions'+(mk?(' up to '+_revMonthLabel(mk)):'')+'. The following items appear missing or short from the statements. Could you please verify?\n\n';
   lines+='Client\tLender\tRef #\tType\tPeriod\tSettled\tIssue\tEst. amount\n';
-  items.forEach(function(it){ lines+=(it.client||'')+'\t'+(it.lender||'')+'\t'+(it.ref||'')+'\t'+(it.type||'')+'\t'+(it.period||'')+'\t'+String(it.settle||'').slice(0,10)+'\t'+it.issue+'\t'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'')+'\n'; });
+  items.forEach(function(it){ lines+=(it.client||'')+'\t'+(it.lender||'')+'\t'+(_revRefDisp(it)||'')+'\t'+(it.type||'')+'\t'+(it.period||'')+'\t'+String(it.settle||'').slice(0,10)+'\t'+it.issue+'\t'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'')+'\n'; });
   lines+='\nEstimated total outstanding: ~$'+tot.toLocaleString(undefined,{maximumFractionDigits:2})+((S._revSharePct!=null&&S._revSharePct!==100)?(' (at '+S._revSharePct+'% broker share)'):'')+'\n(Estimates are indicative, from our loan records.)\n\nThanks,\nRyan\nEasy Loan Finance';
   return lines;
 }
-function _revCopyEmail(){ _revClip(_revEmailText()); toast('Email text copied - paste into Outlook'); }
+function _revCopyEmail(){ _revOpenEmail(); } // now opens a composer with subject + table
+function _revRefDisp(it){ var r=String(it.ref||'').trim(); return (r && r!=='(link ref)' && r!=='-') ? r : ''; }
+function _revEmailSubject(){
+  var co=S.companyInfo||{}; var mk=_revReconcile().endMonth;
+  return 'Commission query'+(co.name?(' \u2014 '+co.name):'')+(mk?(' \u2014 up to '+_revMonthLabel(mk)):'');
+}
+function _revEmailHtmlBody(){
+  var items=S._revMissingItems||[]; var mk=_revReconcile().endMonth;
+  var tot=items.reduce(function(s,it){return s+(_revNum(it.est)||0);},0);
+  var sp=(S._revSharePct==null?100:S._revSharePct);
+  var th='padding:7px 10px;border:1px solid #d0d5dd;background:#f3f4f6;text-align:left;font-size:13px;';
+  var td='padding:6px 10px;border:1px solid #e5e7eb;font-size:13px;';
+  var rows=items.map(function(it){
+    var ref=_revRefDisp(it);
+    return '<tr>'
+      +'<td style="'+td+'">'+esc(it.client||'')+'</td>'
+      +'<td style="'+td+'">'+esc(it.lender||'')+'</td>'
+      +'<td style="'+td+'font-family:monospace;">'+(ref?esc(ref):'\u2014')+'</td>'
+      +'<td style="'+td+'">'+esc(it.type||'')+'</td>'
+      +'<td style="'+td+'">'+esc(it.period||'\u2014')+'</td>'
+      +'<td style="'+td+'">'+esc(String(it.settle||'').slice(0,10)||'\u2014')+'</td>'
+      +'<td style="'+td+'">'+esc(it.issue||'')+'</td>'
+      +'<td style="'+td+'text-align:right;">'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'\u2014')+'</td>'
+      +'</tr>';
+  }).join('');
+  return '<div style="font-family:Calibri,Arial,sans-serif;color:#1a1a1a;font-size:14px;">'
+    +'<p>Hi team,</p>'
+    +'<p>Reconciling our commissions'+(mk?(' up to '+esc(_revMonthLabel(mk))):'')+'. The following items appear missing or short from the statements. Could you please verify against the references below?</p>'
+    +'<table style="border-collapse:collapse;border:1px solid #d0d5dd;">'
+    +'<thead><tr>'
+    +'<th style="'+th+'">Client</th><th style="'+th+'">Lender</th><th style="'+th+'">Ref #</th><th style="'+th+'">Type</th><th style="'+th+'">Period</th><th style="'+th+'">Settled</th><th style="'+th+'">Issue</th><th style="'+th+'text-align:right;">Est. amount</th>'
+    +'</tr></thead><tbody>'+rows+'</tbody></table>'
+    +'<p><b>Estimated total outstanding: ~$'+tot.toLocaleString(undefined,{maximumFractionDigits:2})+'</b>'+((sp!==100)?(' (at '+sp+'% broker share)'):'')+'<br>'
+    +'<span style="color:#666;font-size:12px;">Estimates are indicative, from our loan records.</span></p>'
+    +'<p>Thanks,<br>Ryan<br>Easy Loan Finance</p>'
+    +'</div>';
+}
+function _revOpenEmail(){
+  if(!(S._revMissingItems||[]).length){ toast('Nothing to query',1); return; }
+  openModal('revEmail');
+}
+function rRevEmailModal(){
+  var subj=_revEmailSubject(); var bodyHtml=_revEmailHtmlBody();
+  return '<div class="modal-card" style="max-width:880px;width:94vw;display:flex;flex-direction:column;max-height:90vh;">'
+    +'<div style="padding:16px 20px;border-bottom:1px solid #1e2430;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">'
+    +'<div style="font-size:15px;font-weight:700;color:#c9d1d9;">\uD83D\uDCE7 Commission query email</div>'
+    +'<button class="btn-ghost" onclick="closeModal()" style="font-size:18px;">\u00D7</button></div>'
+    +'<div style="padding:18px 20px;overflow-y:auto;">'
+    +'<div style="display:grid;grid-template-columns:64px 1fr;gap:8px 10px;align-items:center;margin-bottom:14px;">'
+    +'<div style="font-size:12px;color:#8b949e;">To</div><div style="font-size:13px;color:#c9d1d9;">finance@loankit.com.au</div>'
+    +'<div style="font-size:12px;color:#8b949e;">Subject</div><input class="fi" id="rev-em-subj" value="'+esc(subj)+'" style="font-size:13px;">'
+    +'</div>'
+    +'<div style="font-size:11px;color:#6b7280;margin-bottom:6px;">Preview (the table copies into Outlook as a real table):</div>'
+    +'<div id="rev-em-body" style="background:#fff;border:1px solid #d0d5dd;border-radius:8px;padding:16px;max-height:46vh;overflow:auto;">'+bodyHtml+'</div>'
+    +'</div>'
+    +'<div style="padding:14px 20px;border-top:1px solid #1e2430;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0;">'
+    +'<button class="btn-sec" onclick="_revCopySubject()">Copy subject</button>'
+    +'<button class="btn-sec" onclick="_revOpenOutlook()">Open in Outlook</button>'
+    +'<button class="btn-gold" onclick="_revCopyRich()">Copy email (with table)</button>'
+    +'</div></div>';
+}
+function _revCopySubject(){ var s=document.getElementById('rev-em-subj'); _revClip(s?s.value:_revEmailSubject()); toast('Subject copied'); }
+async function _revCopyRich(){
+  var html=document.getElementById('rev-em-body'); html=html?html.innerHTML:_revEmailHtmlBody();
+  var plain=_revEmailText();
+  try{
+    if(navigator.clipboard && window.ClipboardItem){
+      await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([plain],{type:'text/plain'})})]);
+      toast('Email copied with table \u2014 paste into Outlook body');
+    } else { _revClip(plain); toast('Copied as text (browser lacks rich copy)'); }
+  }catch(e){ _revClip(plain); toast('Copied as text'); }
+}
+function _revOpenOutlook(){
+  var subj=document.getElementById('rev-em-subj'); subj=subj?subj.value:_revEmailSubject();
+  var body=_revEmailText();
+  window.location.href='mailto:finance@loankit.com.au?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(body);
+}
 function _revCopyTable(){
   var items=S._revMissingItems||[];
   var t='Client\tLender\tRef #\tType\tPeriod\tSettled\tIssue\tEst. amount\n'+items.map(function(it){return (it.client||'')+'\t'+(it.lender||'')+'\t'+(it.ref||'')+'\t'+(it.type||'')+'\t'+(it.period||'')+'\t'+String(it.settle||'').slice(0,10)+'\t'+it.issue+'\t'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'');}).join('\n');
@@ -12257,7 +12334,7 @@ function _revDownloadXlsx(){
   aoa.push(['To: finance@loankit.com.au','','Prepared: '+new Date().toLocaleDateString('en-AU')]);
   aoa.push([]);
   aoa.push(['Client','Lender','Ref #','Type','Period','Settled','Issue','Est. amount (AUD)']);
-  items.forEach(function(it){ aoa.push([it.client||'',it.lender||'',it.ref||'',it.type||'',it.period||'',String(it.settle||'').slice(0,10),it.issue||'',it.est>0?_revNum(it.est):'']); });
+  items.forEach(function(it){ aoa.push([it.client||'',it.lender||'',_revRefDisp(it)||'',it.type||'',it.period||'',String(it.settle||'').slice(0,10),it.issue||'',it.est>0?_revNum(it.est):'']); });
   aoa.push([]);
   aoa.push(['','','','','','','Estimated total',tot]);
   var ws=XLSX.utils.aoa_to_sheet(aoa);
