@@ -860,12 +860,14 @@ function _applyLoadData(d){
   S.lenders=d.lenders||[];
   S.invoices=d.invoices||[];
   S.activity=d.activity||[];
+  S.savedRecipients=d.savedRecipients||S.savedRecipients||[];
   if(d.companyInfo)S.companyInfo=Object.assign({},S.companyInfo,d.companyInfo);
   if(d.emailContent)S.emailContent=Object.assign({},S.emailContent,d.emailContent);
   setupSidebar();
   render();
 }
 function _cacheKey(){ return 'bd_cache_'+((S.user&&S.user.id)||'me'); }
+function _invalidateCache(){ try{ Object.keys(sessionStorage).forEach(function(k){ if(k.indexOf('bd_cache_')===0) sessionStorage.removeItem(k); }); }catch(e){} }
 async function loadAll_(){
   // Instant paint from this session's cache (if recent) while fresh data loads in the background.
   var painted=false;
@@ -10252,7 +10254,16 @@ function rBillingTracker(){
         </div>
         <button class="btn-gold" style="font-size:12px;padding:8px 14px;${a.readyCount>0?'':'opacity:.5;'}" onclick="${a.readyCount>0?'_generateInvoicesFromReady()':'_billNoReady()'}">\u26A1 Auto-create invoices</button>
       </div>
-      <div style="font-size:10.5px;color:#D4A84399;line-height:1.5;">Groups received-but-unbilled commissions by loan + type into draft invoices. Upfront and Trail get separate invoices. Review before sending.</div>
+      <div style="font-size:10.5px;color:#D4A84399;line-height:1.5;">Creates <b>one draft invoice per case</b> from commissions already <b>paid in the Finsure statement</b>. Upfront and Trail are kept on separate invoices and cases are never mixed. Review before sending.</div>
+    </div>
+    <div style="background:#0A0D14;border:1px solid #1e2430;border-radius:10px;padding:13px 16px;margin-bottom:16px;">
+      <div style="font-size:11px;color:#60A5FA;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin-bottom:7px;">\u2139\uFE0F How invoicing works</div>
+      <div style="font-size:11.5px;color:#8b949e;line-height:1.7;">
+        <b style="color:#c9d1d9;">1. Import statement</b> (Tracking \u2192 Import) \u2014 loads what Finsure actually paid.<br>
+        <b style="color:#c9d1d9;">2. Sync to Commissions</b> \u2014 marks those commissions as <span style="color:#34D399;">Received</span> (money in).<br>
+        <b style="color:#c9d1d9;">3. Auto-create invoices</b> \u2014 turns each Received-but-unbilled commission into a draft: <b>one invoice per case</b>, Upfront and Trail separate, never mixed. Only paid commissions become invoices.<br>
+        <span style="color:#6b7280;">So an invoice can only exist once the money is confirmed in the statement \u2014 nothing is invoiced before it's paid.</span>
+      </div>
     </div>`}
 
     <!-- Per-loan timeline -->
@@ -10344,27 +10355,41 @@ async function _generateInvoicesFromReady(){
     if(seenK[key]) return; seenK[key]=1; ready.push(c);
   });
   if(ready.length===0){toast('Nothing ready to invoice');return;}
-  // Group by brokerId + type
+  // Group by CASE/LOAN + type so each invoice is exactly ONE case, with Upfront and
+  // Trail kept on separate invoices. Cases are never mixed together.
   const groups={};
   ready.forEach(c=>{
-    const k=`${c.brokerId}|${c.type==='Trail'?'Trail':'Upfront'}`;
+    const caseKey=c.loanId||c.caseId||c.id;
+    const k=`${caseKey}|${c.type==='Trail'?'Trail':'Upfront'}`;
     (groups[k]=groups[k]||[]).push(c);
   });
   const groupCount=Object.keys(groups).length;
-  if(!confirm(`Create ${groupCount} draft invoice(s) from ${ready.length} ready commission(s)?\n\n\u00B7 Grouped by broker + type (Upfront / Trail separate)\n\u00B7 Each commission stamped so it won't be billed twice\n\u00B7 Created as Draft \u2014 review & set recipient before sending`))return;
+  if(!confirm(`Create ${groupCount} draft invoice(s) from ${ready.length} received commission(s)?\n\n\u00B7 ONE invoice per case \u2014 Upfront and Trail kept separate\n\u00B7 Only commissions already PAID in the Finsure statement are billed\n\u00B7 Cases are never mixed on the same invoice\n\u00B7 Each commission is stamped so it can't be billed twice\n\u00B7 Created as Draft \u2014 review & set recipient before sending`))return;
+  // Broker share % (default 100). Lets you bill a partial share if you split with a referrer.
+  let pctIn=prompt('Broker share % for these invoices?\n\n100 = full commission, 80 = 80%, etc.','100');
+  if(pctIn===null)return; // cancelled
+  let pct=parseFloat(String(pctIn).replace(/[^0-9.]/g,'')); if(!(pct>0))pct=100; if(pct>100)pct=100;
+  // Due date = last day of the current month (consistent, easy to manage)
+  const _eom=new Date(); const _last=new Date(_eom.getFullYear(),_eom.getMonth()+1,0);
+  const dueDate=`${_last.getFullYear()}-${String(_last.getMonth()+1).padStart(2,'0')}-${String(_last.getDate()).padStart(2,'0')}`;
   showLoad();
   let made=0;
   for(const k in groups){
     const list=groups[k];
-    const [brokerId,type]=k.split('|');
+    const type=/trail/i.test(list[0].type)?'Trail':'Upfront';
+    const brokerId=list[0].brokerId||S.user.id;
     const brokerName=list[0].brokerName||'';
-    const items=list.map(c=>({
-      desc:`${type} commission \u2014 ${c.clientName||''}${c.period?' \u00B7 '+c.period:''}`,
-      source:c.loanId||c.caseId||'',
-      commId:c.id,
-      grossAmount:Number(c.amount)||0,
-      amount:Number(c.amount)||0,
-    }));
+    const items=list.map(c=>{
+      const full=Number(c.amount)||0;
+      const amt=Math.round(full*(pct/100)*100)/100;
+      return {
+        desc:`${type} commission \u2014 ${c.clientName||''}${c.period?' \u00B7 '+c.period:''}${pct!==100?' ('+pct+'% share)':''}`,
+        source:c.loanId||c.caseId||'',
+        commId:c.id,
+        grossAmount:full,
+        amount:amt,
+      };
+    });
     // Compute a period label to store on the invoice
     let periodLabel='';
     if(type==='Trail'){
@@ -10377,9 +10402,9 @@ async function _generateInvoicesFromReady(){
     const clientSummary=[...new Set(list.map(c=>c.clientName).filter(Boolean))].join(', ');
     const r=await gs_('createInvoice',S.tok,{
       type, brokerId:`${brokerId}|${brokerName}`, items,
-      gstMode:'exclusive', status:'Draft',
+      gstMode:'exclusive', status:'Draft', dueDate,
       issuedTo:brokerName, period:periodLabel,
-      brokerSharePct:100,
+      brokerSharePct:pct,
       notes: clientSummary?('Cases included: '+clientSummary):'',
     });
     if(r&&r.ok)made++;
@@ -10666,6 +10691,12 @@ async function openNewInvoice(){
 function _invoiceRecipientList(){
   const seen = {};
   const out = [];
+  // Persistent saved recipients first (survive invoice deletion)
+  (S.savedRecipients||[]).forEach(r => {
+    const name=(r.name||'').trim(); if(!name)return;
+    const key=name.toLowerCase(); if(seen[key])return; seen[key]=true;
+    out.push({ issuedTo:name, email:r.email||'', abn:r.abn||'' });
+  });
   (S.invoices||[]).forEach(iv => {
     const name = (iv.issuedTo||'').trim();
     if(!name) return;
@@ -11132,6 +11163,8 @@ async function delInvoice_(id){
   if(r&&r.ok){
     S.invoices=S.invoices.filter(i=>i.id!==id);
     S.basLoaded=false;
+    _invalidateCache();
+    const cr=await gs_('getCommissions',S.tok); if(cr&&cr.ok)S.commissions=cr.data||[]; // reflect un-stamping
     toast('Deleted');
     render();
   }
@@ -11349,6 +11382,7 @@ function rSettings(){
   return`<div class="card" style="overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 100px);">
     <div style="display:flex;border-bottom:1px solid #1e2430;flex-shrink:0;flex-wrap:wrap;overflow-x:auto;">
       ${tabBtn('company','\uD83C\uDFE2 Company')}
+      ${tabBtn('recipients','\uD83D\uDC65 Recipients')}
       ${tabBtn('email','\u2709 Sender')}
       ${tabBtn('templates','\uD83D\uDCDD Templates')}
       ${tabBtn('signature','\uD83D\uDD8B Signature')}
@@ -11358,6 +11392,7 @@ function rSettings(){
     </div>
     <div style="flex:1;overflow-y:auto;min-height:0;">
       ${tab==='company'?rSettingsCompany(S.companyDraft):
+        tab==='recipients'?rSettingsRecipients():
         tab==='email'?rSettingsEmail(S.emailSettingsDraft):
         tab==='templates'?rEmailTemplates():
         tab==='signature'?rSettingsSignature(S.emailSettingsDraft):
@@ -11568,6 +11603,59 @@ function rSettingsSignature(e){
     </div>
 
   </div>`;
+}
+function rSettingsRecipients(){
+  var list=(S.savedRecipients||[]).slice().sort(function(a,b){return String(a.name).localeCompare(String(b.name));});
+  var h='<div style="padding:22px;max-width:920px;">';
+  h+='<div style="font-size:13px;color:#6b7280;margin-bottom:14px;">Recipients you invoice (brokers / referrers). Saved permanently here \u2014 they no longer disappear when invoices are deleted, and show up in the recipient dropdown when creating an invoice.</div>';
+  h+='<div style="background:#0A0D14;border:1px solid #1e2430;border-radius:9px;padding:14px 16px;margin-bottom:16px;">'
+    +'<div style="font-size:11px;color:#D4A843;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;">Add / update recipient</div>'
+    +'<div style="display:grid;grid-template-columns:2fr 2fr 1.4fr auto;gap:10px;align-items:end;">'
+    +'<div><label class="fl">Name *</label><input class="fi" id="rcp-name" placeholder="Broker / company name"></div>'
+    +'<div><label class="fl">Email</label><input class="fi" id="rcp-email" type="email" placeholder="name@email.com"></div>'
+    +'<div><label class="fl">ABN</label><input class="fi" id="rcp-abn" placeholder="11 222 333 444"></div>'
+    +'<button class="btn-gold" style="padding:10px 16px;" onclick="_saveRecipient_()">Save</button>'
+    +'</div></div>';
+  if(!list.length){ h+='<div style="text-align:center;padding:30px;color:#4a5568;">No saved recipients yet.</div>'; }
+  else{
+    h+='<table class="tbl"><thead><tr><th>Name</th><th>Email</th><th>ABN</th><th style="width:120px;"></th></tr></thead><tbody>';
+    list.forEach(function(r){
+      var nm=esc(r.name);
+      h+='<tr><td style="font-weight:600;color:#c9d1d9;">'+nm+'</td><td>'+esc(r.email||'-')+'</td><td>'+esc(r.abn||'-')+'</td>'
+        +'<td style="display:flex;gap:6px;"><button class="btn-sec" style="font-size:11px;padding:4px 9px;" onclick="_editRecipient_(\''+esc((r.name||'').replace(/\\/g,"\\\\").replace(/'/g,"\\'"))+'\')">Edit</button>'
+        +'<button class="btn-ghost" style="font-size:11px;padding:4px 9px;color:#ef4444;" onclick="_delRecipient_(\''+esc((r.name||'').replace(/\\/g,"\\\\").replace(/'/g,"\\'"))+'\')">Delete</button></td></tr>';
+    });
+    h+='</tbody></table>';
+  }
+  h+='</div>';
+  return h;
+}
+async function _saveRecipient_(){
+  var name=(document.getElementById('rcp-name').value||'').trim();
+  if(!name){toast('Name required',1);return;}
+  var email=(document.getElementById('rcp-email').value||'').trim();
+  var abn=(document.getElementById('rcp-abn').value||'').trim();
+  showLoad();
+  var r=await gs_('saveSavedRecipient',S.tok,{name:name,email:email,abn:abn});
+  hideLoad();
+  if(r&&r.ok){ S.savedRecipients=r.data||[]; toast('Saved '+name); render(); }
+  else toast((r&&r.msg)||'Failed',1);
+}
+function _editRecipient_(name){
+  var r=(S.savedRecipients||[]).find(function(x){return String(x.name).toLowerCase()===String(name).toLowerCase();});
+  if(!r)return;
+  document.getElementById('rcp-name').value=r.name||'';
+  document.getElementById('rcp-email').value=r.email||'';
+  document.getElementById('rcp-abn').value=r.abn||'';
+  document.getElementById('rcp-name').scrollIntoView({behavior:'smooth',block:'center'});
+}
+async function _delRecipient_(name){
+  if(!confirm('Delete saved recipient "'+name+'"?'))return;
+  showLoad();
+  var r=await gs_('deleteSavedRecipient',S.tok,name);
+  hideLoad();
+  if(r&&r.ok){ S.savedRecipients=r.data||[]; toast('Deleted'); render(); }
+  else toast((r&&r.msg)||'Failed',1);
 }
 function rSettingsCompany(d){
   return`<div style="padding:22px;display:grid;gap:13px;max-width:920px;">
@@ -12275,11 +12363,14 @@ function rRevPreviewModal(){
   var p=S._revPreview; if(!p)return '';
   var rows=p.rows||[];
   var body='<div style="max-height:55vh;overflow:auto;border:1px solid #1e2430;border-radius:8px;">'
-    +'<table class="tbl"><thead><tr><th>Type</th><th>Client</th><th>Lender</th><th>Ref #</th><th>Period</th><th>Commission</th><th>Balance</th></tr></thead><tbody>';
-  rows.slice(0,200).forEach(function(o){
-    body+='<tr><td><span style="color:'+(/trail/i.test(o.type)?'#60A5FA':'#D4A843')+';font-weight:600;">'+esc(o.type)+'</span></td>'
+    +'<table class="tbl"><thead><tr><th style="width:32px;"><input type="checkbox" id="rev-pv-all" checked onclick="_revPvToggleAll(this.checked)"></th><th>Type</th><th>Client</th><th>Lender</th><th>Ref #</th><th>Period</th><th>Commission</th><th>Balance</th></tr></thead><tbody>';
+  rows.slice(0,300).forEach(function(o,idx){
+    var big=(/trail/i.test(o.type)&&_revNum(o.commission)>2000)||_revNum(o.commission)>200000; // likely garbage
+    body+='<tr style="'+(big?'background:rgba(239,68,68,.08);':'')+'">'
+      +'<td><input type="checkbox" class="rev-pv-row" '+(o._skip?'':'checked')+' onchange="S._revPreview.rows['+idx+']._skip=!this.checked;_revPvCount()"></td>'
+      +'<td><span style="color:'+(/trail/i.test(o.type)?'#60A5FA':'#D4A843')+';font-weight:600;">'+esc(o.type)+'</span></td>'
       +'<td>'+esc(o.clientRaw)+'</td><td>'+esc(o.lenderRaw)+'</td><td style="font-family:monospace;font-size:11px;">'+esc(o.ref)+'</td>'
-      +'<td>'+esc(o.periodMonth||'-')+'</td><td>'+(o.commission!==''?'$'+_revNum(o.commission).toFixed(2):'-')+'</td>'
+      +'<td>'+esc(o.periodMonth||'-')+'</td><td style="'+(big?'color:#ef4444;font-weight:700;':'')+'">'+(o.commission!==''?'$'+_revNum(o.commission).toFixed(2):'-')+'</td>'
       +'<td>'+(o.balanceW!==''?'$'+_revNum(o.balanceW).toLocaleString():'-')+'</td></tr>';
   });
   body+='</tbody></table></div>';
@@ -12292,16 +12383,22 @@ function rRevPreviewModal(){
     +'<div style="padding:18px 20px;overflow-y:auto;max-height:70vh;">'
     +'<div style="font-size:12px;color:#8b949e;margin-bottom:10px;">'+esc(p.fileName)+' &middot; '+rows.length+' rows ('+ups+' upfront, '+trs+' trail)'
     +(p.periodMonth?(' &middot; period '+_revMonthLabel(p.periodMonth)):'')+'</div>'
-    +'<div style="font-size:11px;color:#6b7280;margin-bottom:10px;">Rows are keyed by Ref# + type + month. Re-importing a month updates those rows; it never duplicates or erases other months. Check the Type column is correct before importing.</div>'
+    +'<div style="font-size:11px;color:#6b7280;margin-bottom:10px;">Untick any rows you don\'t want (e.g. your manual scratch rows at the top of the file). <span style="color:#ef4444;">Red rows</span> have an unusually large amount \u2014 likely a parse/scratch error; leave them unticked. Rows are keyed by Ref# + type + month.</div>'
     +body+'</div>'
-    +'<div style="padding:14px 20px;border-top:1px solid #1e2430;display:flex;justify-content:flex-end;gap:10px;flex-shrink:0;">'
-    +'<button class="btn-sec" onclick="closeModal()">Cancel</button><button class="btn-gold" onclick="_revConfirmImport()">Import '+rows.length+' rows</button>'
+    +'<div style="padding:14px 20px;border-top:1px solid #1e2430;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0;">'
+    +'<div style="display:flex;gap:7px;"><button class="btn-ghost" style="font-size:11px;" onclick="_revPvToggleAll(true)">Select all</button><button class="btn-ghost" style="font-size:11px;" onclick="_revPvToggleAll(false)">None</button><button class="btn-ghost" style="font-size:11px;" onclick="_revPvSkipBig()">Untick red</button></div>'
+    +'<div style="display:flex;gap:10px;"><button class="btn-sec" onclick="closeModal()">Cancel</button><button class="btn-gold" onclick="_revConfirmImport()">Import <span id="rev-pv-count">'+rows.filter(function(o){return !o._skip;}).length+'</span> rows</button></div>'
     +'</div></div></div>';
 }
+function _revPvCount(){ var p=S._revPreview; if(!p)return; var n=(p.rows||[]).filter(function(o){return !o._skip;}).length; var el=document.getElementById('rev-pv-count'); if(el)el.textContent=n; }
+function _revPvToggleAll(on){ var p=S._revPreview; if(!p)return; (p.rows||[]).forEach(function(o){o._skip=!on;}); renderModal(); }
+function _revPvSkipBig(){ var p=S._revPreview; if(!p)return; (p.rows||[]).forEach(function(o){ var big=(/trail/i.test(o.type)&&_revNum(o.commission)>2000)||_revNum(o.commission)>200000; if(big)o._skip=true; }); renderModal(); }
 async function _revConfirmImport(){
   var p=S._revPreview; if(!p)return;
+  var sel=(p.rows||[]).filter(function(o){return !o._skip;});
+  if(!sel.length){ toast('No rows selected',1); return; }
   showLoad();
-  var r=await gs_('importCommStatement',S.tok,{fileName:p.fileName,periodMonth:p.periodMonth},p.rows);
+  var r=await gs_('importCommStatement',S.tok,{fileName:p.fileName,periodMonth:p.periodMonth},sel);
   hideLoad();
   if(r&&r.ok){ toast('Imported: '+r.inserted+' new, '+r.updated+' updated'); closeModal(); await _loadRevenueData(true); }
   else toast((r&&r.msg)||'Import failed',1);
@@ -12417,7 +12514,7 @@ async function _revConfirmSync(){
 function rRevBatches(){
   var b=(S.commBatches||[]).slice().sort(function(a,c){return a.uploadedAt<c.uploadedAt?1:-1;});
   var h='<div style="overflow-y:auto;max-height:calc(100vh - 170px);padding-right:4px;">';
-  h+='<div style="display:flex;justify-content:flex-end;margin-bottom:10px;"><button class="btn-sec" style="font-size:12px;padding:7px 13px;color:#FB923C;border-color:#FB923C44;" onclick="_revDedupe()">Clean duplicate commissions</button></div>';
+  h+='<div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px;flex-wrap:wrap;"><button class="btn-sec" style="font-size:12px;padding:7px 13px;color:#FB923C;border-color:#FB923C44;" onclick="_revDedupe()">Clean duplicate commissions</button><button class="btn-sec" style="font-size:12px;padding:7px 13px;" onclick="_revClearImports()" title="Removes imported statement rows but KEEPS the commission ledger / received history">Clear imported files (keep history)</button><button class="btn-sec" style="font-size:12px;padding:7px 13px;color:#ef4444;border-color:#ef444444;" onclick="_revClearAll()" title="Full reset \u2014 also deletes the commission ledger / received history">Reset ALL (incl. history)</button></div>';
   if(!b.length){ h+='<div class="card" style="padding:30px;text-align:center;color:#6b7280;">No statements imported yet.</div></div>'; return h; }
   h+='<table class="tbl"><thead><tr><th>Uploaded</th><th>File</th><th>Period</th><th>Rows</th><th>New</th><th>Updated</th><th>By</th><th></th></tr></thead><tbody>';
   b.forEach(function(x){
@@ -12429,11 +12526,38 @@ function rRevBatches(){
   h+='</tbody></table></div>';
   return h;
 }
+async function _revClearImports(){
+  if(!confirm('Clear imported statement files?\n\n\u00B7 Removes ALL imported statement rows + upload batches\n\u00B7 KEEPS your commission ledger (received history + invoice links stay intact)\n\nUse this to re-import statements cleanly.'))return;
+  showLoad();
+  var r=await gs_('clearCommImports',S.tok);
+  if(r&&r.ok){
+    S.commRows=[]; S.commBatches=[]; S._revFetched=false;
+    _invalidateCache();
+    hideLoad();
+    toast('Cleared '+r.rows+' statement rows, '+r.batches+' batches \u2014 ledger kept');
+    await _loadRevenueData(true);
+  } else { hideLoad(); toast((r&&r.msg)||'Failed',1); }
+}
+async function _revClearAll(){
+  if(!confirm('CLEAR ALL TRACKING DATA?\n\nThis permanently deletes:\n\u00B7 ALL imported statement rows\n\u00B7 ALL upload batches\n\u00B7 ALL commission records (Received + Pending)\n\nInvoices are NOT deleted, but their commission links are gone. Use this only for a full reset.'))return;
+  var typed=prompt('Type DELETE to confirm wiping all commission/tracking data:');
+  if(String(typed||'').trim().toUpperCase()!=='DELETE'){ toast('Cancelled',1); return; }
+  showLoad();
+  var r=await gs_('clearAllCommData',S.tok);
+  if(r&&r.ok){
+    S.commissions=[]; S.commRows=[]; S.commBatches=[]; S._revFetched=false; S._stampsRepaired=false;
+    _invalidateCache();
+    var cr=await gs_('getCommissions',S.tok); if(cr&&cr.ok)S.commissions=cr.data||[];
+    hideLoad();
+    toast('Cleared '+r.commissions+' commissions, '+r.rows+' rows, '+r.batches+' batches');
+    await _loadRevenueData(true);
+  } else { hideLoad(); toast((r&&r.msg)||'Failed',1); }
+}
 async function _revDedupe(){
   if(!confirm('Remove duplicate commission records (same loan + type + period)? Invoiced ones are kept. This cannot be undone.'))return;
   showLoad();
   var r=await gs_('dedupeCommissions',S.tok);
-  if(r&&r.ok){ var cr=await gs_('getCommissions',S.tok); if(cr&&cr.ok)S.commissions=cr.data||[]; hideLoad(); toast('Removed '+r.removed+' duplicate commission(s)'); render(); }
+  if(r&&r.ok){ var cr=await gs_('getCommissions',S.tok); if(cr&&cr.ok)S.commissions=cr.data||[]; hideLoad(); toast('Removed '+r.removed+' duplicate commission(s)'); _invalidateCache(); render(); }
   else { hideLoad(); toast((r&&r.msg)||'Failed',1); }
 }
 async function _revRevert(id){
@@ -12441,7 +12565,7 @@ async function _revRevert(id){
   showLoad();
   var r=await gs_('revertCommBatch',S.tok,id);
   hideLoad();
-  if(r&&r.ok){ toast('Reverted: '+r.removed+' rows removed'); await _loadRevenueData(true); }
+  if(r&&r.ok){ toast('Reverted: '+r.removed+' rows removed'); _invalidateCache(); await _loadRevenueData(true); }
   else toast((r&&r.msg)||'Revert failed',1);
 }
 
