@@ -12283,7 +12283,7 @@ function _revOpenEmail(){
 }
 function rRevEmailModal(){
   var subj=_revEmailSubject(); var bodyHtml=_revEmailHtmlBody();
-  return '<div class="modal-card" style="max-width:880px;width:94vw;display:flex;flex-direction:column;max-height:90vh;">'
+  return '<div class="m-ct"><div class="m-box" style="max-width:880px;width:94vw;display:flex;flex-direction:column;max-height:90vh;">'
     +'<div style="padding:16px 20px;border-bottom:1px solid #1e2430;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">'
     +'<div style="font-size:15px;font-weight:700;color:#c9d1d9;">\uD83D\uDCE7 Commission query email</div>'
     +'<button class="btn-ghost" onclick="closeModal()" style="font-size:18px;">\u00D7</button></div>'
@@ -12299,7 +12299,7 @@ function rRevEmailModal(){
     +'<button class="btn-sec" onclick="_revCopySubject()">Copy subject</button>'
     +'<button class="btn-sec" onclick="_revOpenOutlook()">Open in Outlook</button>'
     +'<button class="btn-gold" onclick="_revCopyRich()">Copy email (with table)</button>'
-    +'</div></div>';
+    +'</div></div></div>';
 }
 function _revCopySubject(){ var s=document.getElementById('rev-em-subj'); _revClip(s?s.value:_revEmailSubject()); toast('Subject copied'); }
 async function _revCopyRich(){
