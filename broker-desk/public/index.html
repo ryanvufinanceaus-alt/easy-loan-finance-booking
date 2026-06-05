@@ -1941,10 +1941,10 @@ function _render(){
       v==='reminders'?rReminders():
       v==='workflow'?rWorkflow():
       v==='emails'?rEmails():
-      v==='loanbook'?rLoanBook():
-      v==='commissions'?rCommissions():
-      v==='invoices'?rInvoices():
-      v==='revenue'?rRevenue():
+      v==='loanbook'?(_incomeBanner('loanbook')+rLoanBook()):
+      v==='commissions'?(_incomeBanner('commissions')+rCommissions()):
+      v==='invoices'?(_incomeBanner('invoices')+rInvoices()):
+      v==='revenue'?(_incomeBanner('revenue')+rRevenue()):
       v==='documents'?rDocuments():
       v==='team'?rTeam():
       v==='lenders'?rLenders():
@@ -4617,6 +4617,35 @@ function copyTpl(){
 // \u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557
 // \u2551  LOAN BOOK                                      \u2551
 // \u255A\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255D
+// Orientation banner shown across the 4 Income areas so the team understands how they
+// relate and which to use. Flow: Loan Book -> Tracking -> Commissions -> Invoices.
+function _incomeBanner(active){
+  var steps=[
+    {id:'loanbook',n:'1',label:'Loan Book',desc:'Your settled loans \u2014 the master list everything is tracked against.'},
+    {id:'revenue',n:'2',label:'Tracking',desc:'Import Finsure statements, see paid vs missing, and Sync received money into Commissions.'},
+    {id:'commissions',n:'3',label:'Commissions',desc:'The permanent ledger of every commission (Received / Pending) with Ref# + period.'},
+    {id:'invoices',n:'4',label:'Invoices',desc:'Bill received commissions \u2014 one invoice per case. Billing Tracker = received vs invoiced.'}
+  ];
+  if(_lsGet('bd_hide_income_map')==='1'){
+    return '<div style="margin-bottom:12px;text-align:right;"><a href="#" onclick="_lsSet(\'bd_hide_income_map\',\'0\');render();return false;" style="font-size:11px;color:#6b7280;">Show income flow guide</a></div>';
+  }
+  var chips=steps.map(function(s,i){
+    var on=s.id===active;
+    var c='<a href="#" onclick="setView(\''+s.id+'\');return false;" style="display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:8px;text-decoration:none;font-size:12px;font-weight:600;'+(on?'background:#D4A84320;color:#D4A843;border:1px solid #D4A84355;':'color:#8b949e;border:1px solid transparent;')+'">'
+      +'<span style="display:inline-flex;width:17px;height:17px;border-radius:50%;align-items:center;justify-content:center;font-size:10px;'+(on?'background:#D4A843;color:#0A0D14;':'background:#1e2430;color:#8b949e;')+'">'+s.n+'</span>'+esc(s.label)+'</a>';
+    var arrow=i<steps.length-1?'<span style="color:#2d3748;font-size:13px;">\u2192</span>':'';
+    return c+arrow;
+  }).join('');
+  var cur=steps.filter(function(s){return s.id===active;})[0];
+  return '<div style="background:linear-gradient(135deg,rgba(96,165,250,.06),transparent);border:1px solid #1e2430;border-radius:11px;padding:11px 15px;margin-bottom:14px;">'
+    +'<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:6px;">'+chips
+    +'<a href="#" onclick="_lsSet(\'bd_hide_income_map\',\'1\');render();return false;" style="margin-left:auto;font-size:10.5px;color:#4a5568;">hide</a></div>'
+    +(cur?'<div style="font-size:11.5px;color:#8b949e;line-height:1.5;"><b style="color:#c9d1d9;">'+esc(cur.label)+':</b> '+esc(cur.desc)+'</div>':'')
+    +'</div>';
+}
+function _lsGet(k){ try{return localStorage.getItem(k);}catch(e){return null;} }
+function _lsSet(k,v){ try{localStorage.setItem(k,v);}catch(e){} }
+
 function rLoanBook(){
   const d=S.loanBook;
   const q=(S.lbSearch||'').toLowerCase();
@@ -11749,6 +11778,7 @@ function rSettingsEmail(e){
       <label class="fl">Email Provider</label>
       <select class="fi" id="es-prov" onchange="S.emailSettingsDraft.provider=this.value;render()">
         <option value="gmail_app"${provider==='gmail_app'?' selected':''}>Gmail / Google Workspace (default \u2014 no setup)</option>
+        <option value="ms_graph"${provider==='ms_graph'?' selected':''}>Microsoft 365 \u2014 send directly from your 365 mailbox (Graph API)</option>
         <option value="smtp_zoho"${provider==='smtp_zoho'?' selected':''}>Zoho Mail (via Send-As alias)</option>
         <option value="smtp_365"${provider==='smtp_365'?' selected':''}>Microsoft 365 (via Send-As alias)</option>
         <option value="smtp_gmail"${provider==='smtp_gmail'?' selected':''}>Custom Gmail SMTP (via Send-As alias)</option>
@@ -11764,6 +11794,25 @@ function rSettingsEmail(e){
       ${provider==='smtp_365'?`<div style="margin-top:4px;">SMTP host: <code style="color:#D4A843;">smtp.office365.com</code> \u00B7 Port: 587 (TLS) \u00B7 Use 365 password or app password if MFA enabled</div>`:''}
       ${provider==='smtp_gmail'?`<div style="margin-top:4px;">SMTP host: <code style="color:#D4A843;">smtp.gmail.com</code> \u00B7 Port: 587 (TLS) \u00B7 Use App Password (not your main password)</div>`:''}
     </div>`}
+
+    ${provider==='ms_graph'?`<div style="background:#0A0D14;border:1px solid #60A5FA44;border-radius:9px;padding:14px 16px;">
+      <div style="font-size:11px;color:#60A5FA;font-weight:700;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">\uD83D\uDCE7 Microsoft 365 \u2014 direct send</div>
+      <div style="font-size:11.5px;color:#8b949e;line-height:1.7;margin-bottom:12px;">The app logs into 365 with its own credentials and sends as your mailbox \u2014 no Send-As alias needed. One-time setup in the Microsoft admin portal:
+        <br>1. <b style="color:#c9d1d9;">Entra admin (entra.microsoft.com) \u2192 App registrations \u2192 New registration</b> \u2014 copy the <b>Application (client) ID</b> + <b>Directory (tenant) ID</b>.
+        <br>2. <b style="color:#c9d1d9;">Certificates &amp; secrets \u2192 New client secret</b> \u2014 copy the secret <b>Value</b> (shown once).
+        <br>3. <b style="color:#c9d1d9;">API permissions \u2192 Add \u2192 Microsoft Graph \u2192 Application permissions \u2192 Mail.Send</b> \u2192 then <b>Grant admin consent</b>.
+        <br>4. Paste the three values below + the sender mailbox.
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div><label class="fl">Sender mailbox *</label><input class="fi" value="${esc(e.graphSender||'')}" oninput="S.emailSettingsDraft.graphSender=this.value" placeholder="hello@easyloanfinance.com.au"></div>
+        <div><label class="fl">Directory (tenant) ID *</label><input class="fi" value="${esc(e.graphTenant||'')}" oninput="S.emailSettingsDraft.graphTenant=this.value" placeholder="xxxxxxxx-xxxx-..."></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+        <div><label class="fl">Application (client) ID *</label><input class="fi" value="${esc(e.graphClient||'')}" oninput="S.emailSettingsDraft.graphClient=this.value" placeholder="xxxxxxxx-xxxx-..."></div>
+        <div><label class="fl">Client secret ${e.graphSecretSet?'<span style=\"color:#34D399;\">(saved \u2014 blank = keep)</span>':'*'}</label><input class="fi" type="password" oninput="S.emailSettingsDraft.graphSecret=this.value" placeholder="${e.graphSecretSet?'\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022':'paste secret Value'}"></div>
+      </div>
+      <div style="font-size:10.5px;color:#6b7280;margin-top:9px;">Tip: add a Microsoft <b>Application Access Policy</b> so this app may only send from your mailbox (recommended). After saving, use "Send Test" below.</div>
+    </div>`:''}
 
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;">
       <div>
@@ -12149,8 +12198,9 @@ function rRevRecon(){
     +kpi('Unknown payment',rec.unknown.length,'#60A5FA')+'</div>';
   // Missing items table
   var items=[];
-  rec.missingUpfront.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',type:'Upfront',period:'-',settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Missing upfront',est:x.est||0,color:'#EF4444'}); });
-  rec.missingTrail.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',type:'Trail',period:_revMonthLabel(x.month),settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Missing trail',est:x.est||0,color:'#EF4444'}); });
+  var _sp=(S._revSharePct==null?100:S._revSharePct)/100;
+  rec.missingUpfront.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',type:'Upfront',period:'-',settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Missing upfront',est:(x.est||0)*_sp,color:'#EF4444'}); });
+  rec.missingTrail.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',type:'Trail',period:_revMonthLabel(x.month),settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Missing trail',est:(x.est||0)*_sp,color:'#EF4444'}); });
   rec.variance.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref,type:'Trail',period:_revMonthLabel(x.month),settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Trail down '+x.pct+'%',est:0,color:'#FB923C'}); });
   rec.unknown.forEach(function(r){ items.push({client:r.clientRaw||'(unknown)',lender:r.lenderRaw||'',ref:r.ref,type:/trail/i.test(r.type)?'Trail':'Upfront',period:_revMonthLabel(r.periodMonth)||'-',settle:'',loanAmt:'',issue:'Unknown payment - not in loan book',est:0,color:'#60A5FA'}); });
   var totalEst=items.reduce(function(s,it){return s+(_revNum(it.est)||0);},0);
@@ -12158,7 +12208,8 @@ function rRevRecon(){
     h+='<div class="card" style="padding:30px;text-align:center;color:#34D399;">All matched. Nothing missing within the expected window (up to '+_revMonthLabel(rec.endMonth)+').</div>';
   } else {
     h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;"><div style="font-weight:700;color:#c9d1d9;font-size:13px;">Items to query Finsure ('+items.length+') &middot; Est. outstanding <span style="color:#D4A843;">$'+totalEst.toLocaleString(undefined,{maximumFractionDigits:2})+'</span></div>'
-      +'<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">'
+      +'<span style="display:flex;align-items:center;gap:5px;font-size:12px;color:#8b949e;">Broker share %<input type="number" min="0" max="100" value="'+(S._revSharePct==null?100:S._revSharePct)+'" oninput="S._revSharePct=Math.max(0,Math.min(100,parseFloat(this.value)||0));render()" style="width:62px;padding:5px 7px;background:#0A0D14;border:1px solid #2d3748;border-radius:6px;color:#c9d1d9;"></span>'
       +'<button class="btn-gold" style="font-size:12px;padding:7px 13px;" onclick="_revPrintQuery()">Print / Save PDF</button>'
       +'<button class="btn-sec" style="font-size:12px;padding:7px 13px;" onclick="_revCopyEmail()">Copy email</button>'
       +'<button class="btn-sec" style="font-size:12px;padding:7px 13px;" onclick="_revDownloadXlsx()">Excel</button>'
@@ -12185,7 +12236,7 @@ function _revEmailText(){
   var lines='Hi team,\n\nReconciling our commissions'+(mk?(' up to '+_revMonthLabel(mk)):'')+'. The following items appear missing or short from the statements. Could you please verify?\n\n';
   lines+='Client\tLender\tRef #\tType\tPeriod\tSettled\tIssue\tEst. amount\n';
   items.forEach(function(it){ lines+=(it.client||'')+'\t'+(it.lender||'')+'\t'+(it.ref||'')+'\t'+(it.type||'')+'\t'+(it.period||'')+'\t'+String(it.settle||'').slice(0,10)+'\t'+it.issue+'\t'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'')+'\n'; });
-  lines+='\nEstimated total outstanding: ~$'+tot.toLocaleString(undefined,{maximumFractionDigits:2})+'\n(Estimates are indicative, from our loan records.)\n\nThanks,\nRyan\nEasy Loan Finance';
+  lines+='\nEstimated total outstanding: ~$'+tot.toLocaleString(undefined,{maximumFractionDigits:2})+((S._revSharePct!=null&&S._revSharePct!==100)?(' (at '+S._revSharePct+'% broker share)'):'')+'\n(Estimates are indicative, from our loan records.)\n\nThanks,\nRyan\nEasy Loan Finance';
   return lines;
 }
 function _revCopyEmail(){ _revClip(_revEmailText()); toast('Email text copied - paste into Outlook'); }
@@ -12202,7 +12253,7 @@ function _revDownloadXlsx(){
   var tot=items.reduce(function(s,it){return s+(_revNum(it.est)||0);},0);
   var aoa=[];
   aoa.push([co.name||'Easy Loan Finance']);
-  aoa.push(['Commission Query'+(mk?(' \u2014 '+_revMonthLabel(mk)):'')]);
+  aoa.push(['Commission Query'+(mk?(' \u2014 '+_revMonthLabel(mk)):'')+((S._revSharePct!=null&&S._revSharePct!==100)?(' (at '+S._revSharePct+'% broker share)'):'')]);
   aoa.push(['To: finance@loankit.com.au','','Prepared: '+new Date().toLocaleDateString('en-AU')]);
   aoa.push([]);
   aoa.push(['Client','Lender','Ref #','Type','Period','Settled','Issue','Est. amount (AUD)']);
