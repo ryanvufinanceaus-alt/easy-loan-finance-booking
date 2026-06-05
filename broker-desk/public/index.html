@@ -11849,9 +11849,15 @@ async function _loadRevenueData(force){
   if(S._revFetched && !force){ render(); return; }
   showLoad();
   var a=await gs_('getCommRows',S.tok), b=await gs_('getCommBatches',S.tok);
-  hideLoad();
   S.commRows=(a&&a.ok&&a.data)||[];
   S.commBatches=(b&&b.ok&&b.data)||[];
+  // self-heal: clear invoice stamps pointing to deleted invoices (once per session)
+  if(!S._stampsRepaired && S.user && S.user.role==='admin'){
+    S._stampsRepaired=true;
+    var rep=await gs_('repairInvoiceStamps',S.tok);
+    if(rep&&rep.ok&&rep.cleared){ var cr=await gs_('getCommissions',S.tok); if(cr&&cr.ok)S.commissions=cr.data||[]; toast(rep.cleared+' stale invoice link(s) cleared'); }
+  }
+  hideLoad();
   S._revFetched=true;
   render();
 }
@@ -11954,31 +11960,29 @@ function rRevRecon(){
     +kpi('Unknown payment',rec.unknown.length,'#60A5FA')+'</div>';
   // Missing items table
   var items=[];
-  rec.missingUpfront.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',issue:'Missing upfront',est:x.est||0,color:'#EF4444'}); });
-  rec.missingTrail.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',issue:'Missing trail '+_revMonthLabel(x.month),est:x.est||0,color:'#EF4444'}); });
-  rec.variance.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref,issue:'Trail down '+x.pct+'% '+_revMonthLabel(x.month),est:0,color:'#FB923C'}); });
-  rec.unknown.forEach(function(r){ items.push({client:r.clientRaw||'(unknown)',lender:r.lenderRaw||'',ref:r.ref,issue:'Unknown payment - not in loan book',est:0,color:'#60A5FA'}); });
+  rec.missingUpfront.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',type:'Upfront',period:'-',settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Missing upfront',est:x.est||0,color:'#EF4444'}); });
+  rec.missingTrail.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',type:'Trail',period:_revMonthLabel(x.month),settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Missing trail',est:x.est||0,color:'#EF4444'}); });
+  rec.variance.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref,type:'Trail',period:_revMonthLabel(x.month),settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Trail down '+x.pct+'%',est:0,color:'#FB923C'}); });
+  rec.unknown.forEach(function(r){ items.push({client:r.clientRaw||'(unknown)',lender:r.lenderRaw||'',ref:r.ref,type:/trail/i.test(r.type)?'Trail':'Upfront',period:_revMonthLabel(r.periodMonth)||'-',settle:'',loanAmt:'',issue:'Unknown payment - not in loan book',est:0,color:'#60A5FA'}); });
   var totalEst=items.reduce(function(s,it){return s+(_revNum(it.est)||0);},0);
   if(items.length===0){
     h+='<div class="card" style="padding:30px;text-align:center;color:#34D399;">All matched. Nothing missing within the expected window (up to '+_revMonthLabel(rec.endMonth)+').</div>';
   } else {
-    h+='<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;"><div style="font-weight:700;color:#c9d1d9;font-size:13px;">Items to query Finsure ('+items.length+')</div><div style="font-size:12px;color:#8b949e;">Est. outstanding: <span style="color:#D4A843;font-weight:700;">$'+totalEst.toLocaleString(undefined,{maximumFractionDigits:2})+'</span></div></div>';
-    h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th>Ref #</th><th>Issue</th><th style="text-align:right;">Est. $</th></tr></thead><tbody>';
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;"><div style="font-weight:700;color:#c9d1d9;font-size:13px;">Items to query Finsure ('+items.length+') &middot; Est. outstanding <span style="color:#D4A843;">$'+totalEst.toLocaleString(undefined,{maximumFractionDigits:2})+'</span></div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+      +'<button class="btn-gold" style="font-size:12px;padding:7px 13px;" onclick="_revPrintQuery()">Print / Save PDF</button>'
+      +'<button class="btn-sec" style="font-size:12px;padding:7px 13px;" onclick="_revCopyEmail()">Copy email</button>'
+      +'<button class="btn-sec" style="font-size:12px;padding:7px 13px;" onclick="_revDownloadCsv()">CSV</button>'
+      +'</div></div>';
+    h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th>Ref #</th><th>Type</th><th>Period</th><th>Settled</th><th>Issue</th><th style="text-align:right;">Est. $</th></tr></thead><tbody>';
     items.forEach(function(it){
       h+='<tr><td style="font-weight:600;color:#c9d1d9;">'+esc(it.client||'')+'</td><td>'+esc(it.lender||'')+'</td><td style="font-family:monospace;font-size:11px;">'+esc(it.ref||'')+'</td>'
+        +'<td>'+esc(it.type)+'</td><td>'+esc(it.period||'-')+'</td><td style="font-size:11px;color:#8b949e;">'+esc(String(it.settle||'').slice(0,10)||'-')+'</td>'
         +'<td><span style="background:'+it.color+'18;color:'+it.color+';border:1px solid '+it.color+'33;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600;">'+esc(it.issue)+'</span></td>'
         +'<td style="text-align:right;color:#c9d1d9;">'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'-')+'</td></tr>';
     });
     h+='</tbody></table>';
-    // Email draft
-    h+='<div class="card" style="margin-top:16px;padding:14px 16px;">'
-      +'<div style="font-size:13px;font-weight:700;color:#D4A843;margin-bottom:8px;">Draft email to Finsure (copy into Outlook)</div>'
-      +'<div style="font-size:12px;color:#8b949e;margin-bottom:10px;">To: finance@loankit.com.au</div>'
-      +'<div style="display:flex;gap:10px;flex-wrap:wrap;">'
-      +'<button class="btn-gold" style="font-size:12px;padding:8px 14px;" onclick="_revCopyEmail()">Copy email text</button>'
-      +'<button class="btn-sec" style="font-size:12px;padding:8px 14px;" onclick="_revCopyTable()">Copy table (TSV)</button>'
-      +'<button class="btn-sec" style="font-size:12px;padding:8px 14px;" onclick="_revDownloadCsv()">Download CSV</button>'
-      +'</div></div>';
+    h+='<div style="margin-top:12px;font-size:12px;color:#8b949e;">Email goes to <b style="color:#c9d1d9;">finance@loankit.com.au</b> &mdash; use <b style="color:#c9d1d9;">Copy email</b> then paste into Outlook (not auto-sent). <a href="#" onclick="_revCopyTable();return false;" style="color:#D4A843;">Copy table (TSV)</a></div>';
     S._revMissingItems=items;
   }
   h+='</div>';
@@ -11990,22 +11994,57 @@ function _revEmailText(){
   var mk=_revReconcile().endMonth;
   var tot=items.reduce(function(s,it){return s+(_revNum(it.est)||0);},0);
   var lines='Hi team,\n\nReconciling our commissions'+(mk?(' up to '+_revMonthLabel(mk)):'')+'. The following items appear missing or short from the statements. Could you please verify?\n\n';
-  lines+='Client\tLender\tRef #\tIssue\tEst. amount\n';
-  items.forEach(function(it){ lines+=(it.client||'')+'\t'+(it.lender||'')+'\t'+(it.ref||'')+'\t'+it.issue+'\t'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'')+'\n'; });
-  lines+='\nEstimated total outstanding: ~$'+tot.toLocaleString(undefined,{maximumFractionDigits:2})+'\n(Estimates are indicative, calculated from our loan records.)\n\nThanks,\nRyan\nEasy Loan Finance';
+  lines+='Client\tLender\tRef #\tType\tPeriod\tSettled\tIssue\tEst. amount\n';
+  items.forEach(function(it){ lines+=(it.client||'')+'\t'+(it.lender||'')+'\t'+(it.ref||'')+'\t'+(it.type||'')+'\t'+(it.period||'')+'\t'+String(it.settle||'').slice(0,10)+'\t'+it.issue+'\t'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'')+'\n'; });
+  lines+='\nEstimated total outstanding: ~$'+tot.toLocaleString(undefined,{maximumFractionDigits:2})+'\n(Estimates are indicative, from our loan records.)\n\nThanks,\nRyan\nEasy Loan Finance';
   return lines;
 }
 function _revCopyEmail(){ _revClip(_revEmailText()); toast('Email text copied - paste into Outlook'); }
 function _revCopyTable(){
   var items=S._revMissingItems||[];
-  var t='Client\tLender\tRef #\tIssue\tEst. amount\n'+items.map(function(it){return (it.client||'')+'\t'+(it.lender||'')+'\t'+(it.ref||'')+'\t'+it.issue+'\t'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'');}).join('\n');
+  var t='Client\tLender\tRef #\tType\tPeriod\tSettled\tIssue\tEst. amount\n'+items.map(function(it){return (it.client||'')+'\t'+(it.lender||'')+'\t'+(it.ref||'')+'\t'+(it.type||'')+'\t'+(it.period||'')+'\t'+String(it.settle||'').slice(0,10)+'\t'+it.issue+'\t'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'');}).join('\n');
   _revClip(t); toast('Table copied (paste into Excel/email)');
 }
 function _revDownloadCsv(){
   var items=S._revMissingItems||[];
-  var csv='Client,Lender,Ref #,Issue,Est amount\n'+items.map(function(it){return '"'+(it.client||'')+'","'+(it.lender||'')+'","'+(it.ref||'')+'","'+it.issue+'","'+(it.est>0?_revNum(it.est).toFixed(2):'')+'"';}).join('\n');
+  var csv='Client,Lender,Ref #,Type,Period,Settled,Issue,Est amount\n'+items.map(function(it){return '"'+(it.client||'')+'","'+(it.lender||'')+'","'+(it.ref||'')+'","'+(it.type||'')+'","'+(it.period||'')+'","'+String(it.settle||'').slice(0,10)+'","'+it.issue+'","'+(it.est>0?_revNum(it.est).toFixed(2):'')+'"';}).join('\n');
   var blob=new Blob([csv],{type:'text/csv'}); var a=document.createElement('a');
-  a.href=URL.createObjectURL(blob); a.download='finsure-missing-'+(new Date().toISOString().slice(0,10))+'.csv'; a.click();
+  a.href=URL.createObjectURL(blob); a.download='finsure-query-'+(new Date().toISOString().slice(0,10))+'.csv'; a.click();
+}
+// Branded printable query sheet (company logo + info) -> Save as PDF from the print dialog.
+function _revPrintQuery(){
+  var items=S._revMissingItems||[];
+  if(!items.length){ toast('Nothing to print',1); return; }
+  var co=S.companyInfo||{name:'Easy Loan Finance',address:'Adelaide, South Australia',website:'www.easyloanfinance.com.au',accentColor:'#D4A843'};
+  var accent=co.accentColor||'#D4A843';
+  var mk=_revReconcile().endMonth;
+  var tot=items.reduce(function(s,it){return s+(_revNum(it.est)||0);},0);
+  var rows=items.map(function(it){
+    return '<tr><td>'+esc(it.client||'')+'</td><td>'+esc(it.lender||'')+'</td><td style="font-family:monospace;">'+esc(it.ref||'')+'</td><td>'+esc(it.type||'')+'</td><td>'+esc(it.period||'-')+'</td><td>'+esc(String(it.settle||'').slice(0,10)||'-')+'</td><td>'+esc(it.issue)+'</td><td style="text-align:right;">'+(it.est>0?'$'+_revNum(it.est).toFixed(2):'-')+'</td></tr>';
+  }).join('');
+  var logo=co.logoUrl?'<img src="'+co.logoUrl+'" style="max-height:54px;max-width:200px;object-fit:contain;">':'<div style="font-size:22px;font-weight:800;color:'+accent+';">'+esc(co.name||'Easy Loan Finance')+'</div>';
+  var today=new Date().toLocaleDateString('en-AU',{day:'numeric',month:'long',year:'numeric'});
+  var html='<!DOCTYPE html><html><head><title>Commission Query - '+(_revMonthLabel(mk)||today)+'</title><meta charset="UTF-8">'
+    +'<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">'
+    +'<style>@page{size:A4;margin:18mm 14mm;}body{font-family:Outfit,sans-serif;color:#1a1a1a;margin:0;}'
+    +'.hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid '+accent+';padding-bottom:14px;margin-bottom:8px;}'
+    +'.co{font-size:11px;color:#555;line-height:1.5;text-align:right;}'
+    +'h1{font-size:19px;margin:18px 0 2px;}.sub{color:#666;font-size:12px;margin-bottom:14px;}'
+    +'table{width:100%;border-collapse:collapse;font-size:11px;}th{background:'+accent+';color:#fff;text-align:left;padding:7px 8px;font-weight:600;}'
+    +'td{padding:6px 8px;border-bottom:1px solid #e5e5e5;}tr:nth-child(even) td{background:#faf8f2;}'
+    +'.tot{margin-top:14px;text-align:right;font-size:13px;font-weight:700;}'
+    +'.note{margin-top:18px;font-size:10px;color:#888;border-top:1px solid #eee;padding-top:10px;}'
+    +'@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body>'
+    +'<div class="hd"><div>'+logo+'</div><div class="co">'+esc(co.name||'')+(co.abn?'<br>ABN '+esc(co.abn):'')+'<br>'+esc(co.address||'')+'<br>'+esc(co.website||'')+(co.email?'<br>'+esc(co.email):'')+'</div></div>'
+    +'<h1>Commission Query &mdash; '+(_revMonthLabel(mk)||today)+'</h1>'
+    +'<div class="sub">To: Finsure / Loankit Finance (finance@loankit.com.au) &middot; Prepared '+today+' &middot; '+items.length+' item(s)</div>'
+    +'<table><thead><tr><th>Client</th><th>Lender</th><th>Ref #</th><th>Type</th><th>Period</th><th>Settled</th><th>Issue</th><th style="text-align:right;">Est. $</th></tr></thead><tbody>'+rows+'</tbody></table>'
+    +'<div class="tot">Estimated total outstanding: $'+tot.toLocaleString(undefined,{maximumFractionDigits:2})+'</div>'
+    +'<div class="note">Estimated amounts are indicative, calculated from our loan records (loan amount x rate). Actual figures are subject to the lender/aggregator commission statement. Please verify the above items and advise.</div>'
+    +'<script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script></body></html>';
+  var w=window.open('','_blank','width=900,height=1100');
+  if(!w){ toast('Pop-up blocked - please allow pop-ups',1); return; }
+  w.document.write(html); w.document.close();
 }
 function _revClip(t){ try{navigator.clipboard.writeText(t);}catch(e){ var ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);} }
 
