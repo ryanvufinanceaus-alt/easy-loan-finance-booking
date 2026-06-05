@@ -55,6 +55,12 @@ function startOfDay(date) {
   return next;
 }
 
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
 function startOfWeek(date) {
   const next = startOfDay(date);
   const day = next.getDay() || 7;
@@ -1127,6 +1133,7 @@ function DesktopWidgetPage() {
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const [widgetView, setWidgetView] = useState("today");
 
   async function loadWidgetData({ initial = false } = {}) {
     const [authData, brokerData, bookingData] = await Promise.all([
@@ -1189,8 +1196,26 @@ function DesktopWidgetPage() {
       .sort((a, b) => new Date(a.start) - new Date(b.start));
   }, [bookings, brokerFilter]);
 
-  const todayBookings = visibleBookings.filter((booking) => sameDay(new Date(booking.start), new Date()));
-  const upcomingBookings = visibleBookings.filter((booking) => !sameDay(new Date(booking.start), new Date())).slice(0, 8);
+  const nowDate = new Date();
+  const todayStart = startOfDay(nowDate);
+  const tomorrowStart = addDays(todayStart, 1);
+  const afterTomorrowStart = addDays(todayStart, 2);
+  const sevenDayEnd = addDays(todayStart, 7);
+  const todayBookings = visibleBookings.filter((booking) => sameDay(new Date(booking.start), nowDate));
+  const tomorrowBookings = visibleBookings.filter((booking) => {
+    const start = new Date(booking.start);
+    return start >= tomorrowStart && start < afterTomorrowStart;
+  });
+  const sevenDayBookings = visibleBookings.filter((booking) => {
+    const start = new Date(booking.start);
+    return start >= todayStart && start < sevenDayEnd;
+  });
+  const widgetViews = [
+    { id: "today", label: "Today", bookings: todayBookings, showDate: false },
+    { id: "tomorrow", label: "Tomorrow", bookings: tomorrowBookings, showDate: false },
+    { id: "week", label: "7 Days", bookings: sevenDayBookings, showDate: true }
+  ];
+  const activeWidgetView = widgetViews.find((view) => view.id === widgetView) || widgetViews[0];
   const nextBooking = visibleBookings[0];
   const reviewCount = visibleBookings.filter((booking) => (
     booking.status === "Confirmed" && new Date(booking.end || booking.start).getTime() + 60 * 60 * 1000 <= Date.now()
@@ -1256,21 +1281,39 @@ function DesktopWidgetPage() {
 
             <div className="widget-mini-stats">
               <span><strong>{todayBookings.length}</strong> Today</span>
-              <span><strong>{visibleBookings.length}</strong> Upcoming</span>
-              <span><strong>{reviewCount}</strong> Review</span>
+              <span><strong>{tomorrowBookings.length}</strong> Tomorrow</span>
+              <span><strong>{sevenDayBookings.length}</strong> 7 Days</span>
             </div>
 
+            <div className="widget-view-tabs" role="tablist" aria-label="Widget calendar range">
+              {widgetViews.map((view) => (
+                <button
+                  key={view.id}
+                  type="button"
+                  className={classNames(widgetView === view.id && "active")}
+                  onClick={() => setWidgetView(view.id)}
+                  role="tab"
+                  aria-selected={widgetView === view.id}
+                >
+                  <span>{view.label}</span>
+                  <strong>{view.bookings.length}</strong>
+                </button>
+              ))}
+            </div>
+
+            {reviewCount > 0 && (
+              <button type="button" className="widget-review-alert" onClick={() => setWidgetView("today")}>
+                <ShieldCheck size={15} />
+                {reviewCount} booking{reviewCount === 1 ? "" : "s"} need completion review
+              </button>
+            )}
+
             <WidgetBookingList
-              title="Today"
-              bookings={todayBookings}
+              title={activeWidgetView.label}
+              bookings={activeWidgetView.bookings}
               brokerById={brokerById}
               onSelect={setSelectedBooking}
-            />
-            <WidgetBookingList
-              title="Upcoming"
-              bookings={upcomingBookings}
-              brokerById={brokerById}
-              onSelect={setSelectedBooking}
+              showDate={activeWidgetView.showDate}
             />
           </>
         )}
@@ -1287,7 +1330,7 @@ function DesktopWidgetPage() {
   );
 }
 
-function WidgetBookingList({ title, bookings, brokerById, onSelect }) {
+function WidgetBookingList({ title, bookings, brokerById, onSelect, showDate = false }) {
   return (
     <section className="widget-list-section">
       <div className="widget-list-title">
@@ -1310,7 +1353,10 @@ function WidgetBookingList({ title, bookings, brokerById, onSelect }) {
               <span className="broker-initials" style={{ background: brokerColor }}>{brokerInitials(broker?.name)}</span>
               <span>
                 <strong>{booking.clientName}</strong>
-                <small>{displayTime(booking.start)} - {displayTime(booking.end)} - {booking.service}</small>
+                <small>
+                  {showDate && `${displayDay(new Date(booking.start))} - `}
+                  {displayTime(booking.start)} - {displayTime(booking.end)} - {booking.service}
+                </small>
               </span>
               <em>{statusLabel(booking.status)}</em>
             </button>
