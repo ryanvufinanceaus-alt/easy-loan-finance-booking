@@ -10589,22 +10589,39 @@ function rInvoicesBas(){
   </div>`;
 }
 function rInvoicesList(){
-  const inv=S.invoices.slice();
+  const isAdmin=S.user.role==='admin';
+  const _invDate=i=>String(i.createdAt||i.dueDate||'').slice(0,10);
+  const all=S.invoices.slice().sort((a,b)=>(_invDate(b)).localeCompare(_invDate(a))); // newest first
+  // status filter
+  const sf=S.invStatusFilter||'all';
+  const filtered=sf==='all'?all:all.filter(i=>String(i.status||'')===sf);
+  // 3-month window (by created date); older collapsed behind a toggle
+  const cut=new Date(); cut.setMonth(cut.getMonth()-3);
+  const cutIso=cut.toISOString().slice(0,10);
+  const recent=filtered.filter(i=>!_invDate(i)||_invDate(i)>=cutIso);
+  const older=filtered.filter(i=>_invDate(i)&&_invDate(i)<cutIso);
+  const shownInv=S.invShowOld?filtered:recent;
+  const inv=all; // KPIs use everything
   const total=inv.reduce((s,i)=>s+Number(i.total||0),0);
   const paid=inv.filter(i=>i.status==='Paid').reduce((s,i)=>s+Number(i.total||0),0);
   const outstanding=inv.filter(i=>i.status==='Sent'||i.status==='Draft').reduce((s,i)=>s+Number(i.total||0),0);
-  const isAdmin=S.user.role==='admin';
+  const fbtn=(id,label)=>`<button class="btn-ghost" style="font-size:11px;padding:5px 11px;border-radius:7px;${sf===id?'background:#D4A84320;color:#D4A843;border:1px solid #D4A84355;':'color:#8b949e;border:1px solid #1e2430;'}" onclick="S.invStatusFilter='${id}';render()">${label}</button>`;
   return`<div class="kpi-grid" style="margin-bottom:14px;">
     <div class="kpi"><div class="kpi-lbl">Total Invoiced</div><div class="kpi-val" style="color:#D4A843">${fmtCur(total)}</div><div class="kpi-sub">${inv.length} invoice${inv.length!==1?'s':''}</div></div>
     <div class="kpi"><div class="kpi-lbl">Paid</div><div class="kpi-val" style="color:#34D399">${fmtCur(paid)}</div><div class="kpi-sub">${inv.filter(i=>i.status==='Paid').length} paid</div></div>
     <div class="kpi"><div class="kpi-lbl">Outstanding</div><div class="kpi-val" style="color:#FBBF24">${fmtCur(outstanding)}</div><div class="kpi-sub">${inv.filter(i=>i.status==='Sent'||i.status==='Draft').length} awaiting</div></div>
   </div>
-  ${isAdmin?`<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-    <button class="btn-sec" onclick="setView('settings')" style="font-size:12px;">\u2699 Settings (logo / ABN / email sender)</button>
-  </div>`:''}
+  <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+    <span style="font-size:11px;color:#6b7280;">Filter:</span>
+    ${fbtn('all','All')}${fbtn('Draft','Draft')}${fbtn('Sent','Sent')}${fbtn('Paid','Paid')}${fbtn('Cancelled','Cancelled')}
+    ${isAdmin?`<span style="margin-left:auto;display:flex;gap:8px;">
+      <button class="btn-sec" onclick="_fixInvoiceLinks()" style="font-size:12px;" title="Clear commission links that point to deleted invoices (fixes 'skipped, already invoiced')">\uD83D\uDD27 Fix invoice links</button>
+      <button class="btn-sec" onclick="setView('settings')" style="font-size:12px;">\u2699 Settings</button>
+    </span>`:''}
+  </div>
   <div class="card" style="overflow:hidden;overflow-x:auto;">
     <table class="tbl"><thead><tr>${['Ref','Type','Client / Case','Issued To','Period','Items','Subtotal','GST','Total','Status','Due','Actions'].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
-      <tbody>${inv.map(i=>{
+      <tbody>${shownInv.map(i=>{
         const sc=i.status==='Paid'?'#34D399':i.status==='Sent'?'#FBBF24':i.status==='Draft'?'#818CF8':'#6b7280';
         const tc=i.type==='Upfront'?'#818CF8':i.type==='Trail'?'#A78BFA':i.type==='Bonus'?'#FB923C':'#38BDF8';
         let items=[];try{items=JSON.parse(i.items||'[]');}catch(e){}
@@ -10630,10 +10647,13 @@ function rInvoicesList(){
           </div></td>
         </tr>`;}).join('')}</tbody>
     </table>
-    ${!inv.length?'<div style="text-align:center;padding:30px;color:#4a5568;">No invoices yet. Click <strong>+ New Invoice</strong> to generate one.</div>':''}
+    ${!shownInv.length?`<div style="text-align:center;padding:30px;color:#4a5568;">${all.length?'No invoices match this filter.':'No invoices yet. Click <strong>+ New Invoice</strong> or use Billing Tracker \u2192 Auto-create.'}</div>`:''}
   </div>
+  ${older.length?`<div style="text-align:center;margin-top:12px;">
+    <button class="btn-sec" style="font-size:12px;" onclick="S.invShowOld=${S.invShowOld?'false':'true'};render()">${S.invShowOld?('Show recent only (hide '+older.length+' older)'):('Show '+older.length+' older invoice'+(older.length!==1?'s':'')+' (3+ months)')}</button>
+  </div>`:''}
   <div style="margin-top:10px;font-size:11px;color:#4a5568;line-height:1.6;">
-    \uD83D\uDCA1 <strong>Invoice flow:</strong> Easy Loan Finance issues invoices to its brokers for commission share. Ref format: <code style="color:#D4A843;">INV-UP-YY-XX-NNN</code> (Upfront) \u00B7 <code style="color:#D4A843;">INV-TR-YY-XX-NNN</code> (Trail) \u00B7 <code style="color:#D4A843;">INV-BN-YY-XX-NNN</code> (Bonus). Click any row to view / export PDF.
+    \uD83D\uDCA1 <strong>Invoice flow:</strong> newest first; only the last 3 months show by default. Ref: <code style="color:#D4A843;">INV-UP-YY-XX-NNN</code> (Upfront) \u00B7 <code style="color:#D4A843;">INV-TR-YY-XX-NNN</code> (Trail) \u00B7 <code style="color:#D4A843;">INV-BN-YY-XX-NNN</code> (Bonus). Click any row to view / export PDF.
   </div>`;
 }
 // Derive a meaningful period label for an invoice from its line items:
@@ -11187,6 +11207,17 @@ async function updInvoiceStatus(id,status){
     toast('\u2713 Status updated');
     render();
   } else toast((r&&r.msg)||'Failed',1);
+}
+async function _fixInvoiceLinks(){
+  showLoad();
+  var r=await gs_('repairInvoiceStamps',S.tok);
+  if(r&&r.ok){
+    _invalidateCache();
+    var cr=await gs_('getCommissions',S.tok); if(cr&&cr.ok)S.commissions=cr.data||[];
+    hideLoad();
+    toast(r.cleared?('Cleared '+r.cleared+' orphaned link(s) \u2014 those commissions are billable again'):'No orphaned links found');
+    render();
+  } else { hideLoad(); toast((r&&r.msg)||'Failed',1); }
 }
 async function delInvoice_(id){
   if(!confirm('Delete this invoice? Cannot undo.'))return;
