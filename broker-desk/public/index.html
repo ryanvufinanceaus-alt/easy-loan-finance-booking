@@ -52,7 +52,7 @@ body{font-family:'Outfit',-apple-system,sans-serif;background:#0D1117;color:#C9D
 ::-webkit-scrollbar-track{background:#0A0D14;}
 ::-webkit-scrollbar-thumb{background:#21262D;border-radius:3px;}
 
-#login-wrap{display:flex;height:100vh;align-items:center;justify-content:center;background:radial-gradient(ellipse at 30% 40%,#1a1f2e 0%,#0A0D14 70%);}
+#login-wrap{display:flex;height:100vh;align-items:center;justify-content:center;position:relative;overflow:hidden;background:radial-gradient(ellipse at 30% 20%,#1c2433 0%,#0c1018 72%);}
 #app-wrap{display:none;height:100vh;flex-direction:row;}
 #sb{width:220px;background:#0A0D14;border-right:1px solid #1e2430;display:flex;flex-direction:column;flex-shrink:0;}
 #main-area{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
@@ -246,32 +246,34 @@ html.theme-light body { background: #f4f5f7; }
 
 <!-- ══════ LOGIN ══════ -->
 <div id="login-wrap">
-  <div style="width:380px;">
-    <div style="text-align:center;margin-bottom:32px;">
-      <div style="width:60px;height:60px;background:rgba(212,168,67,.12);border:2px solid #D4A843;border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#D4A843" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+  <div style="position:absolute;inset:0;background:radial-gradient(1100px 600px at 50% -10%, rgba(212,168,67,.16), transparent 60%), radial-gradient(800px 500px at 100% 100%, rgba(96,165,250,.07), transparent 55%);pointer-events:none;"></div>
+  <div style="width:400px;position:relative;z-index:1;">
+    <div style="text-align:center;margin-bottom:26px;">
+      <div style="width:76px;height:76px;border-radius:20px;margin:0 auto 18px;background:linear-gradient(145deg,#E9C46A,#D4A843 55%,#B5862B);display:flex;align-items:center;justify-content:center;box-shadow:0 12px 32px rgba(212,168,67,.35), inset 0 1px 0 rgba(255,255,255,.5);">
+        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#1a1206" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
       </div>
-      <div style="font-size:9px;color:#4a5568;letter-spacing:3px;text-transform:uppercase;margin-bottom:4px;">Easy Loan Finance</div>
-      <div style="font-size:26px;font-weight:800;color:#D4A843;letter-spacing:-.5px;">BROKER DESK</div>
-      <div style="font-size:13px;color:#4a5568;margin-top:4px;">Internal Broker Management Platform</div>
+      <div style="font-size:11px;color:#D4A843;letter-spacing:5px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">Easy Loan Finance</div>
+      <div style="font-size:30px;font-weight:800;color:#f0f3f7;letter-spacing:-.5px;line-height:1;">Broker Desk</div>
+      <div style="font-size:13px;color:#7d8694;margin-top:9px;">Mortgage broking &amp; commission platform</div>
     </div>
-    <div class="card" style="padding:26px;">
-      <div style="margin-bottom:14px;"><label class="fl">Username</label><input class="fi" id="lu" autocomplete="username" onkeydown="if(event.key==='Enter')login_()"></div>
-      <div style="margin-bottom:20px;"><label class="fl">Password</label><input class="fi" id="lp" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')login_()"></div>
-      <button class="btn-gold" id="lbtn" onclick="login_()" style="width:100%;justify-content:center;padding:11px;font-size:14px;">Sign In</button>
-      <div id="lerr" style="color:#fca5a5;font-size:13px;text-align:center;margin-top:12px;display:none;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);border-radius:8px;padding:9px 12px;line-height:1.45;"></div>
-      <div style="text-align:center;margin-top:14px;">
-        <a href="#" onclick="_showForgotPw();return false;" style="font-size:12px;color:#6b7280;text-decoration:none;">Forgot password?</a>
+    <div style="background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.10);border-radius:18px;padding:30px 28px;box-shadow:0 24px 60px rgba(0,0,0,.45);backdrop-filter:blur(8px);">
+      <div style="font-size:17px;font-weight:700;color:#e6ebf2;margin-bottom:3px;">Welcome back</div>
+      <div style="font-size:12.5px;color:#7d8694;margin-bottom:20px;">Sign in to your broker dashboard</div>
+      <div style="margin-bottom:14px;"><label class="fl">Username</label><input class="fi" id="lu" autocomplete="username" placeholder="username" onkeydown="if(event.key==='Enter')login_()"></div>
+      <div style="margin-bottom:22px;"><label class="fl">Password</label><input class="fi" id="lp" type="password" autocomplete="current-password" placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" onkeydown="if(event.key==='Enter')login_()"></div>
+      <button class="btn-gold" id="lbtn" onclick="login_()" style="width:100%;justify-content:center;padding:13px;font-size:14.5px;font-weight:700;border-radius:11px;">Sign In</button>
+      <div id="lerr" style="color:#fca5a5;font-size:13px;text-align:center;margin-top:13px;display:none;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);border-radius:9px;padding:9px 12px;line-height:1.45;"></div>
+      <div style="text-align:center;margin-top:16px;">
+        <a href="#" onclick="_showForgotPw();return false;" style="font-size:12.5px;color:#8b949e;text-decoration:none;">Forgot your password?</a>
       </div>
-      <!-- Forgot-password panel (hidden by default) -->
-      <div id="forgot-panel" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid #1e2430;">
+      <div id="forgot-panel" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,.08);">
         <label class="fl">Username or email</label>
         <input class="fi" id="forgot-id" placeholder="ryan or your email" onkeydown="if(event.key==='Enter')_doForgotPw()">
         <button class="btn-sec" onclick="_doForgotPw()" style="width:100%;justify-content:center;margin-top:10px;">Send reset email</button>
         <div id="forgot-msg" style="font-size:11.5px;text-align:center;margin-top:9px;color:#8b949e;line-height:1.5;"></div>
       </div>
     </div>
-    <div style="text-align:center;margin-top:12px;font-size:11px;color:#21262D;">Session: 6 hours · Easy Loan Finance</div>
+    <div style="text-align:center;margin-top:18px;font-size:11px;color:#4a5568;letter-spacing:.3px;">Secure session &middot; 6 hours &middot; &copy; Easy Loan Finance</div>
   </div>
 </div>
 
@@ -776,10 +778,12 @@ async function _doForgotPw(){
 
 async function logout_(){
   if(S.tok) await gs_('logout',S.tok);
+  try{ Object.keys(sessionStorage).forEach(function(k){ if(k.indexOf('bd_cache_')===0) sessionStorage.removeItem(k); }); }catch(e){}
   localStorage.removeItem('bd_tok');
   S.tok='';S.user=null;
   // clear state
   S.cases=[];S.tasks=[];S.users=[];S.loanBook=[];S.commissions=[];S.lenders=[];S.invoices=[];S.activity=[];S.sentEmails=[];S.sentEmailsLoaded=false;S.notes={};S.emailLog={};
+  S.commRows=[];S.commBatches=[];S._revFetched=false;S._stampsRepaired=false;
   S.modal=null;S.selId=null;S.editMode=false;
   document.getElementById('mc').innerHTML='';
   document.getElementById('app-wrap').style.display='none';
@@ -811,6 +815,7 @@ async function startApp(){
   document.getElementById('app-wrap').style.display='flex';
   setupSidebar();
   await loadAll_();
+  loadUserTheme();
   checkNewMyTasks(true);
   requestNotifyPerm();
   _autoEscalateOnce();
@@ -835,8 +840,31 @@ async function startApp(){
   }
 }
 
+function _applyLoadData(d){
+  if(d.me) S.user=d.me;
+  S.cases=d.cases||[];
+  S.tasks=d.tasks||[];
+  S.emailTpls=d.emailTpls||{};
+  S.users=d.users||[];
+  S.loanBook=d.loanBook||[];
+  S.commissions=d.commissions||[];
+  S.lenders=d.lenders||[];
+  S.invoices=d.invoices||[];
+  S.activity=d.activity||[];
+  if(d.companyInfo)S.companyInfo=Object.assign({},S.companyInfo,d.companyInfo);
+  if(d.emailContent)S.emailContent=Object.assign({},S.emailContent,d.emailContent);
+  setupSidebar();
+  render();
+}
+function _cacheKey(){ return 'bd_cache_'+((S.user&&S.user.id)||'me'); }
 async function loadAll_(){
-  showLoad();
+  // Instant paint from this session's cache (if recent) while fresh data loads in the background.
+  var painted=false;
+  try{
+    var cached=sessionStorage.getItem(_cacheKey());
+    if(cached){ var cd=JSON.parse(cached); if(cd&&cd.d&&(Date.now()-cd.t)<15*60*1000){ _applyLoadData(cd.d); painted=true; } }
+  }catch(e){}
+  if(!painted) showLoad();
   let r=await gs_('loadAll',S.tok);
   // Fallback: if loadAll fails, try individual calls (in case of stale deployment etc.)
   if(!r||!r.ok){
@@ -844,6 +872,7 @@ async function loadAll_(){
       hideLoad();toast('Session expired \u2014 please sign in again',1);
       await logout_(); return;
     }
+    if(painted){ hideLoad(); return; } // keep showing cached data if the refresh failed
     console.warn('loadAll failed, falling back to individual calls:',r&&r.msg);
     const [cs,ts,et,us,ln]=await Promise.all([
       gs_('getCases',S.tok),gs_('getTasks',S.tok),gs_('getEmailTemplates',S.tok),
@@ -853,7 +882,6 @@ async function loadAll_(){
     if(S.user&&S.user.role!=='support'){
       [lb,cm]=await Promise.all([gs_('getLoanBook',S.tok),gs_('getCommissions',S.tok)]);
     }
-    // Check if individual calls also all failed
     if(!cs||!cs.ok){
       hideLoad();
       toast('Backend not responding. Please redeploy: Apps Script \u2192 Deploy \u2192 Manage \u2192 Edit \u2192 Version: New version \u2192 Deploy',1);
@@ -869,20 +897,8 @@ async function loadAll_(){
   }
   hideLoad();
   const d=r.data||{};
-  if(d.me) S.user=d.me;
-  S.cases=d.cases||[];
-  S.tasks=d.tasks||[];
-  S.emailTpls=d.emailTpls||{};
-  S.users=d.users||[];
-  S.loanBook=d.loanBook||[];
-  S.commissions=d.commissions||[];
-  S.lenders=d.lenders||[];
-  S.invoices=d.invoices||[];
-  S.activity=d.activity||[];
-  if(d.companyInfo)S.companyInfo=Object.assign({},S.companyInfo,d.companyInfo);
-  if(d.emailContent)S.emailContent=Object.assign({},S.emailContent,d.emailContent);
-  setupSidebar();
-  render();
+  _applyLoadData(d);
+  try{ sessionStorage.setItem(_cacheKey(), JSON.stringify({t:Date.now(),d:d})); }catch(e){}
 }
 async function refreshAll(){await loadAll_();toast('Data refreshed');}
 function showLoad(){document.getElementById('lov').style.display='flex';}
@@ -1015,8 +1031,14 @@ function applyTheme(){
 }
 function toggleTheme(){
   const light = localStorage.getItem(THEME_KEY)==='light';
-  localStorage.setItem(THEME_KEY, light ? 'dark' : 'light');
+  const next = light ? 'dark' : 'light';
+  localStorage.setItem(THEME_KEY, next);
   applyTheme();
+  if(S.tok){ try{ gs_('setUserTheme', S.tok, next); }catch(e){} } // persist per-user (best effort)
+}
+// Load this user's saved theme from the server and apply it (called after login)
+async function loadUserTheme(){
+  try{ const r=await gs_('getUserTheme', S.tok); if(r&&r.ok&&r.theme){ localStorage.setItem(THEME_KEY, r.theme); applyTheme(); } }catch(e){}
 }
 
 // \u2500\u2500 24h overdue escalation \u2500\u2500
@@ -10213,16 +10235,16 @@ function rBillingTracker(){
       ${sb('missing', a.missingCount)}
     </div>
 
-    ${a.readyCount>0?`<div style="background:linear-gradient(135deg,rgba(212,168,67,.08),transparent);border:1px solid #D4A84344;border-radius:11px;padding:15px 17px;margin-bottom:16px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+    ${`<div style="background:linear-gradient(135deg,rgba(212,168,67,.08),transparent);border:1px solid #D4A84344;border-radius:11px;padding:15px 17px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
         <div>
           <div style="font-size:14px;font-weight:700;color:#D4A843;">\uD83D\uDCB5 Ready to invoice</div>
           <div style="font-size:11.5px;color:#8b949e;margin-top:2px;">${a.readyCount} received commission${a.readyCount!==1?'s':''} not yet on any invoice \u00B7 ${fmtCur(a.readyAmt)} total</div>
         </div>
-        <button class="btn-gold" style="font-size:12px;padding:8px 14px;" onclick="_generateInvoicesFromReady()">\u26A1 Auto-create invoices</button>
+        <button class="btn-gold" style="font-size:12px;padding:8px 14px;${a.readyCount>0?'':'opacity:.5;'}" onclick="${a.readyCount>0?'_generateInvoicesFromReady()':'_billNoReady()'}">\u26A1 Auto-create invoices</button>
       </div>
       <div style="font-size:10.5px;color:#D4A84399;line-height:1.5;">Groups received-but-unbilled commissions by loan + type into draft invoices. Upfront and Trail get separate invoices. Review before sending.</div>
-    </div>`:''}
+    </div>`}
 
     <!-- Per-loan timeline -->
     <div style="display:grid;gap:11px;">
@@ -10297,6 +10319,7 @@ async function _generateMissingTrailForLoan(loanId){
 }
 
 // Auto-create draft invoices from all ready-to-invoice commissions, grouped by broker+type
+function _billNoReady(){ toast('No received commissions to invoice yet - import a statement and Sync to Commissions first',1); }
 async function _generateInvoicesFromReady(){
   const scope=_commScope();
   const ready=(scope.commissions||[]).filter(c=>String(c.status||'').toLowerCase()==='received'&&!c.invoiceNumber);
@@ -11851,15 +11874,16 @@ async function _loadRevenueData(force){
   var a=await gs_('getCommRows',S.tok), b=await gs_('getCommBatches',S.tok);
   S.commRows=(a&&a.ok&&a.data)||[];
   S.commBatches=(b&&b.ok&&b.data)||[];
-  // self-heal: clear invoice stamps pointing to deleted invoices (once per session)
-  if(!S._stampsRepaired && S.user && S.user.role==='admin'){
-    S._stampsRepaired=true;
-    var rep=await gs_('repairInvoiceStamps',S.tok);
-    if(rep&&rep.ok&&rep.cleared){ var cr=await gs_('getCommissions',S.tok); if(cr&&cr.ok)S.commissions=cr.data||[]; toast(rep.cleared+' stale invoice link(s) cleared'); }
-  }
   hideLoad();
   S._revFetched=true;
   render();
+  // self-heal orphaned invoice stamps in the background (don't block the view)
+  if(!S._stampsRepaired && S.user && S.user.role==='admin'){
+    S._stampsRepaired=true;
+    gs_('repairInvoiceStamps',S.tok).then(function(rep){
+      if(rep&&rep.ok&&rep.cleared){ gs_('getCommissions',S.tok).then(function(cr){ if(cr&&cr.ok){S.commissions=cr.data||[]; if(S.view==='revenue')render();} }); }
+    });
+  }
 }
 
 function rRevenue(){
@@ -11875,6 +11899,7 @@ function rRevenue(){
 // ---- Reconciliation engine (frontend) ----
 function _revNameKey(s){ return String(s||'').toLowerCase().replace(/[^a-z\s]/g,' ').split(/\s+/).filter(Boolean).sort().join(' '); }
 function _revReconcile(){
+  // Only loans that have been entered into the Loan Book count as "settled" for tracking.
   var loans=(S.loanBook||[]).filter(function(l){ return S.user.role==='admin'?true:l.brokerId===S.user.id; });
   var rows=S.commRows||[];
   var myComm=S.commissions||[];
