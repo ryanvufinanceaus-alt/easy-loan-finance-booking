@@ -10354,10 +10354,13 @@ async function _generateInvoicesFromReady(){
         periodLabel = keys.length===1?fmt(keys[0]):`${fmt(keys[0])} \u2013 ${fmt(keys[keys.length-1])} (${keys.length}mo)`;
       }
     }
+    const clientSummary=[...new Set(list.map(c=>c.clientName).filter(Boolean))].join(', ');
     const r=await gs_('createInvoice',S.tok,{
       type, brokerId:`${brokerId}|${brokerName}`, items,
       gstMode:'exclusive', status:'Draft',
       issuedTo:brokerName, period:periodLabel,
+      brokerSharePct:100,
+      notes: clientSummary?('Cases included: '+clientSummary):'',
     });
     if(r&&r.ok)made++;
   }
@@ -11870,7 +11873,22 @@ async function clearActivity_(){
 // import as a keyed batch (ref|type|month, upsert, never scrambles old data) ->
 // reconcile vs settled loans -> show missing/variance -> draft email to Finsure.
 // ============================================================================
-function _revNum(v){ if(v==null)return 0; var s=String(v).replace(/[^0-9.\-]/g,''); var n=parseFloat(s); return isNaN(n)?0:n; }
+function _revNum(v){
+  if(v==null)return 0;
+  if(typeof v==='number')return isFinite(v)?v:0;
+  var s=String(v).trim().replace(/[^0-9.,\-]/g,'');
+  if(s===''||s==='-')return 0;
+  var lastDot=s.lastIndexOf('.'), lastComma=s.lastIndexOf(',');
+  if(lastDot>=0 && lastComma>=0){
+    if(lastComma>lastDot) s=s.replace(/\./g,'').replace(',','.'); // 1.234,56 (EU)
+    else s=s.replace(/,/g,'');                                    // 1,234.56 (US/AU)
+  } else if(lastComma>=0){
+    if(/,\d{1,2}$/.test(s)) s=s.replace(',', '.'); // 1234,56 -> decimal
+    else s=s.replace(/,/g,'');                     // 1,234 -> thousands
+  }
+  s=s.replace(/,/g,'');
+  var n=parseFloat(s); return isNaN(n)?0:n;
+}
 // Strict month detector for blind column scans: only real month labels
 // (YYYY-MM, Mon-YY, Mon YYYY, bare month). Rejects ref numbers / amounts.
 function _revMonthStrict(v, fy){
@@ -11980,7 +11998,7 @@ function _revReconcile(){
     // UPFRONT
     var settledMs=new Date(l.settlementDate).getTime();
     if(stUp.length===0 && mcUp.length===0){
-      if(!isNaN(settledMs)&&(now-settledMs)>55*86400000) missingUpfront.push({loan:l,ref:ref,est:estUp});
+      if(!isNaN(settledMs)&&(now-settledMs)>30*86400000) missingUpfront.push({loan:l,ref:ref,est:estUp});
     } else matched++;
     // TRAIL months: settle+1 .. endMonth
     var mk=_revAddMonths(settleMk,1),guard=0;
@@ -12035,7 +12053,7 @@ function rRevRecon(){
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;">'
       +'<button class="btn-gold" style="font-size:12px;padding:7px 13px;" onclick="_revPrintQuery()">Print / Save PDF</button>'
       +'<button class="btn-sec" style="font-size:12px;padding:7px 13px;" onclick="_revCopyEmail()">Copy email</button>'
-      +'<button class="btn-sec" style="font-size:12px;padding:7px 13px;" onclick="_revDownloadCsv()">CSV</button>'
+      +'<button class="btn-sec" style="font-size:12px;padding:7px 13px;" onclick="_revDownloadXlsx()">Excel</button>'
       +'</div></div>';
     h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th>Ref #</th><th>Type</th><th>Period</th><th>Settled</th><th>Issue</th><th style="text-align:right;">Est. $</th></tr></thead><tbody>';
     items.forEach(function(it){
@@ -12068,11 +12086,26 @@ function _revCopyTable(){
   var t='Client\tLender\tRef #\tType\tPeriod\tSettled\tIssue\tEst. amount\n'+items.map(function(it){return (it.client||'')+'\t'+(it.lender||'')+'\t'+(it.ref||'')+'\t'+(it.type||'')+'\t'+(it.period||'')+'\t'+String(it.settle||'').slice(0,10)+'\t'+it.issue+'\t'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'');}).join('\n');
   _revClip(t); toast('Table copied (paste into Excel/email)');
 }
-function _revDownloadCsv(){
+function _revDownloadXlsx(){
   var items=S._revMissingItems||[];
-  var csv='Client,Lender,Ref #,Type,Period,Settled,Issue,Est amount\n'+items.map(function(it){return '"'+(it.client||'')+'","'+(it.lender||'')+'","'+(it.ref||'')+'","'+(it.type||'')+'","'+(it.period||'')+'","'+String(it.settle||'').slice(0,10)+'","'+it.issue+'","'+(it.est>0?_revNum(it.est).toFixed(2):'')+'"';}).join('\n');
-  var blob=new Blob([csv],{type:'text/csv'}); var a=document.createElement('a');
-  a.href=URL.createObjectURL(blob); a.download='finsure-query-'+(new Date().toISOString().slice(0,10))+'.csv'; a.click();
+  if(!items.length){ toast('Nothing to export',1); return; }
+  if(typeof XLSX==='undefined'){ toast('Excel engine still loading, try again',1); return; }
+  var co=S.companyInfo||{}; var mk=_revReconcile().endMonth;
+  var tot=items.reduce(function(s,it){return s+(_revNum(it.est)||0);},0);
+  var aoa=[];
+  aoa.push([co.name||'Easy Loan Finance']);
+  aoa.push(['Commission Query'+(mk?(' \u2014 '+_revMonthLabel(mk)):'')]);
+  aoa.push(['To: finance@loankit.com.au','','Prepared: '+new Date().toLocaleDateString('en-AU')]);
+  aoa.push([]);
+  aoa.push(['Client','Lender','Ref #','Type','Period','Settled','Issue','Est. amount (AUD)']);
+  items.forEach(function(it){ aoa.push([it.client||'',it.lender||'',it.ref||'',it.type||'',it.period||'',String(it.settle||'').slice(0,10),it.issue||'',it.est>0?_revNum(it.est):'']); });
+  aoa.push([]);
+  aoa.push(['','','','','','','Estimated total',tot]);
+  var ws=XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols']=[{wch:32},{wch:18},{wch:16},{wch:9},{wch:12},{wch:12},{wch:24},{wch:16}];
+  ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:7}},{s:{r:1,c:0},e:{r:1,c:7}}];
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Commission Query');
+  XLSX.writeFile(wb,'commission-query-'+(new Date().toISOString().slice(0,10))+'.xlsx');
 }
 // Branded printable query sheet (company logo + info) -> Save as PDF from the print dialog.
 function _revPrintQuery(){
@@ -12303,7 +12336,8 @@ function _revBuildSyncPlan(){
     var loan=(ref&&loanByRef[ref])?loanByRef[ref]:loanByName[_revNameKey(r.clientRaw)];
     if(!loan){ unmatched++; return; }
     var type=/trail/i.test(r.type)?'Trail':'Upfront';
-    var amt=_revNum(r.net)||_revNum(r.commission);
+    var gross=_revNum(r.commission), net=_revNum(r.net);
+    var amt=(net>0 && net<=gross*1.05) ? net : gross; // net after split if sane, else gross (never a stray balance/total)
     var period=type==='Trail'?_revPeriodLabel(r.periodMonth):'';
     plan.push({loanId:loan.id,caseId:loan.caseId||'',brokerId:loan.brokerId||'',brokerName:loan.brokerName||'',clientName:loan.clientName||'',type:type,amount:amt,period:period,periodMonth:r.periodMonth||'',ref:ref,receivedDate:new Date().toISOString().slice(0,10),batchId:r.batchId||''});
   });
