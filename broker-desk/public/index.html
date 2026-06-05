@@ -249,7 +249,7 @@ html.theme-light body { background: #f4f5f7; }
   <div style="position:absolute;inset:0;background:radial-gradient(1100px 600px at 50% -10%, rgba(212,168,67,.16), transparent 60%), radial-gradient(800px 500px at 100% 100%, rgba(96,165,250,.07), transparent 55%);pointer-events:none;"></div>
   <div style="width:400px;position:relative;z-index:1;">
     <div style="text-align:center;margin-bottom:26px;">
-      <div style="width:76px;height:76px;border-radius:20px;margin:0 auto 18px;background:linear-gradient(145deg,#E9C46A,#D4A843 55%,#B5862B);display:flex;align-items:center;justify-content:center;box-shadow:0 12px 32px rgba(212,168,67,.35), inset 0 1px 0 rgba(255,255,255,.5);">
+      <div id="login-logo-badge" style="width:76px;height:76px;border-radius:20px;margin:0 auto 18px;background:linear-gradient(145deg,#E9C46A,#D4A843 55%,#B5862B);display:flex;align-items:center;justify-content:center;box-shadow:0 12px 32px rgba(212,168,67,.35), inset 0 1px 0 rgba(255,255,255,.5);overflow:hidden;">
         <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#1a1206" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
       </div>
       <div style="font-size:11px;color:#D4A843;letter-spacing:5px;text-transform:uppercase;font-weight:700;margin-bottom:6px;">Easy Loan Finance</div>
@@ -807,8 +807,17 @@ async function init(){
   applyTheme();
   applyFontZoom();
   const v=await checkSess();
-  if(!v){document.getElementById('login-wrap').style.display='flex';return;}
+  if(!v){document.getElementById('login-wrap').style.display='flex'; _loadLoginLogo(); return;}
   startApp();
+}
+async function _loadLoginLogo(){
+  try{
+    const r=await gs_('getPublicLogo');
+    if(r&&r.ok&&r.logoUrl){
+      const el=document.getElementById('login-logo-badge');
+      if(el){ el.style.background='#fff'; el.innerHTML='<img src="'+r.logoUrl+'" alt="logo" style="max-width:62px;max-height:62px;object-fit:contain;">'; }
+    }
+  }catch(e){}
 }
 async function startApp(){
   document.getElementById('login-wrap').style.display='none';
@@ -10322,7 +10331,18 @@ async function _generateMissingTrailForLoan(loanId){
 function _billNoReady(){ toast('No received commissions to invoice yet - import a statement and Sync to Commissions first',1); }
 async function _generateInvoicesFromReady(){
   const scope=_commScope();
-  const ready=(scope.commissions||[]).filter(c=>String(c.status||'').toLowerCase()==='received'&&!c.invoiceNumber);
+  const readyRaw=(scope.commissions||[]).filter(c=>String(c.status||'').toLowerCase()==='received'&&!c.invoiceNumber);
+  // De-dupe by loan/case + type + period so the same commission can't be billed twice,
+  // and drop implausible amounts (likely a parse error - a trail bigger than a typical upfront).
+  const seenK={}; const ready=[];
+  readyRaw.forEach(c=>{
+    const amt=Number(c.amount)||0;
+    if(amt<=0) return;
+    if(/trail/i.test(c.type) && amt>2000){ console.warn('Skipping implausible trail amount',c.id,amt); return; }
+    if(amt>200000){ console.warn('Skipping implausible amount',c.id,amt); return; }
+    const key=(c.loanId||c.caseId||c.id)+'|'+(c.type==='Trail'?'Trail':'Upfront')+'|'+(_periodKeyLocal(c.period||'')||'');
+    if(seenK[key]) return; seenK[key]=1; ready.push(c);
+  });
   if(ready.length===0){toast('Nothing ready to invoice');return;}
   // Group by brokerId + type
   const groups={};
@@ -12397,6 +12417,7 @@ async function _revConfirmSync(){
 function rRevBatches(){
   var b=(S.commBatches||[]).slice().sort(function(a,c){return a.uploadedAt<c.uploadedAt?1:-1;});
   var h='<div style="overflow-y:auto;max-height:calc(100vh - 170px);padding-right:4px;">';
+  h+='<div style="display:flex;justify-content:flex-end;margin-bottom:10px;"><button class="btn-sec" style="font-size:12px;padding:7px 13px;color:#FB923C;border-color:#FB923C44;" onclick="_revDedupe()">Clean duplicate commissions</button></div>';
   if(!b.length){ h+='<div class="card" style="padding:30px;text-align:center;color:#6b7280;">No statements imported yet.</div></div>'; return h; }
   h+='<table class="tbl"><thead><tr><th>Uploaded</th><th>File</th><th>Period</th><th>Rows</th><th>New</th><th>Updated</th><th>By</th><th></th></tr></thead><tbody>';
   b.forEach(function(x){
@@ -12407,6 +12428,13 @@ function rRevBatches(){
   });
   h+='</tbody></table></div>';
   return h;
+}
+async function _revDedupe(){
+  if(!confirm('Remove duplicate commission records (same loan + type + period)? Invoiced ones are kept. This cannot be undone.'))return;
+  showLoad();
+  var r=await gs_('dedupeCommissions',S.tok);
+  if(r&&r.ok){ var cr=await gs_('getCommissions',S.tok); if(cr&&cr.ok)S.commissions=cr.data||[]; hideLoad(); toast('Removed '+r.removed+' duplicate commission(s)'); render(); }
+  else { hideLoad(); toast((r&&r.msg)||'Failed',1); }
 }
 async function _revRevert(id){
   if(!confirm('Revert this upload? All rows from this batch are removed. Other batches/months stay intact.'))return;
