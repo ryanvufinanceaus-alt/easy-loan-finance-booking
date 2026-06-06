@@ -10644,7 +10644,6 @@ function rInvoicesList(){
             <select style="background:#0A0D14;border:1px solid #1e2430;border-radius:6px;padding:3px 7px;color:#c9d1d9;font-size:11px;cursor:pointer;" onchange="updInvoiceStatus('${esc(i.id)}',this.value)">
               ${['Draft','Sent','Paid','Cancelled'].map(s=>`<option value="${s}"${i.status===s?' selected':''}>${s}</option>`).join('')}
             </select>
-            <button class="btn-ghost" onclick="event.stopPropagation();_openInvoiceEmail('${esc(i.id)}')" title="Email this invoice"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg></button>
             <button class="btn-ghost" onclick="openInvoice('${esc(i.id)}')" title="View PDF"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#D4A843" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
             ${S.user.role==='admin'?`<button class="btn-ghost" style="color:#ef4444;" onclick="delInvoice_('${esc(i.id)}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>`:''}
           </div></td>
