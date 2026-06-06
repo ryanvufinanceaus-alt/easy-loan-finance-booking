@@ -3772,6 +3772,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
       form.secondApplicantSurname,
       form.secondApplicantName
     ));
+  const canImportCaseData = !publicForm && !isLoanFormHost;
   const L = (label) => tx(label, language);
 
   async function submitIntake(event) {
@@ -3847,11 +3848,13 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
           language={language}
           onLanguageChange={setLanguage}
         />
-        <div className="client-form-top-actions">
-          <button className="ghost-button" type="button" onClick={() => setImportModalOpen(true)}>
-            <UploadCloud size={16} /> Import Case Data
-          </button>
-        </div>
+        {canImportCaseData ? (
+          <div className="client-form-top-actions">
+            <button className="ghost-button" type="button" onClick={() => setImportModalOpen(true)}>
+              <UploadCloud size={16} /> Import Case Data
+            </button>
+          </div>
+        ) : null}
         {error && <div className="error-banner">{error}</div>}
         {message && <div className="success-banner">{message}</div>}
         {importWarning && <div className="info-banner compact">{importWarning}</div>}
