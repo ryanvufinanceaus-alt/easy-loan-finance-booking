@@ -2030,6 +2030,57 @@ pre {
   grid-template-columns: minmax(0, 1fr) minmax(220px, 360px);
 }
 
+.client-form-top-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px clamp(18px, 3vw, 32px) 0;
+}
+
+.case-import-backdrop {
+  align-items: center;
+  background: rgba(9, 22, 17, 0.58);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 18px;
+  position: fixed;
+  z-index: 1000;
+}
+
+.case-import-modal {
+  background: #fbfcf8;
+  border: 1px solid #d8e2d9;
+  border-radius: 8px;
+  box-shadow: 0 24px 80px rgba(8, 25, 18, 0.28);
+  max-width: 760px;
+  padding: 22px;
+  width: min(760px, 100%);
+}
+
+.case-import-modal h2 {
+  color: #10251d;
+  font-size: 24px;
+  margin: 0 0 8px;
+}
+
+.case-import-modal p {
+  color: #52635c;
+  margin: 0 0 14px;
+}
+
+.case-import-modal textarea {
+  font-family: Consolas, "Courier New", monospace;
+  min-height: 300px;
+  width: 100%;
+}
+
+.case-import-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
 .loan-type-strip span {
   color: #6e766f;
   display: block;

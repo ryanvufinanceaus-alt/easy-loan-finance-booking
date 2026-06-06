@@ -2278,6 +2278,148 @@ function buildClientLoanMissingFields(form, language) {
     .map((field) => language === "vi" ? field.label_vi || field.label_en : field.label_en);
 }
 
+function normalizeImportKey(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function flattenImportLeaves(value, prefix = "") {
+  if (value === null || value === undefined || value === "") return [];
+  if (Array.isArray(value)) {
+    if (value.every((item) => item === null || typeof item !== "object")) {
+      return [{ path: prefix, value: value.filter((item) => item !== null && item !== undefined).join(", ") }];
+    }
+    return value.flatMap((item, index) => flattenImportLeaves(item, `${prefix}.${index}`));
+  }
+  if (typeof value === "object") {
+    return Object.entries(value).flatMap(([key, child]) => flattenImportLeaves(child, prefix ? `${prefix}.${key}` : key));
+  }
+  return [{ path: prefix, value }];
+}
+
+function buildImportLookup(data) {
+  const lookup = new Map();
+  flattenImportLeaves(data).forEach((entry) => {
+    const key = normalizeImportKey(entry.path);
+    if (key && !lookup.has(key)) lookup.set(key, entry);
+  });
+  return lookup;
+}
+
+const caseImportMappings = [
+  ["firstName", ["applicantDetails.firstName", "primaryApplicant.firstName", "applicants.0.firstName", "firstName"]],
+  ["surname", ["applicantDetails.surname", "applicantDetails.lastName", "primaryApplicant.surname", "applicants.0.lastName", "surname"]],
+  ["dateOfBirth", ["applicantDetails.dateOfBirth", "applicantDetails.dob", "primaryApplicant.dateOfBirth", "applicants.0.dateOfBirth", "dob"]],
+  ["gender", ["applicantDetails.gender", "primaryApplicant.gender", "applicants.0.gender"]],
+  ["email", ["applicantDetails.email", "contact.email", "primaryApplicant.email", "applicants.0.email"]],
+  ["mobile", ["applicantDetails.mobile", "applicantDetails.phone", "contact.mobile", "primaryApplicant.mobile", "applicants.0.mobile"]],
+  ["maritalStatus", ["applicantDetails.maritalStatus", "primaryApplicant.maritalStatus", "applicants.0.maritalStatus"]],
+  ["residencyStatus", ["applicantDetails.residencyStatus", "applicantDetails.residency", "primaryApplicant.residencyStatus", "applicants.0.residencyStatus"]],
+  ["permanentInAustralia", ["applicantDetails.permanentInAustralia", "primaryApplicant.permanentInAustralia", "applicants.0.permanentInAustralia"]],
+  ["visaSubclass", ["applicantDetails.visaSubclass", "primaryApplicant.visaSubclass", "applicants.0.visaSubclass"]],
+  ["dependants", ["applicantDetails.dependants", "applicantDetails.numberOfDependants", "primaryApplicant.dependants", "applicants.0.dependants"]],
+  ["driversLicenceNo", ["applicantDetails.driversLicenceNo", "applicantDetails.driverLicenceNumber", "applicantDetails.licence.number", "primaryApplicant.driversLicenceNo", "applicants.0.driversLicenceNo"]],
+  ["licenceExpiryDate", ["applicantDetails.licenceExpiryDate", "applicantDetails.driverLicenceExpiry", "applicantDetails.licence.expiry", "primaryApplicant.licenceExpiryDate", "applicants.0.licenceExpiryDate"]],
+  ["licenceState", ["applicantDetails.licenceState", "applicantDetails.driverLicenceState", "applicantDetails.licence.state", "primaryApplicant.licenceState", "applicants.0.licenceState"]],
+  ["licenceClass", ["applicantDetails.licenceClass", "applicantDetails.driverLicenceClass", "applicantDetails.licence.class", "primaryApplicant.licenceClass", "applicants.0.licenceClass"]],
+  ["address", ["applicantDetails.address", "applicantDetails.currentAddress", "address.current", "primaryApplicant.address", "applicants.0.address"]],
+  ["currentSuburb", ["applicantDetails.currentSuburb", "address.suburb", "primaryApplicant.currentSuburb", "applicants.0.currentSuburb"]],
+  ["currentState", ["applicantDetails.currentState", "address.state", "primaryApplicant.currentState", "applicants.0.currentState"]],
+  ["currentPostcode", ["applicantDetails.currentPostcode", "address.postcode", "primaryApplicant.currentPostcode", "applicants.0.currentPostcode"]],
+  ["currentResidentialStatus", ["applicantDetails.currentHousingSituation", "applicantDetails.currentResidentialStatus", "address.housingSituation", "primaryApplicant.currentResidentialStatus"]],
+  ["currentAddressFromDate", ["applicantDetails.currentAddressFromDate", "address.fromDate", "primaryApplicant.currentAddressFromDate"]],
+  ["postSettlementAddress", ["applicantDetails.postSettlementAddress", "address.postSettlementAddress"]],
+  ["mailingAddress", ["applicantDetails.mailingAddress", "address.mailingAddress"]],
+  ["previousAddress", ["applicantDetails.previousAddress", "address.previousAddress"]],
+  ["secondApplicantFirstName", ["applicantDetails.secondApplicant.firstName", "jointApplicant.firstName", "secondaryApplicant.firstName", "applicants.1.firstName"]],
+  ["secondApplicantSurname", ["applicantDetails.secondApplicant.surname", "applicantDetails.secondApplicant.lastName", "jointApplicant.lastName", "secondaryApplicant.lastName", "applicants.1.lastName"]],
+  ["secondApplicantDateOfBirth", ["applicantDetails.secondApplicant.dateOfBirth", "applicantDetails.secondApplicant.dob", "jointApplicant.dateOfBirth", "secondaryApplicant.dateOfBirth", "applicants.1.dateOfBirth"]],
+  ["secondApplicantGender", ["applicantDetails.secondApplicant.gender", "jointApplicant.gender", "secondaryApplicant.gender", "applicants.1.gender"]],
+  ["secondApplicantEmail", ["applicantDetails.secondApplicant.email", "jointApplicant.email", "secondaryApplicant.email", "applicants.1.email"]],
+  ["secondApplicantMobile", ["applicantDetails.secondApplicant.mobile", "jointApplicant.mobile", "secondaryApplicant.mobile", "applicants.1.mobile"]],
+  ["secondApplicantResidencyStatus", ["applicantDetails.secondApplicant.residencyStatus", "jointApplicant.residencyStatus", "secondaryApplicant.residencyStatus", "applicants.1.residencyStatus"]],
+  ["secondApplicantPermanentInAustralia", ["applicantDetails.secondApplicant.permanentInAustralia", "jointApplicant.permanentInAustralia", "secondaryApplicant.permanentInAustralia", "applicants.1.permanentInAustralia"]],
+  ["secondApplicantDriversLicenceNo", ["applicantDetails.secondApplicant.driversLicenceNo", "jointApplicant.driversLicenceNo", "secondaryApplicant.driversLicenceNo", "applicants.1.driversLicenceNo"]],
+  ["secondApplicantLicenceExpiryDate", ["applicantDetails.secondApplicant.licenceExpiryDate", "jointApplicant.licenceExpiryDate", "secondaryApplicant.licenceExpiryDate", "applicants.1.licenceExpiryDate"]],
+  ["secondApplicantLicenceState", ["applicantDetails.secondApplicant.licenceState", "jointApplicant.licenceState", "secondaryApplicant.licenceState", "applicants.1.licenceState"]],
+  ["secondApplicantLicenceClass", ["applicantDetails.secondApplicant.licenceClass", "jointApplicant.licenceClass", "secondaryApplicant.licenceClass", "applicants.1.licenceClass"]],
+  ["loanType", ["loanDetails.loanType", "loanRequest.loanType"]],
+  ["loanPurpose", ["loanDetails.loanPurpose", "loanDetails.purpose", "loanRequest.purpose"]],
+  ["loanAmount", ["loanDetails.loanAmount", "loanDetails.amount", "loanRequest.loanAmount"]],
+  ["propertyValue", ["loanDetails.propertyValue", "loanRequest.propertyValue", "securityProperties.0.estimatedValue"]],
+  ["depositEquity", ["loanDetails.depositEquity", "loanDetails.deposit", "loanRequest.deposit"]],
+  ["propertyLocation", ["loanDetails.propertyLocation", "loanDetails.propertyAddress", "securityProperties.0.address"]],
+  ["timeline", ["loanDetails.timeline", "loanRequest.timeline", "loanRequest.settlementTimeframe"]],
+  ["loanTermYears", ["loanDetails.loanTermYears", "loanDetails.termYears", "loanRequest.termYears"]],
+  ["repaymentType", ["loanDetails.repaymentType", "loanRequest.repaymentType"]],
+  ["ratePreference", ["loanDetails.ratePreference", "loanRequest.ratePreference"]],
+  ["offsetRequested", ["loanDetails.offsetRequested", "loanDetails.offset", "loanRequest.offsetRequested"]],
+  ["annualIncome", ["income.annualIncome", "income.primaryAnnualIncome", "employment.annualIncome", "employment.income", "applicants.0.annualIncome"]],
+  ["secondAnnualIncome", ["income.secondAnnualIncome", "income.secondaryAnnualIncome", "employment.secondAnnualIncome", "applicants.1.annualIncome"]],
+  ["rentalIncomeAnnual", ["income.rentalIncomeAnnual", "income.rentalIncome"]],
+  ["employmentType", ["employment.employmentType", "employment.type", "applicants.0.employmentType"]],
+  ["employerName", ["employment.employerName", "employment.employer", "applicants.0.employerName"]],
+  ["occupation", ["employment.occupation", "employment.jobTitle", "applicants.0.occupation"]],
+  ["employmentBasis", ["employment.employmentBasis", "employment.basis"]],
+  ["employmentFromDate", ["employment.employmentFromDate", "employment.startDate", "employment.fromDate"]],
+  ["secondApplicantEmploymentType", ["employment.secondApplicant.employmentType", "secondaryEmployment.employmentType", "applicants.1.employmentType"]],
+  ["secondApplicantEmployerName", ["employment.secondApplicant.employerName", "secondaryEmployment.employerName", "applicants.1.employerName"]],
+  ["secondApplicantJobTitle", ["employment.secondApplicant.jobTitle", "secondaryEmployment.jobTitle", "applicants.1.occupation"]],
+  ["generalExpenses", ["expenses.generalExpenses", "expenses.monthlyLivingExpenses", "expenses.hemMonthly"]],
+  ["hemMonthly", ["expenses.hemMonthly", "loanDetails.hemMonthly"]],
+  ["financialAssetBuffer", ["assets.financialAssetBuffer", "assets.financialAssets", "assets.savings"]],
+  ["cashSavingsAmount", ["assets.cashSavingsAmount", "assets.cashSavings", "assets.savingsAmount"]],
+  ["realEstateAssetAddress", ["assets.realEstateAssetAddress", "assets.realEstate.0.address"]],
+  ["realEstateAssetValue", ["assets.realEstateAssetValue", "assets.realEstate.0.value"]],
+  ["motorVehicleModelYear", ["assets.motorVehicleModelYear", "assets.vehicle.modelYear"]],
+  ["motorVehicleValue", ["assets.motorVehicleValue", "assets.vehicle.value"]],
+  ["existingDebtsSummary", ["liabilities.existingDebtsSummary", "liabilities.summary", "loanDetails.debtConsolidationDebts"]],
+  ["currentLender", ["liabilities.currentLender", "loanDetails.currentLender"]],
+  ["currentLoanBalance", ["liabilities.currentLoanBalance", "loanDetails.currentLoanBalance"]],
+  ["creditIssue", ["creditFile.creditIssue", "creditFile.hasCreditIssue", "creditHistory.creditIssue"]],
+  ["paydayLoans", ["creditFile.paydayLoans"]],
+  ["bnplUse", ["creditFile.bnplUse", "creditFile.buyNowPayLater"]],
+  ["gamblingTransactions", ["creditFile.gamblingTransactions"]],
+  ["dishonoursHistory", ["creditFile.dishonoursHistory", "creditFile.dishonours"]],
+  ["hardshipHistory", ["creditFile.hardshipHistory", "creditFile.hardship"]],
+  ["recentDeclines", ["creditFile.recentDeclines"]],
+  ["clientNotes", ["lenderNotes", "brokerNotes", "additionalNotes", "notes"]]
+];
+
+function importCaseDataIntoForm(currentForm, caseData) {
+  const lookup = buildImportLookup(caseData);
+  const consumed = new Set();
+  const next = { ...currentForm };
+  const formFields = new Set(Object.keys(currentForm));
+  let importedCount = 0;
+
+  caseImportMappings.forEach(([field, aliases]) => {
+    if (!formFields.has(field)) return;
+    const entry = aliases.map((alias) => lookup.get(normalizeImportKey(alias))).find(Boolean);
+    if (!entry) return;
+    consumed.add(entry.path);
+    next[field] = typeof currentForm[field] === "boolean"
+      ? /^(true|yes|y|1)$/i.test(String(entry.value))
+      : String(entry.value);
+    importedCount += 1;
+  });
+
+  if (next.secondApplicantFirstName || next.secondApplicantSurname || next.secondApplicantDateOfBirth || next.secondAnnualIncome) {
+    next.hasSecondApplicant = "Yes";
+    if (/single/i.test(next.secondApplicantMaritalStatus || "")) next.secondApplicantMaritalStatus = next.maritalStatus || "Married";
+  }
+
+  const unknown = flattenImportLeaves(caseData)
+    .filter((entry) => !consumed.has(entry.path))
+    .map((entry) => `${entry.path}: ${String(entry.value)}`);
+
+  if (unknown.length) {
+    const block = `Imported unmapped data:\n${unknown.join("\n")}`;
+    next.clientNotes = [next.clientNotes, block].filter(Boolean).join("\n\n");
+  }
+
+  return { next: hydrateNameParts(next), importedCount, unknown };
+}
+
 function DynamicLoanField({ field, form, language, onChange }) {
   const required = fieldRequired(field, form);
   const label = fieldLabel(field, language);
@@ -3496,6 +3638,9 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importJson, setImportJson] = useState("");
+  const [importWarning, setImportWarning] = useState("");
 
   useEffect(() => {
     document.title = pageTitle();
@@ -3588,6 +3733,25 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
       maritalStatus: value,
       hasSecondApplicant: /married|defacto/i.test(value) ? "Yes" : current.hasSecondApplicant
     }));
+  }
+
+  function importCaseData() {
+    setError("");
+    setImportWarning("");
+    let parsed;
+    try {
+      parsed = JSON.parse(importJson);
+    } catch (err) {
+      setError(`Invalid JSON. Please check the pasted case data. ${err.message}`);
+      return;
+    }
+    const { next, importedCount, unknown } = importCaseDataIntoForm(form, parsed);
+    setForm(next);
+    setMessage(`Case data imported. Please review before submitting. ${importedCount} fields filled.`);
+    if (unknown.length) {
+      setImportWarning(`Imported known fields. ${unknown.length} unknown fields were added to broker notes: ${unknown.slice(0, 8).map((item) => item.split(":")[0]).join(", ")}${unknown.length > 8 ? "..." : ""}`);
+    }
+    setImportModalOpen(false);
   }
 
   const txt = clientFormCopy[language];
@@ -3683,9 +3847,42 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
           language={language}
           onLanguageChange={setLanguage}
         />
+        <div className="client-form-top-actions">
+          <button className="ghost-button" type="button" onClick={() => setImportModalOpen(true)}>
+            <UploadCloud size={16} /> Import Case Data
+          </button>
+        </div>
         {error && <div className="error-banner">{error}</div>}
         {message && <div className="success-banner">{message}</div>}
+        {importWarning && <div className="info-banner compact">{importWarning}</div>}
         {meta?.status === "submitted" && !message ? <div className="success-banner">{txt.alreadySubmitted}</div> : null}
+        {importModalOpen ? (
+          <div className="case-import-backdrop" role="dialog" aria-modal="true" aria-label="Import Case Data">
+            <div className="case-import-modal">
+              <h2>Import Case Data</h2>
+              <p>Paste ChatGPT-generated JSON case data. Matching fields will be filled into this form. The form will not submit automatically.</p>
+              <textarea
+                value={importJson}
+                onChange={(event) => setImportJson(event.target.value)}
+                placeholder={`{
+  "applicantDetails": {
+    "firstName": "Arsalan",
+    "surname": "Saleem",
+    "dateOfBirth": "29-09-1988"
+  },
+  "loanDetails": {
+    "loanType": "Home loan",
+    "loanAmount": "275000"
+  }
+}`}
+              />
+              <div className="case-import-actions">
+                <button className="ghost-button" type="button" onClick={() => setImportModalOpen(false)}>Cancel</button>
+                <button className="primary-button" type="button" onClick={importCaseData}>Import</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {draftRestored ? (
           <div className="draft-banner">
             <span>{L("Saved draft restored on this device.")}</span>
