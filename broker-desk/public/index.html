@@ -870,13 +870,7 @@ function _applyLoadData(d){
 function _cacheKey(){ return 'bd_cache_'+((S.user&&S.user.id)||'me'); }
 function _invalidateCache(){ try{ Object.keys(sessionStorage).forEach(function(k){ if(k.indexOf('bd_cache_')===0) sessionStorage.removeItem(k); }); }catch(e){} }
 async function loadAll_(){
-  // Instant paint from this session's cache (if recent) while fresh data loads in the background.
-  var painted=false;
-  try{
-    var cached=sessionStorage.getItem(_cacheKey());
-    if(cached){ var cd=JSON.parse(cached); if(cd&&cd.d&&(Date.now()-cd.t)<15*60*1000){ _applyLoadData(cd.d); painted=true; } }
-  }catch(e){}
-  if(!painted) showLoad();
+  showLoad();
   let r=await gs_('loadAll',S.tok);
   // Fallback: if loadAll fails, try individual calls (in case of stale deployment etc.)
   if(!r||!r.ok){
@@ -884,7 +878,8 @@ async function loadAll_(){
       hideLoad();toast('Session expired \u2014 please sign in again',1);
       await logout_(); return;
     }
-    if(painted){ hideLoad(); return; } // keep showing cached data if the refresh failed
+    // offline fallback: show last cached snapshot only if the live load failed
+    try{ var cached=sessionStorage.getItem(_cacheKey()); if(cached){ var cd=JSON.parse(cached); if(cd&&cd.d){ _applyLoadData(cd.d); hideLoad(); toast('Showing last loaded data (refresh failed)',1); return; } } }catch(e){}
     console.warn('loadAll failed, falling back to individual calls:',r&&r.msg);
     const [cs,ts,et,us,ln]=await Promise.all([
       gs_('getCases',S.tok),gs_('getTasks',S.tok),gs_('getEmailTemplates',S.tok),
@@ -10626,13 +10621,14 @@ function rInvoicesList(){
     </span>`:''}
   </div>
   <div class="card" style="overflow:hidden;overflow-x:auto;">
-    <table class="tbl"><thead><tr>${['Ref','Type','Client / Case','Issued To','Period','Items','Subtotal','GST','Total','Status','Due','Actions'].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+    <table class="tbl"><thead><tr>${['\u2709','Ref','Type','Client / Case','Issued To','Period','Items','Subtotal','GST','Total','Status','Due','Actions'].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
       <tbody>${shownInv.map(i=>{
         const sc=i.status==='Paid'?'#34D399':i.status==='Sent'?'#FBBF24':i.status==='Draft'?'#818CF8':'#6b7280';
         const tc=i.type==='Upfront'?'#818CF8':i.type==='Trail'?'#A78BFA':i.type==='Bonus'?'#FB923C':'#38BDF8';
         let items=[];try{items=JSON.parse(i.items||'[]');}catch(e){}
         const cl=_invoiceClientLabel(i,items);
         return`<tr onclick="openInvoice('${esc(i.id)}')">
+          <td onclick="event.stopPropagation();_openInvoiceEmail('${esc(i.id)}')" style="cursor:pointer;text-align:center;" title="Email this invoice"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg></td>
           <td style="color:#D4A843;font-size:11px;white-space:nowrap;font-weight:700;">${esc(i.ref)}</td>
           <td><span style="background:${tc}18;color:${tc};border:1px solid ${tc}30;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;">${esc(i.type)}</span></td>
           <td style="white-space:nowrap;"><div style="font-weight:600;color:#c9d1d9;font-size:12px;">${esc(cl.client||'\u2014')}</div>${cl.caseId?`<div style="font-size:10px;color:#6b7280;">${esc(cl.caseId)}</div>`:''}</td>
