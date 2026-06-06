@@ -2595,6 +2595,8 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   const [caseImportOpen, setCaseImportOpen] = useState(false);
   const [caseImportJson, setCaseImportJson] = useState("");
   const [caseImportWarning, setCaseImportWarning] = useState("");
+  const [templateLibraryOpen, setTemplateLibraryOpen] = useState(false);
+  const [loanFormImportTemplate, setLoanFormImportTemplate] = useState("");
   const canViewLoanSubmissions = Boolean(session && (!session.required || session.role === "admin" || session.accessLevel === "broker"));
 
   async function refreshNotes() {
@@ -2923,6 +2925,27 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     }
   }
 
+  async function openLoanFormTemplateLibrary({ copy = false } = {}) {
+    setError("");
+    setMessage("");
+    try {
+      let template = loanFormImportTemplate;
+      if (!template) {
+        const response = await fetch(`${apiBase}/api/loan-form-import-template`, { credentials: "include" });
+        if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || response.statusText);
+        template = await response.text();
+        setLoanFormImportTemplate(template);
+      }
+      setTemplateLibraryOpen(true);
+      if (copy) {
+        await navigator.clipboard?.writeText(template).catch(() => {});
+        setMessage("Full Loan Form ChatGPT template copied.");
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   function loadIntake(intake) {
     if (submissionDirty && !window.confirm("You have unsaved changes. Switch submission anyway?")) return;
     const nextEdit = {
@@ -3080,6 +3103,9 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
             <span>Last updated {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
             <strong>{session?.email || "Broker user"}</strong>
             <button className="ghost-button" type="button" onClick={() => refreshIntakes().catch((err) => setError(err.message))}>Refresh</button>
+            <button className="ghost-button" type="button" onClick={() => openLoanFormTemplateLibrary({ copy: true })}>
+              <ClipboardList size={16} /> Copy ChatGPT Template
+            </button>
             <button className="primary-button" type="button" disabled={!selectedIntake} onClick={() => openEasyFlowForIntake()}>
               <Play size={16} /> Prepare in EasyFlow AI
             </button>
@@ -3283,6 +3309,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                   <div className="actions submission-editor-actions">
                     <span>{submissionDirty ? "Unsaved changes" : "Saved"}</span>
                     <button className="primary-button" type="button" disabled={saving || !submissionDirty} onClick={saveIntakeEdits}>{saving ? "Saving..." : "Save changes"}</button>
+                    <button className="ghost-button" type="button" onClick={() => openLoanFormTemplateLibrary()}><ClipboardList size={14} /> ChatGPT Template</button>
                     <button className="ghost-button" type="button" onClick={() => setCaseImportOpen(true)}><UploadCloud size={14} /> Import Case JSON</button>
                     <button className="ghost-button" type="button" onClick={() => downloadFactFind(selectedIntake)}><Download size={14} /> Download Fact Find</button>
                     <button className="ghost-button" type="button" onClick={() => openEasyFlowForIntake()}><Play size={14} /> Prepare EasyFlow AI</button>
@@ -3449,6 +3476,22 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
               <div className="case-import-actions">
                 <button className="ghost-button" type="button" onClick={() => setCaseImportOpen(false)}>Cancel</button>
                 <button className="primary-button" type="button" onClick={importCaseJsonIntoSelected}>Import</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {templateLibraryOpen ? (
+          <div className="case-import-backdrop" role="dialog" aria-modal="true" aria-label="Loan Form ChatGPT Template">
+            <div className="case-import-modal template-library-modal">
+              <h2>Full Loan Form ChatGPT Template</h2>
+              <p>Copy this prompt and JSON template into ChatGPT. Paste ChatGPT's completed JSON back into Import Case JSON.</p>
+              <textarea readOnly value={loanFormImportTemplate} />
+              <div className="case-import-actions">
+                <button className="ghost-button" type="button" onClick={() => setTemplateLibraryOpen(false)}>Close</button>
+                <button className="primary-button" type="button" onClick={async () => {
+                  await navigator.clipboard?.writeText(loanFormImportTemplate).catch(() => {});
+                  setMessage("Full Loan Form ChatGPT template copied.");
+                }}>Copy template</button>
               </div>
             </div>
           </div>

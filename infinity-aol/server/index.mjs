@@ -17,6 +17,7 @@ export const app = express();
 const port = Number(process.env.PORT || 8797);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distPath = path.resolve(__dirname, "../dist");
+const loanFormImportTemplatePath = path.resolve(__dirname, "../LOAN_FORM_CHATGPT_IMPORT_TEMPLATE.md");
 const legacyDataDir = path.resolve(__dirname, "data");
 const defaultDataDir = process.env.NODE_ENV === "production" ? "/var/data" : legacyDataDir;
 const dataDir = path.resolve(process.env.INFINITY_AOL_DATA_DIR || process.env.DATA_DIR || defaultDataDir);
@@ -1797,6 +1798,11 @@ app.get("/api/health", (_request, response) => {
 
 app.get("/api/storage/status", (_request, response) => {
   response.json(storageState);
+});
+
+app.get("/api/loan-form-import-template", (request, response) => {
+  if (!canReadLoanSubmissions(request)) return response.status(403).json({ error: "Broker access required for Loan Form import template." });
+  response.type("text/markdown").send(fs.readFileSync(loanFormImportTemplatePath, "utf8"));
 });
 
 app.get("/api/cases", (_request, response) => {

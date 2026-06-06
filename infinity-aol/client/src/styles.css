@@ -2074,6 +2074,15 @@ pre {
   width: 100%;
 }
 
+.template-library-modal {
+  max-width: 980px;
+  width: min(980px, 100%);
+}
+
+.template-library-modal textarea {
+  min-height: min(62vh, 620px);
+}
+
 .case-import-actions {
   display: flex;
   gap: 10px;
