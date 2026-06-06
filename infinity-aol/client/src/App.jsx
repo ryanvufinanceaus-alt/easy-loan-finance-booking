@@ -3772,7 +3772,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
       form.secondApplicantSurname,
       form.secondApplicantName
     ));
-  const canImportCaseData = !publicForm && !isLoanFormHost;
+  const canImportCaseData = !publicForm || new URLSearchParams(location.search).get("brokerImport") === "1";
   const L = (label) => tx(label, language);
 
   async function submitIntake(event) {
