@@ -1997,6 +1997,7 @@ function _renderModal(){
       m==='addComm'?rAddComm():
       m==='revEmail'?rRevEmailModal():
       m==='invEmail'?rInvoiceEmailModal():
+      m==='invPicker'?rInvoicePickerModal():
       m==='editComm'?rEditComm():
       m==='trailReceipt'?rTrailReceipt():
       m==='exportComm'?rExportComm():
@@ -6286,7 +6287,7 @@ function rCommAll(){
     </div>
   </div>
   <div class="card" style="overflow:hidden;overflow-x:auto;">
-    <table class="tbl"><thead><tr>${['ID','Client','Type','Amount','Received','Status','Invoice','Loan ID','Case ID','Actions'].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+    <table class="tbl"><thead><tr>${['ID','Client','Type','Amount','Broker %','Received','Status','Invoice','Loan ID','Case ID','Actions'].map(h=>`<th>${h}</th>`).join('')}</tr></thead>
       <tbody>${d.map(c=>{
         const isNeg=Number(c.amount||0)<0||c.type==='Clawback';
         const sc=c.status==='Received'?(isNeg?'#ef4444':'#34D399'):c.status==='Pending'?'#FBBF24':c.status==='Clawback'?'#ef4444':'#6b7280';
@@ -6298,6 +6299,7 @@ function rCommAll(){
           <td style="font-weight:600;color:#c9d1d9;white-space:nowrap;">${esc(c.clientName)}</td>
           <td><span style="background:${tc}18;color:${tc};border:1px solid ${tc}30;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;">${esc(c.type)}</span></td>
           <td style="font-weight:800;white-space:nowrap;color:${isNeg?'#ef4444':'#c9d1d9'};">${isNeg?'-':''}${fmtCur(Math.abs(Number(c.amount||0)))}</td>
+          ${(()=>{const _bl=(S.loanBook||[]).find(l=>l.id===c.loanId||(c.caseId&&l.caseId===c.caseId));const _bp=_bl&&_bl.brokerSharePct!=null&&_bl.brokerSharePct!==''?_bl.brokerSharePct:100;return `<td style="font-size:11px;color:${_bp==100?'#4a5568':'#A78BFA'};text-align:center;font-weight:600;" title="Broker share for this case (set in Tracking \u2192 Loans &amp; Ref)">${_bp}%</td>`;})()}
           <td style="font-size:12px;color:#6b7280;white-space:nowrap;">${esc(c.receivedDate||'\u2013')}</td>
           <td><span style="background:${sc}18;color:${sc};border:1px solid ${sc}30;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;">${esc(c.status)}</span></td>
           <td style="font-size:12px;color:#6b7280;">${esc(c.invoiceNumber||'\u2013')}</td>
@@ -10617,7 +10619,8 @@ function rInvoicesList(){
   <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
     <span style="font-size:11px;color:#6b7280;">Filter:</span>
     ${fbtn('all','All')}${fbtn('Draft','Draft')}${fbtn('Sent','Sent')}${fbtn('Paid','Paid')}${fbtn('Cancelled','Cancelled')}
-    ${isAdmin?`<span style="margin-left:auto;display:flex;gap:8px;">
+    ${isAdmin?`<span style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn-sec" onclick="_openInvoicePicker()" style="font-size:12px;color:#34D399;border-color:#34D39944;" title="Pick an invoice to email a broker / partner">\u2709 Email invoice</button>
       <button class="btn-sec" onclick="_fixInvoiceLinks()" style="font-size:12px;" title="Clear commission links that point to deleted invoices (fixes 'skipped, already invoiced')">\uD83D\uDD27 Fix invoice links</button>
       <button class="btn-sec" onclick="setView('settings')" style="font-size:12px;">\u2699 Settings</button>
     </span>`:''}
@@ -11223,6 +11226,40 @@ async function _fixInvoiceLinks(){
     render();
   } else { hideLoad(); toast((r&&r.msg)||'Failed',1); }
 }
+function _openInvoicePicker(){ S.invPickShowSent=false; S.invPickQ=''; openModal('invPicker'); }
+function rInvoicePickerModal(){
+  const _d=i=>String(i.createdAt||i.dueDate||'').slice(0,10);
+  var all=(S.invoices||[]).slice().sort((a,b)=>_d(b).localeCompare(_d(a)));
+  var q=(S.invPickQ||'').toLowerCase().trim();
+  var list=all.filter(function(i){
+    if(!S.invPickShowSent && String(i.status||'')!=='Draft') return false;
+    if(q){ var hay=((i.ref||'')+' '+(i.issuedTo||'')+' '+(i.notes||'')+' '+(i.type||'')).toLowerCase(); if(hay.indexOf(q)<0)return false; }
+    return true;
+  });
+  var draftCount=all.filter(function(i){return String(i.status||'')==='Draft';}).length;
+  var rows=list.map(function(i){
+    var tc=i.type==='Upfront'?'#818CF8':i.type==='Trail'?'#A78BFA':'#38BDF8';
+    var sc=i.status==='Sent'?'#FBBF24':i.status==='Paid'?'#34D399':'#8b949e';
+    return '<div onclick="closeModal();_openInvoiceEmail(\''+esc(i.id)+'\')" style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid #1e2430;border-radius:9px;margin-bottom:8px;cursor:pointer;background:#0A0D14;" onmouseover="this.style.borderColor=\'#34D39955\'" onmouseout="this.style.borderColor=\'#1e2430\'">'
+      +'<div style="flex:1;min-width:0;"><div style="font-weight:700;color:#c9d1d9;font-size:13px;">'+esc(i.issuedTo||'\u2014')+' <span style="color:'+tc+';font-size:11px;font-weight:600;">'+esc(i.type||'')+'</span></div>'
+      +'<div style="font-size:11px;color:#6b7280;font-family:monospace;">'+esc(i.ref||'')+' \u00B7 '+esc(i.period||'')+'</div></div>'
+      +'<div style="text-align:right;"><div style="font-weight:800;color:#D4A843;font-size:14px;">'+fmtCur(i.total)+'</div>'
+      +'<div style="font-size:10px;color:'+sc+';font-weight:700;">'+esc(i.status||'')+'</div></div>'
+      +'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg></div>';
+  }).join('');
+  return '<div class="m-ct"><div class="m-box" style="max-width:620px;width:94vw;display:flex;flex-direction:column;max-height:88vh;">'
+    +'<div style="padding:16px 20px;border-bottom:1px solid #1e2430;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">'
+    +'<div style="font-size:15px;font-weight:700;color:#c9d1d9;">\u2709 Email an invoice</div>'
+    +'<button class="btn-ghost" onclick="closeModal()" style="font-size:18px;">\u00D7</button></div>'
+    +'<div style="padding:16px 20px;overflow-y:auto;">'
+    +'<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">'
+    +'<input class="fi" placeholder="Search ref / broker\u2026" value="'+esc(S.invPickQ||'')+'" oninput="S.invPickQ=this.value;renderModal()" style="flex:1;min-width:160px;">'
+    +'<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#8b949e;cursor:pointer;white-space:nowrap;"><input type="checkbox" '+(S.invPickShowSent?'checked':'')+' onchange="S.invPickShowSent=this.checked;renderModal()" style="accent-color:#D4A843;"> Include sent (resend)</label>'
+    +'</div>'
+    +'<div style="font-size:11px;color:#6b7280;margin-bottom:10px;">'+(S.invPickShowSent?('Showing all '+list.length+' invoice(s), newest first.'):(draftCount+' draft invoice(s) ready to email. Newest first.'))+'</div>'
+    +(rows||'<div style="text-align:center;padding:30px;color:#4a5568;">'+(S.invPickShowSent?'No invoices found.':'No draft invoices to email. Tick \u201cInclude sent\u201d to resend one.')+'</div>')
+    +'</div></div></div>';
+}
 function _openInvoiceEmail(id){
   var inv=(S.invoices||[]).find(function(i){return i.id===id;});
   if(!inv){ toast('Invoice not found',1); return; }
@@ -11309,11 +11346,10 @@ function rInvoiceEmailModal(){
     +'</div>'
     +'<div style="font-size:11px;color:#6b7280;margin-bottom:6px;">Preview (template from Settings \u2192 Sender):</div>'
     +'<div id="inv-em-body" style="background:#fff;border:1px solid #d0d5dd;border-radius:8px;padding:16px;max-height:40vh;overflow:auto;">'+f.html+'</div>'
-    +'<div style="font-size:11px;color:#8b949e;margin-top:10px;line-height:1.6;">\uD83D\uDCCE Attach the PDF: click <b style="color:#c9d1d9;">Save invoice PDF</b>, then in Outlook attach the saved file. The full invoice details are already in the email body above.</div>'
+    +'<div style="font-size:11px;color:#8b949e;margin-top:10px;line-height:1.6;">\uD83D\uDCCE Need the PDF attached? Open the invoice and use <b style="color:#c9d1d9;">Print / Save PDF</b>, then attach it in Outlook. The full invoice details are already in the email body above.</div>'
     +'</div>'
     +'<div style="padding:14px 20px;border-top:1px solid #1e2430;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0;">'
-    +'<button class="btn-sec" onclick="_invEmailSavePdf()">Save invoice PDF</button>'
-    +'<button class="btn-sec" onclick="_invEmailOutlook()">Open in Outlook</button>'
+    +(inv.status!=='Sent'?'<button class="btn-sec" onclick="_invEmailMarkSent()" title="Mark this invoice as Sent so it drops off the draft list">Mark as Sent</button>':'')
     +'<button class="btn-gold" onclick="_invEmailCopyRich()">Copy email (with details)</button>'
     +'</div></div></div>';
 }
@@ -11330,6 +11366,12 @@ function _invEmailOutlook(){
   window.location.href='mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(f.text);
 }
 function _invEmailSavePdf(){ S.viewingInvoiceId=S.invEmailId; printInvoice(); }
+async function _invEmailMarkSent(){
+  var id=S.invEmailId;
+  var r=await gs_('updateInvoice',S.tok,id,{status:'Sent'});
+  if(r&&r.ok){ var iv=(S.invoices||[]).find(function(i){return i.id===id;}); if(iv)iv.status='Sent'; _invalidateCache(); toast('Marked as Sent'); closeModal(); render(); }
+  else toast((r&&r.msg)||'Failed',1);
+}
 async function delInvoice_(id){
   if(!confirm('Delete this invoice? Cannot undo.'))return;
   const r=await gs_('deleteInvoice',S.tok,id);
@@ -11363,6 +11405,7 @@ function rViewInvoice(){
       <div style="padding:14px 20px;border-bottom:1px solid #1e2430;display:flex;justify-content:space-between;flex-shrink:0;">
         <div style="font-size:15px;font-weight:700;color:#c9d1d9;">Invoice ${esc(inv.ref)}</div>
         <div style="display:flex;gap:7px;">
+          <button class="btn-sec" onclick="closeModal();_openInvoiceEmail('${esc(inv.id)}')" style="font-size:12px;color:#34D399;border-color:#34D39944;">\u2709 Email invoice</button>
           <button class="btn-gold" onclick="printInvoice()" style="font-size:12px;">\uD83D\uDDA8 Print / Save PDF</button>
           <button class="btn-ghost" onclick="closeModal()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
@@ -11446,6 +11489,9 @@ function rViewInvoice(){
           <!-- Totals -->
           <div style="display:flex;justify-content:flex-end;margin-bottom:24px;">
             <div style="min-width:340px;">
+              ${(inv.brokerSharePct!=null&&Number(inv.brokerSharePct)!==100)?`<div style="display:flex;justify-content:space-between;padding:7px 0;font-size:12px;color:#7c3aed;border-bottom:1px solid #e5e7eb;">
+                <span>Broker share applied</span><span style="font-weight:700;">${esc(inv.brokerSharePct)}%</span>
+              </div>`:''}
               <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:13px;color:#555;border-bottom:1px solid #e5e7eb;">
                 <span>${gstMode==='inclusive'?'Subtotal (incl GST)':'Subtotal'}</span><span style="font-weight:600;">${fmtCur(subtotal)}</span>
               </div>
@@ -12455,7 +12501,6 @@ function rRevEmailModal(){
     +'</div>'
     +'<div style="padding:14px 20px;border-top:1px solid #1e2430;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;flex-shrink:0;">'
     +'<button class="btn-sec" onclick="_revCopySubject()">Copy subject</button>'
-    +'<button class="btn-sec" onclick="_revOpenOutlook()">Open in Outlook</button>'
     +'<button class="btn-gold" onclick="_revCopyRich()">Copy email (with table)</button>'
     +'</div></div></div>';
 }
@@ -12695,7 +12740,12 @@ function rRevLoans(){
   var loans=(S.loanBook||[]).filter(function(l){ return S.user.role==='admin'?true:l.brokerId===S.user.id; });
   var rows=S.commRows||[];
   var h='<div style="overflow-y:auto;max-height:calc(100vh - 170px);padding-right:4px;">';
-  h+='<div style="font-size:12px;color:#8b949e;margin-bottom:12px;">Link each loan to its Finsure Ref # once. Set repayment + rate for trail estimate. <b style="color:#c9d1d9;">Broker %</b> = the broker\'s share for invoicing this case (default 100; used by Auto-create invoices). Click Save after editing.</div>';
+  h+='<div style="background:linear-gradient(135deg,rgba(212,168,67,.07),transparent);border:1px solid #D4A84333;border-radius:10px;padding:12px 15px;margin-bottom:14px;font-size:12px;color:#8b949e;line-height:1.7;">'
+    +'<b style="color:#D4A843;">How this tab works:</b><br>'
+    +'\u2022 <b style="color:#c9d1d9;">Ref #</b> \u2014 link each loan to its Finsure reference once; every statement then matches automatically.<br>'
+    +'\u2022 <b style="color:#c9d1d9;">Repay + Rate %</b> \u2014 used to estimate the next trail.<br>'
+    +'\u2022 <b style="color:#c9d1d9;">Broker %</b> \u2014 the broker\'s share of commission <u>for this case</u> (e.g. 100 = broker keeps full, 80 = broker gets 80%). This is <b>only</b> applied when you <b>invoice the broker</b> \u2014 the Finsure query always asks for the full 100%. Saved on the loan, shown in Commissions &amp; on the invoice.<br>'
+    +'Edit any field then click <b style="color:#c9d1d9;">Save</b> on that row.</div>';
   h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th>Loan</th><th>Ref #</th><th>Repay</th><th>Rate %</th><th>Broker %</th><th>Next trail est.</th><th></th></tr></thead><tbody>';
   loans.forEach(function(l){
     var ref=String(l.finsureRef||'').trim();
