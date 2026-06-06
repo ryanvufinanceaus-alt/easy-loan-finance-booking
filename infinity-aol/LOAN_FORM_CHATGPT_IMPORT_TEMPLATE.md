@@ -1,10 +1,10 @@
-# Easy Loan Finance - Loan Form ChatGPT Import Template
+# Easy Loan Finance - Full Loan Form JSON Import Template
 
-Use this file when you want ChatGPT to turn messy client notes, documents, or broker notes into a JSON payload that can be pasted into Loan Case Manager > Import Case JSON.
+Use this file as the master JSON structure for a complete Easy Loan Finance loan application. Send it to ChatGPT with a client case, then paste the completed JSON into Loan Case Manager > Import Case JSON.
 
 ## Prompt To Send ChatGPT
 
-Fill the JSON template below from the case information I provide.
+Complete the full Easy Loan Finance Loan Form JSON template below from the client case information I provide.
 
 Rules:
 - Return JSON only. No markdown, no explanation.
@@ -17,8 +17,9 @@ Rules:
 - If there is a spouse, partner, co-borrower, guarantor, or second applicant, complete `secondApplicant`.
 - If the loan type is not relevant, leave that loan section blank.
 - Put anything uncertain or extra into `lenderNotes.additionalNotes`.
+- Preserve this full structure even when sections are blank, so it can be imported consistently.
 
-## JSON Template
+## Full JSON Template
 
 ```json
 {
@@ -303,4 +304,3 @@ Rules:
   }
 }
 ```
-
