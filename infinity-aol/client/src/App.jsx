@@ -2592,6 +2592,9 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [caseImportOpen, setCaseImportOpen] = useState(false);
+  const [caseImportJson, setCaseImportJson] = useState("");
+  const [caseImportWarning, setCaseImportWarning] = useState("");
   const canViewLoanSubmissions = Boolean(session && (!session.required || session.role === "admin" || session.accessLevel === "broker"));
 
   async function refreshNotes() {
@@ -2747,9 +2750,11 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   }
 
   function loanFormStatus(item) {
-    if (item.status === "submitted" || item.intakeStatus === "submitted") return "Loan form submitted";
-    if (item.intakeToken || item.status === "sent") return "Loan form link sent";
-    return "No loan form link";
+    if (item.validationStatus?.ok || item.lastSavedAt) return "Ready for EasyFlow";
+    if (item.status === "submitted" || item.intakeStatus === "submitted") return "Loan Form Submitted";
+    if (item.intakeToken || item.status === "sent") return "Loan Form Link Created";
+    if (item.callNoteId || item.convertedCaseId) return "Call Intake Linked";
+    return "Call Intake Only";
   }
 
   function intakeSourceLabel(intake) {
@@ -2882,6 +2887,40 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   function downloadFactFind(intake) {
     window.open(`${apiBase}/api/client-intakes/${encodeURIComponent(intake.id)}/fact-find`, "_blank", "noopener,noreferrer");
     setIntakes((current) => current.map((item) => item.id === intake.id ? { ...item, factFindExportedAt: new Date().toISOString() } : item));
+  }
+
+  function caseIdForIntake(intake) {
+    return intake?.convertedCaseId || intake?.caseId || intake?.callNoteId || "";
+  }
+
+  function openEasyFlowForIntake(intake = selectedIntake) {
+    const caseId = caseIdForIntake(intake);
+    if (!caseId) {
+      setError("This record is not linked to an EasyFlow case yet. Create the Loan Form link first.");
+      return;
+    }
+    onOpenAutofill?.(caseId);
+  }
+
+  function importCaseJsonIntoSelected() {
+    if (!selectedIntake) return;
+    setError("");
+    setMessage("");
+    setCaseImportWarning("");
+    let parsed;
+    try {
+      parsed = JSON.parse(caseImportJson);
+    } catch (err) {
+      setError(`Invalid JSON. Please check the pasted case data. ${err.message}`);
+      return;
+    }
+    const { next, importedCount, unknown } = importCaseDataIntoForm(submissionEdit, parsed);
+    setSubmissionEdit(next);
+    setCaseImportOpen(false);
+    setMessage(`Case JSON imported. Please review and save before EasyFlow. ${importedCount} fields filled.`);
+    if (unknown.length) {
+      setCaseImportWarning(`${unknown.length} unmapped field(s) were added to Client notes: ${unknown.slice(0, 8).map((item) => item.split(":")[0]).join(", ")}${unknown.length > 8 ? "..." : ""}`);
+    }
   }
 
   function loadIntake(intake) {
@@ -3041,7 +3080,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
             <span>Last updated {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
             <strong>{session?.email || "Broker user"}</strong>
             <button className="ghost-button" type="button" onClick={() => refreshIntakes().catch((err) => setError(err.message))}>Refresh</button>
-            <button className="primary-button" type="button" disabled={!selectedIntake} onClick={() => onOpenAutofill?.()}>
+            <button className="primary-button" type="button" disabled={!selectedIntake} onClick={() => openEasyFlowForIntake()}>
               <Play size={16} /> Prepare in EasyFlow AI
             </button>
             <button className="ghost-button" type="button" onClick={async () => {
@@ -3137,7 +3176,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                         <button type="button" onClick={() => downloadFactFind(intake)}><Download size={13} /> Fact Find</button>
                         <button type="button" onClick={() => {
                           loadIntake(intake);
-                          onOpenAutofill?.();
+                          openEasyFlowForIntake(intake);
                         }}><Play size={13} /> EasyFlow AI</button>
                       </div>
                     </div>
@@ -3158,7 +3197,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                 <>
                   <div className="submission-editor-summary">
                     <div>
-                      <span className={`status-badge status-${String(selectedIntake.status || "new").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>{selectedIntake.status || "New"}</span>
+                      <span className={`status-badge status-${loanFormStatus(selectedIntake).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}>{loanFormStatus(selectedIntake)}</span>
                       <strong>{submissionEdit.clientName || "Unnamed client"}</strong>
                       <small>{selectedIntake.id} | {selectedIntake.convertedCaseId || selectedIntake.callNoteId}</small>
                     </div>
@@ -3244,8 +3283,11 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                   <div className="actions submission-editor-actions">
                     <span>{submissionDirty ? "Unsaved changes" : "Saved"}</span>
                     <button className="primary-button" type="button" disabled={saving || !submissionDirty} onClick={saveIntakeEdits}>{saving ? "Saving..." : "Save changes"}</button>
+                    <button className="ghost-button" type="button" onClick={() => setCaseImportOpen(true)}><UploadCloud size={14} /> Import Case JSON</button>
                     <button className="ghost-button" type="button" onClick={() => downloadFactFind(selectedIntake)}><Download size={14} /> Download Fact Find</button>
+                    <button className="ghost-button" type="button" onClick={() => openEasyFlowForIntake()}><Play size={14} /> Prepare EasyFlow AI</button>
                   </div>
+                  {caseImportWarning && <div className="info-banner compact">{caseImportWarning}</div>}
                 </>
               ) : (
                 <div className="case-search-empty">Select a submission to review and edit client information.</div>
@@ -3374,7 +3416,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                   <div>
                     {!note.intakeToken && <button type="button" onClick={() => convertSelected(note)}>Create Loan Form link</button>}
                     <button type="button" onClick={() => createIntakeLink(note)}>Copy Loan Form link</button>
-                    {note.convertedCaseId && <button type="button" onClick={onOpenAutofill}>Open EasyFlow AI</button>}
+                    {note.convertedCaseId && <button type="button" onClick={() => onOpenAutofill?.(note.convertedCaseId)}>Open EasyFlow AI</button>}
                     <button type="button" className="danger-link" onClick={() => deleteNote(note)}>Delete</button>
                   </div>
                 </div>
@@ -3384,6 +3426,33 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
 
         </div>
         )}
+        {caseImportOpen ? (
+          <div className="case-import-backdrop" role="dialog" aria-modal="true" aria-label="Import Case JSON">
+            <div className="case-import-modal">
+              <h2>Import Case JSON</h2>
+              <p>Paste ChatGPT-generated case data here. Matching fields will update the selected Loan Case Manager record only. Nothing is submitted automatically.</p>
+              <textarea
+                value={caseImportJson}
+                onChange={(event) => setCaseImportJson(event.target.value)}
+                placeholder={`{
+  "applicantDetails": {
+    "firstName": "Arsalan",
+    "surname": "Saleem",
+    "dateOfBirth": "29-09-1988"
+  },
+  "loanDetails": {
+    "loanType": "Home loan",
+    "loanAmount": "275000"
+  }
+}`}
+              />
+              <div className="case-import-actions">
+                <button className="ghost-button" type="button" onClick={() => setCaseImportOpen(false)}>Cancel</button>
+                <button className="primary-button" type="button" onClick={importCaseJsonIntoSelected}>Import</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
     </main>
   );
@@ -3770,7 +3839,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
       form.secondApplicantSurname,
       form.secondApplicantName
     ));
-  const canImportCaseData = !publicForm || new URLSearchParams(location.search).get("brokerImport") === "1";
+  const canImportCaseData = false;
   const L = (label) => tx(label, language);
 
   async function submitIntake(event) {
@@ -4328,6 +4397,12 @@ export default function App() {
     });
   }
 
+  function openEasyFlowCase(caseId = "") {
+    const cleanCaseId = String(caseId || "").trim();
+    if (cleanCaseId) selectCase(cleanCaseId);
+    setView("autofill");
+  }
+
   function saveManualIntake() {
     if (!selectedCaseId) return;
     const payload = currentManualIntake();
@@ -4546,7 +4621,7 @@ export default function App() {
   if (showMock) return <MockInfinity />;
   if (internalLogin) return <InternalLoginPage />;
   if (intakeToken || publicLoanForm) return <ClientIntakePage token={intakeToken} publicForm={!intakeToken} entry={publicEntry} />;
-  if (view === "notes") return <CallNotesPage initialPanel={isLoanSubmissionsRoute ? "submissions" : "call"} onOpenAutofill={() => setView("autofill")} />;
+  if (view === "notes") return <CallNotesPage initialPanel={isLoanSubmissionsRoute ? "submissions" : "call"} onOpenAutofill={openEasyFlowCase} />;
 
   return (
     <main className={`app-shell ${appThemeClass()}`}>
