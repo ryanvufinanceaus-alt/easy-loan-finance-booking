@@ -305,6 +305,11 @@ function loanFormBaseUrl(request) {
   return publicBaseUrl(request);
 }
 
+function loanFormUrl(request, intake) {
+  const caseQuery = intake?.caseId ? `?caseId=${encodeURIComponent(intake.caseId)}` : "";
+  return `${loanFormBaseUrl(request)}/loan-form/${intake.token}${caseQuery}`;
+}
+
 function canReadLoanSubmissions(request) {
   const role = String(request.get("x-elf-role") || "").toLowerCase();
   const accessLevel = String(request.get("x-elf-access-level") || "").toLowerCase();
@@ -1906,8 +1911,8 @@ app.get("/api/client-intakes", (request, response) => {
       lastSavedAt: intake.lastSavedAt || intake.updatedAt || intake.submittedAt || null,
       lastEditedBy: intake.lastEditedBy || "",
       factFindExportedAt: intake.factFindExportedAt || null,
-      convertedCaseId: note.convertedCaseId || null,
-      url: `${loanFormBaseUrl(request)}/loan-form/${intake.token}`,
+      convertedCaseId: intake.caseId || note.convertedCaseId || null,
+      url: loanFormUrl(request, intake),
       updatedAt: intake.submittedAt || note.updatedAt || intake.createdAt
     };
   });
@@ -2146,9 +2151,13 @@ app.post("/api/call-notes/:noteId/intake-link", (request, response) => {
   if (index === -1) return response.status(404).json({ error: "Call note not found" });
 
   const now = new Date().toISOString();
+  const localCase = callNotes[index].convertedCaseId
+    ? findCase(callNotes[index].convertedCaseId)
+    : upsertLocalCaseFromCallNote(index, "loan-form-link-created");
   const existing = clientIntakes.find((item) => item.callNoteId === request.params.noteId && item.status !== "expired");
   if (existing) {
     Object.assign(existing, {
+      caseId: existing.caseId || localCase?.id || callNotes[index].convertedCaseId || null,
       source: existing.source || "client-call-link",
       lastLinkCopiedAt: now,
       linkCopyCount: Number(existing.linkCopyCount || 0) + 1
@@ -2164,7 +2173,8 @@ app.post("/api/call-notes/:noteId/intake-link", (request, response) => {
     persistCallNotes();
     return response.json({
       ...existing,
-      url: `${loanFormBaseUrl(request)}/loan-form/${existing.token}`,
+      caseId: existing.caseId || localCase?.id || callNotes[index].convertedCaseId || null,
+      url: loanFormUrl(request, existing),
       fallbackUrl: `${publicBaseUrl(request)}/loan-form/${existing.token}`
     });
   }
@@ -2173,6 +2183,7 @@ app.post("/api/call-notes/:noteId/intake-link", (request, response) => {
     id: `INTAKE-${Date.now().toString(36).toUpperCase()}`,
     token: crypto.randomBytes(18).toString("hex"),
     callNoteId: request.params.noteId,
+    caseId: localCase?.id || callNotes[index].convertedCaseId || null,
     brokerUser: callNotes[index].brokerUser,
     source: "client-call-link",
     status: "sent",
@@ -2189,7 +2200,8 @@ app.post("/api/call-notes/:noteId/intake-link", (request, response) => {
   persistCallNotes();
   response.status(201).json({
     ...intake,
-    url: `${loanFormBaseUrl(request)}/loan-form/${intake.token}`,
+    caseId: intake.caseId,
+    url: loanFormUrl(request, intake),
     fallbackUrl: `${publicBaseUrl(request)}/loan-form/${intake.token}`
   });
 });
@@ -2301,6 +2313,7 @@ app.post("/api/client-intake/public", (request, response) => {
   };
 
   const localCase = upsertLocalCaseFromCallNote(0, "public-loan-form-submitted");
+  intake.caseId = localCase?.id || null;
   callNotes[0] = { ...callNotes[0], intakeToken: intake.token, intakeStatus: "submitted", convertedCaseId: localCase?.id || callNotes[0].convertedCaseId };
   clientIntakes.unshift(intake);
   persistCallNotes();
@@ -2323,6 +2336,7 @@ app.get("/api/client-intake/:token", (request, response) => {
   response.json({
     ...(note || {}),
     token: intake.token,
+    caseId: intake.caseId || note?.convertedCaseId || null,
     status: intake.status,
     submittedAt: intake.submittedAt,
     callNoteId: intake.callNoteId
@@ -2339,6 +2353,7 @@ app.post("/api/client-intake/:token", (request, response) => {
   const submission = normalizeClientIntakeSubmission(request.body || {});
   clientIntakes[intakeIndex] = {
     ...clientIntakes[intakeIndex],
+    caseId: clientIntakes[intakeIndex].caseId || callNotes[noteIndex].convertedCaseId || null,
     source: clientIntakes[intakeIndex].source || "client-call-link",
     status: "submitted",
     submittedAt: now,
@@ -2346,6 +2361,11 @@ app.post("/api/client-intake/:token", (request, response) => {
   };
   callNotes[noteIndex] = applyClientIntakeToNote(callNotes[noteIndex], submission);
   const localCase = upsertLocalCaseFromCallNote(noteIndex, "loan-form-submitted");
+  clientIntakes[intakeIndex] = {
+    ...clientIntakes[intakeIndex],
+    caseId: localCase?.id || clientIntakes[intakeIndex].caseId || callNotes[noteIndex].convertedCaseId || null,
+    updatedAt: now
+  };
   persistClientIntakes();
   persistCallNotes();
   auditLog.push({

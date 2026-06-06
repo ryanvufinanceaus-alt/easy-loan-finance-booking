@@ -37,7 +37,7 @@ const mockAolPath = `${appBasePath}/mock-infinity-aol`;
 const brandLogoSrc = "/elf-logo.png";
 
 function pageTitle() {
-  if (isLoanSubmissionsRoute) return "Loan Form Submissions Management - Easy Loan Finance";
+  if (isLoanSubmissionsRoute) return "Loan Case Manager - Easy Loan Finance";
   if (isClientCallHost || location.pathname.includes("client-call")) return "Client Call - Easy Loan Finance";
   if (isLoanFormHost) return "Loan Form - Easy Loan Finance";
   if (isEasyFlowAiHost) return "EasyFlow AI - Easy Loan Finance";
@@ -2765,10 +2765,6 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     if (!composeLegalName(form.firstName, "", form.surname, form.clientName).trim()) missing.push("Client name");
     if (!form.mobile.trim() && !form.email.trim()) missing.push("Mobile or email");
     if (!form.loanType.trim()) missing.push("Loan type");
-    if (!form.loanPurpose.trim()) missing.push("Loan purpose");
-    if (!String(form.loanAmount || "").trim()) missing.push("Loan amount");
-    if (!form.sourceChannel.trim()) missing.push("Lead source");
-    if (!form.nextAction.trim()) missing.push("Next action");
     return missing;
   }
 
@@ -2801,7 +2797,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
       };
       const missing = convert ? validateDraftCase() : [];
       if (missing.length) {
-        throw new Error(`Cannot create draft case yet. Missing: ${missing.join(", ")}.`);
+        throw new Error(`Cannot create Loan Form link yet. Missing: ${missing.join(", ")}.`);
       }
 
       const saved = await api(selectedId ? `/api/call-notes/${selectedId}` : "/api/call-notes", {
@@ -2810,11 +2806,12 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
       });
       let output = saved;
       if (convert) {
-        const converted = await api(`/api/call-notes/${saved.id}/convert-to-case`, { method: "POST", body: "{}" });
-        output = converted.note;
-        setMessage(`Draft case created: ${converted.case.id}. This client is now searchable in EasyFlow and ready for Loan Form / Infinity workflow.`);
+        const intake = await api(`/api/call-notes/${saved.id}/intake-link`, { method: "POST", body: "{}" });
+        await navigator.clipboard?.writeText(intake.url).catch(() => {});
+        output = { ...saved, convertedCaseId: intake.caseId || saved.convertedCaseId, intakeToken: intake.token, intakeStatus: intake.status };
+        setMessage(`Loan Form link copied. Case ID: ${intake.caseId || output.convertedCaseId || saved.id}.`);
       } else {
-        setMessage(`Call note saved: ${saved.id}. No draft case was created yet.`);
+        setMessage(`Call note saved: ${saved.id}. No Loan Form link was created yet.`);
       }
       setSelectedId(output.id);
       setForm({ ...emptyCallNote, ...output });
@@ -2832,8 +2829,9 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     setSaving(true);
     setError("");
     try {
-      const converted = await api(`/api/call-notes/${note.id}/convert-to-case`, { method: "POST", body: "{}" });
-      setMessage(`Draft case ready: ${converted.case.id}`);
+      const intake = await api(`/api/call-notes/${note.id}/intake-link`, { method: "POST", body: "{}" });
+      await navigator.clipboard?.writeText(intake.url).catch(() => {});
+      setMessage(`Loan Form link copied. Case ID: ${intake.caseId || note.convertedCaseId || note.id}.`);
       await refreshNotes();
       if (canViewLoanSubmissions) await refreshIntakes();
     } catch (err) {
@@ -2996,8 +2994,8 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   return (
     <main className={`notes-shell ${appThemeClass()} ${isLoanSubmissionsRoute ? "submissions-shell" : ""}`}>
       <aside className="notes-sidebar">
-        <SystemBrand appName={isLoanSubmissionsRoute ? "Loan Form Submissions Management" : "Client Call Intake"} />
-        <TeamSettingsPanel appName={isLoanSubmissionsRoute ? "Loan Form Submissions Management" : "Client Call Intake"} />
+        <SystemBrand appName={isLoanSubmissionsRoute ? "Loan Case Manager" : "Client Call Intake"} />
+        <TeamSettingsPanel appName={isLoanSubmissionsRoute ? "Loan Case Manager" : "Client Call Intake"} />
         <label className="note-search">
           Search clients
           <div className="search-input">
@@ -3032,10 +3030,10 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
         <header className="topbar">
           <div>
             <span>{activePanel === "submissions" ? "Secure internal management" : "Quick phone intake only"}</span>
-            <h1>{activePanel === "submissions" ? "Loan Form Submissions Management" : "Client Call Intake"}</h1>
+            <h1>{activePanel === "submissions" ? "Loan Case Manager" : "Client Call Intake"}</h1>
             <p className="topbar-helper">
               {activePanel === "submissions"
-                ? "Secure repository for full client-submitted fact-find data. Edit records, export files, and prepare data for EasyFlow AI."
+                ? "Broker-only case data hub. Review, edit, export, and prepare clean case data for EasyFlow AI."
                 : "Call note is the short phone record. Create case turns it into the internal client file used by Loan Form and EasyFlow AI."}
             </p>
           </div>
@@ -3068,8 +3066,8 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
             </button>
             <button className="primary-button" type="button" disabled={saving || !composeLegalName(form.firstName, "", form.surname, form.clientName).trim()} onClick={() => saveCallNote({ convert: true })}>
               {saving ? <RefreshCw size={17} className="spin" /> : <Play size={17} />}
-              Save & create case
-              <small>For Loan Form / EasyFlow</small>
+              Create Loan Form Link
+              <small>Creates case + copies link</small>
             </button>
           </div>}
         </header>
@@ -3080,8 +3078,8 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
         {activePanel === "submissions" ? (
           <div className="submission-management">
             <section className="panel note-panel recent-note-panel">
-              <div className="panel-title"><FileJson size={18} /><h2>Loan Form Submissions</h2></div>
-              <p className="panel-helper inbox-helper">Broker-only data store linked with Client Call Intake and EasyFlow AI. Open submitted data, export files, and prepare clean payloads for Infinity/AOL.</p>
+              <div className="panel-title"><FileJson size={18} /><h2>Loan Cases</h2></div>
+              <p className="panel-helper inbox-helper">Canonical case records linked with Client Call Intake, Loan Form, and EasyFlow AI. Open data, export files, and prepare clean payloads for Infinity/AOL.</p>
               {canViewLoanSubmissions ? (
                 <>
                 {!search.trim() && <div className="submission-smart-groups">
@@ -3155,7 +3153,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
               )}
             </section>
             {canViewLoanSubmissions && <section className="panel note-panel submission-editor-panel">
-              <div className="panel-title"><FileJson size={18} /><h2>Edit Loan Form Submission</h2></div>
+              <div className="panel-title"><FileJson size={18} /><h2>Edit Case Data</h2></div>
               {selectedIntake ? (
                 <>
                   <div className="submission-editor-summary">
@@ -3278,7 +3276,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
 
           <section className="panel note-panel call-key-details-panel">
             <div className="panel-title"><ShieldCheck size={18} /><h2>Key Client Details</h2></div>
-            <p className="panel-helper">Capture these early if the call allows. They sync into Loan Form, Loan Form Submissions Management, and EasyFlow AI.</p>
+            <p className="panel-helper">Capture these early if the call allows. They sync into Loan Form, Loan Case Manager, and EasyFlow AI.</p>
             <div className="call-key-detail-groups">
               <div className="call-key-detail-group">
                 <div className="call-key-detail-heading">
@@ -3374,7 +3372,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                     <small>{loanFormStatus(note)}</small>
                   </button>
                   <div>
-                    {!note.convertedCaseId && <button type="button" onClick={() => convertSelected(note)}>Draft case</button>}
+                    {!note.intakeToken && <button type="button" onClick={() => convertSelected(note)}>Create Loan Form link</button>}
                     <button type="button" onClick={() => createIntakeLink(note)}>Copy Loan Form link</button>
                     {note.convertedCaseId && <button type="button" onClick={onOpenAutofill}>Open EasyFlow AI</button>}
                     <button type="button" className="danger-link" onClick={() => deleteNote(note)}>Delete</button>
