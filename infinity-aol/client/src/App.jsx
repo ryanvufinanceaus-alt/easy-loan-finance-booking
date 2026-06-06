@@ -812,6 +812,42 @@ const commercialPurposeOptions = ["Commercial property purchase", "Commercial re
 const businessPurposeOptions = ["Working capital", "Business expansion", "Equipment purchase", "Cash flow support", "Tax debt", "Other purpose"];
 const carPurposeOptions = ["Car loan - purchase", "Car loan - refinance", "Business vehicle", "Other purpose"];
 const personalPurposeOptions = ["Personal loan - debt consolidation", "Personal loan - home improvement", "Personal loan - travel", "Personal loan - other"];
+const loanScenarioOptions = [
+  "Owner occupied purchase",
+  "First home buyer",
+  "Investment purchase",
+  "Refinance owner occupied",
+  "Refinance investment",
+  "Pre-approval owner occupied",
+  "Pre-approval investment",
+  "Construction",
+  "Debt consolidation",
+  "Cash out",
+  "Commercial property",
+  "Business loan",
+  "Car loan",
+  "Personal loan",
+  "Other"
+];
+
+function deriveLoanScenario(loanType = "", loanPurpose = "") {
+  const text = `${loanType} ${loanPurpose}`.toLowerCase();
+  if (/first home|fhb/.test(text)) return "First home buyer";
+  if (/pre-approval|pre approval/.test(text) && /invest/.test(text)) return "Pre-approval investment";
+  if (/pre-approval|pre approval/.test(text)) return "Pre-approval owner occupied";
+  if (/refinance/.test(text) && /invest/.test(text)) return "Refinance investment";
+  if (/refinance/.test(text)) return "Refinance owner occupied";
+  if (/construction/.test(text)) return "Construction";
+  if (/debt/.test(text)) return "Debt consolidation";
+  if (/cash/.test(text)) return "Cash out";
+  if (/commercial/.test(text)) return "Commercial property";
+  if (/business/.test(text)) return "Business loan";
+  if (/car|vehicle/.test(text)) return "Car loan";
+  if (/personal/.test(text)) return "Personal loan";
+  if (/invest/.test(text)) return "Investment purchase";
+  if (/owner|occupied|home loan/.test(text)) return "Owner occupied purchase";
+  return "";
+}
 
 function composeLegalName(firstName, middleName, surname, fallback = "") {
   const name = [firstName, middleName, surname].map((part) => String(part || "").trim()).filter(Boolean).join(" ");
@@ -2342,6 +2378,7 @@ const caseImportMappings = [
   ["secondApplicantLicenceExpiryDate", ["applicantDetails.secondApplicant.licenceExpiryDate", "jointApplicant.licenceExpiryDate", "secondaryApplicant.licenceExpiryDate", "applicants.1.licenceExpiryDate"]],
   ["secondApplicantLicenceState", ["applicantDetails.secondApplicant.licenceState", "jointApplicant.licenceState", "secondaryApplicant.licenceState", "applicants.1.licenceState"]],
   ["secondApplicantLicenceClass", ["applicantDetails.secondApplicant.licenceClass", "jointApplicant.licenceClass", "secondaryApplicant.licenceClass", "applicants.1.licenceClass"]],
+  ["loanScenario", ["loanDetails.loanScenario", "loanDetails.scenario", "loanRequest.loanScenario", "clientWants.loanScenario", "clientObjectives.loanScenario"]],
   ["loanType", ["loanDetails.loanType", "loanRequest.loanType"]],
   ["loanPurpose", ["loanDetails.loanPurpose", "loanDetails.purpose", "loanRequest.purpose"]],
   ["loanAmount", ["loanDetails.loanAmount", "loanDetails.amount", "loanRequest.loanAmount"]],
@@ -2406,6 +2443,10 @@ function importCaseDataIntoForm(currentForm, caseData) {
   if (next.secondApplicantFirstName || next.secondApplicantSurname || next.secondApplicantDateOfBirth || next.secondAnnualIncome) {
     next.hasSecondApplicant = "Yes";
     if (/single/i.test(next.secondApplicantMaritalStatus || "")) next.secondApplicantMaritalStatus = next.maritalStatus || "Married";
+  }
+
+  if (!next.loanScenario) {
+    next.loanScenario = deriveLoanScenario(next.loanType, next.loanPurpose);
   }
 
   const unknown = flattenImportLeaves(caseData)
@@ -2568,6 +2609,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     secondApplicantPreviousEmploymentToDate: "",
     mobile: "",
     email: "",
+    loanScenario: "",
     loanType: "",
     loanPurpose: "",
     loanAmount: "",
@@ -2658,6 +2700,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
             intake.secondApplicantSurname,
             intake.mobile,
             intake.email,
+            intake.loanScenario,
             intake.loanPurpose,
             intake.loanType,
             intake.convertedCaseId,
@@ -2989,6 +3032,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
       secondApplicantPreviousEmploymentToDate: intake.secondApplicantPreviousEmploymentToDate || "",
       mobile: intake.mobile || "",
       email: intake.email || "",
+      loanScenario: intake.loanScenario || deriveLoanScenario(intake.loanType, intake.loanPurpose),
       loanType: intake.loanType || "",
       loanPurpose: intake.loanPurpose || "",
       loanAmount: intake.loanAmount || "",
@@ -3016,6 +3060,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
         ...submissionEdit,
         middleName: "",
         secondApplicantMiddleName: "",
+        loanScenario: submissionEdit.loanScenario || deriveLoanScenario(submissionEdit.loanType, submissionEdit.loanPurpose),
         clientName: composeLegalName(submissionEdit.firstName, "", submissionEdit.surname, submissionEdit.clientName),
         secondApplicantName: composeLegalName(
           submissionEdit.secondApplicantFirstName,
@@ -3037,6 +3082,19 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     } finally {
       setSaving(false);
     }
+  }
+
+  function SubmissionEditorActions({ top = false } = {}) {
+    return (
+      <div className={`actions submission-editor-actions${top ? " submission-editor-actions-top" : ""}`}>
+        <span>{submissionDirty ? "Unsaved changes" : "Saved"}</span>
+        <button className="primary-button" type="button" disabled={saving || !submissionDirty} onClick={saveIntakeEdits}>{saving ? "Saving..." : "Save changes"}</button>
+        <button className="ghost-button" type="button" onClick={() => openLoanFormTemplateLibrary()}><ClipboardList size={14} /> ChatGPT Template</button>
+        <button className="ghost-button" type="button" onClick={() => setCaseImportOpen(true)}><UploadCloud size={14} /> Import Case JSON</button>
+        <button className="ghost-button" type="button" onClick={() => downloadFactFind(selectedIntake)}><Download size={14} /> Download Fact Find</button>
+        <button className="ghost-button" type="button" onClick={() => openEasyFlowForIntake()}><Play size={14} /> Prepare EasyFlow AI</button>
+      </div>
+    );
   }
 
   useEffect(() => {
@@ -3185,8 +3243,8 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                           <small>{intake.email || "No email"}</small>
                         </span>
                         <span className="submission-loan-cell">
-                          <strong>{intake.loanPurpose || "Purpose not set"}</strong>
-                          <small>{intake.loanType || "Loan type not set"} | {currency(Number(intake.loanAmount || 0))}</small>
+                          <strong>{intake.loanScenario || deriveLoanScenario(intake.loanType, intake.loanPurpose) || intake.loanPurpose || "Purpose not set"}</strong>
+                          <small>{[intake.loanType || "Loan type not set", intake.loanPurpose].filter(Boolean).join(" | ")} | {currency(Number(intake.loanAmount || 0))}</small>
                         </span>
                         <span>
                           <strong>{intake.lastSavedAt ? "Edited" : "Added"}</strong>
@@ -3233,6 +3291,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                       <small>{selectedIntake.lastEditedBy ? `Edited by ${selectedIntake.lastEditedBy}` : "Original client submission"}</small>
                     </div>
                   </div>
+                  <SubmissionEditorActions top />
                   {selectedIntake.status !== "submitted" && (
                     <div className="info-banner compact">
                       This is a Loan Form link record only. The full submission fields will appear after the client submits the Loan Form.
@@ -3277,6 +3336,11 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                     <section>
                       <h3>Loan Request</h3>
                       <div className="note-form-grid">
+                        <label>Loan scenario<select value={submissionEdit.loanScenario} onChange={(event) => setSubmissionEdit({ ...submissionEdit, loanScenario: event.target.value })}>
+                          <option value="">Select scenario</option>
+                          {loanScenarioOptions.includes(submissionEdit.loanScenario) || !submissionEdit.loanScenario ? null : <option value={submissionEdit.loanScenario}>{submissionEdit.loanScenario}</option>}
+                          {loanScenarioOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+                        </select></label>
                         <label>Loan type<input value={submissionEdit.loanType} onChange={(event) => setSubmissionEdit({ ...submissionEdit, loanType: event.target.value })} /></label>
                         <label>Loan purpose<input value={submissionEdit.loanPurpose} onChange={(event) => setSubmissionEdit({ ...submissionEdit, loanPurpose: event.target.value })} /></label>
                         <label>Loan amount<input value={submissionEdit.loanAmount} onChange={(event) => setSubmissionEdit({ ...submissionEdit, loanAmount: event.target.value })} /></label>
@@ -3306,14 +3370,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                       </div>
                     </section>
                   </div>
-                  <div className="actions submission-editor-actions">
-                    <span>{submissionDirty ? "Unsaved changes" : "Saved"}</span>
-                    <button className="primary-button" type="button" disabled={saving || !submissionDirty} onClick={saveIntakeEdits}>{saving ? "Saving..." : "Save changes"}</button>
-                    <button className="ghost-button" type="button" onClick={() => openLoanFormTemplateLibrary()}><ClipboardList size={14} /> ChatGPT Template</button>
-                    <button className="ghost-button" type="button" onClick={() => setCaseImportOpen(true)}><UploadCloud size={14} /> Import Case JSON</button>
-                    <button className="ghost-button" type="button" onClick={() => downloadFactFind(selectedIntake)}><Download size={14} /> Download Fact Find</button>
-                    <button className="ghost-button" type="button" onClick={() => openEasyFlowForIntake()}><Play size={14} /> Prepare EasyFlow AI</button>
-                  </div>
+                  <SubmissionEditorActions />
                   {caseImportWarning && <div className="info-banner compact">{caseImportWarning}</div>}
                 </>
               ) : (

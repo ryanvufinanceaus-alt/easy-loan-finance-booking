@@ -1438,6 +1438,13 @@ pre {
   z-index: 2;
 }
 
+.submission-editor-actions-top {
+  border: 1px solid #dde5df;
+  border-radius: 8px;
+  bottom: auto;
+  margin: 10px;
+}
+
 .submission-editor-actions > span {
   color: #66756d;
   font-size: 12px;

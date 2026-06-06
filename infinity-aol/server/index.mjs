@@ -417,6 +417,7 @@ function intakeFactFindDocument(intake, note = {}) {
       ["Annual income", data.secondAnnualIncome]
     ]),
     factSection("Loan Proposal", [
+      ["Loan scenario", data.loanScenario],
       ["Loan type", data.loanType],
       ["Loan purpose", data.loanPurpose],
       ["Loan amount required", data.loanAmount],
@@ -675,6 +676,7 @@ function applyClientIntakeToNote(note, intake) {
     "mobile",
     "email",
     "preferredLanguage",
+    "loanScenario",
     "loanType",
     "loanPurpose",
     "loanAmount",
@@ -1260,6 +1262,7 @@ function buildNormalisedPayload(submission, validationStatus) {
     },
     loanRequest: {
       loanType: submission.loanType,
+      loanScenario: submission.loanScenario,
       loanPurpose: submission.loanPurpose,
       loanAmount: submission.loanAmount || submission.businessLoanAmount || submission.personalLoanAmount,
       loanTermYears: submission.loanTermYears,
@@ -1904,6 +1907,7 @@ app.get("/api/client-intakes", (request, response) => {
       mobile: note.mobile || submission.mobile || "",
       email: note.email || submission.email || "",
       loanType: note.loanType || submission.loanType || "",
+      loanScenario: note.loanScenario || submission.loanScenario || "",
       loanPurpose: note.loanPurpose || submission.loanPurpose || "",
       loanAmount: note.loanAmount || submission.loanAmount || 0,
       propertyValue: note.propertyValue || submission.propertyValue || 0,

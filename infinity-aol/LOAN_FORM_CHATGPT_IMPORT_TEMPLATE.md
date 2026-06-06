@@ -15,6 +15,7 @@ Rules:
 - Do not invent details.
 - Split names into `firstName` and `surname`.
 - If there is a spouse, partner, co-borrower, guarantor, or second applicant, complete `secondApplicant`.
+- Always choose one high-level `loanDetails.loanScenario`, such as `Owner occupied purchase`, `First home buyer`, `Investment purchase`, `Refinance owner occupied`, `Refinance investment`, `Pre-approval owner occupied`, `Pre-approval investment`, `Construction`, `Debt consolidation`, or `Cash out`.
 - If the loan type is not relevant, leave that loan section blank.
 - Put anything uncertain or extra into `lenderNotes.additionalNotes`.
 - Preserve this full structure even when sections are blank, so it can be imported consistently.
@@ -74,6 +75,7 @@ Rules:
     }
   },
   "loanDetails": {
+    "loanScenario": "Owner occupied purchase",
     "loanType": "Home loan",
     "loanPurpose": "Purchase owner occupied dwelling",
     "loanAmount": "500000",
