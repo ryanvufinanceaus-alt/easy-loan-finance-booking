@@ -947,7 +947,19 @@ function hemBreakdown(total) {
 
 function assetBreakdown(total) {
   const amount = Number(total || 0);
-  return amount ? [{ type: "Deposit Account", description: "Savings / financial asset buffer", value: amount, ownership: "100%", valueBasis: "Applicant Estimate" }] : [];
+  if (!amount) return [];
+  const rows = scaleTemplateRows([
+    ["Deposit Account", 30000],
+    ["Motor Vehicle", 20000],
+    ["Home Contents", 10000]
+  ], amount, "Deposit Account");
+  return rows.map((row) => ({
+    type: row.type,
+    description: row.type === "Deposit Account" ? "Savings / financial asset buffer" : "Applicant estimate",
+    value: row.amount,
+    ownership: "100%",
+    valueBasis: "Applicant Estimate"
+  }));
 }
 
 const maritalStatusOptions = ["Single", "Married", "Divorced", "Widowed"];

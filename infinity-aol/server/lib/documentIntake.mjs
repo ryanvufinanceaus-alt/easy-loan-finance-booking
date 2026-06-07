@@ -329,7 +329,19 @@ function hemBreakdown(total) {
 
 function assetBreakdown(total) {
   const amount = Number(total || 0);
-  return amount ? [{ type: "Deposit Account", description: "Savings / financial asset buffer", value: amount, ownership: "100%", valueBasis: "Applicant Estimate" }] : [];
+  if (!amount) return [];
+  const rows = scaleTemplateRows([
+    ["Deposit Account", 30000],
+    ["Motor Vehicle", 20000],
+    ["Home Contents", 10000]
+  ], amount, "Deposit Account");
+  return rows.map((row) => ({
+    type: row.type,
+    description: row.type === "Deposit Account" ? "Savings / financial asset buffer" : "Applicant estimate",
+    value: row.amount,
+    ownership: "100%",
+    valueBasis: "Applicant Estimate"
+  }));
 }
 
 function splitManualName(fullName = "") {
@@ -497,13 +509,10 @@ export function mergeDocumentDraft(caseData, draft) {
     applySuggestion(merged, item);
   }
 
-  const hasCashAsset = merged.assets.some((asset) => asset.type === "Cash" && asset.description === "Document/Preset Financial Asset");
-  if (!hasCashAsset) {
-    merged.assets.push({
-      type: "Cash",
-      description: "Document/Preset Financial Asset",
-      value: draft.assumptions.financialAssetBuffer
-    });
+  const assetRows = draft.assumptions.assetBreakdown || assetBreakdown(draft.assumptions.financialAssetBuffer);
+  for (const row of assetRows) {
+    const exists = merged.assets.some((asset) => asset.type === row.type && asset.description === row.description);
+    if (!exists) merged.assets.push(row);
   }
 
   if (template?.defaults?.expenses) {
@@ -531,7 +540,7 @@ export function mergeDocumentDraft(caseData, draft) {
 
   merged.expenses.livingMonthly = draft.assumptions.hemMonthly;
   merged.expenses.breakdown = draft.assumptions.hemBreakdown || hemBreakdown(draft.assumptions.hemMonthly);
-  merged.assets.breakdown = draft.assumptions.assetBreakdown || assetBreakdown(draft.assumptions.financialAssetBuffer);
+  merged.assets.breakdown = assetRows;
   merged.documentIntake = draft;
   merged.selectedTemplate = template || null;
   return merged;
