@@ -1507,6 +1507,15 @@ pre {
   padding: 9px 10px;
 }
 
+.submission-editor-sections .wide-field,
+.submission-editor-sections .client-wide-field {
+  grid-column: 1 / -1;
+}
+
+.call-workflow-guide {
+  grid-column: 1 / -1;
+}
+
 .submission-meta-grid {
   display: grid;
   gap: 8px;

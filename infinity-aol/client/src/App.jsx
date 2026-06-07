@@ -2426,17 +2426,46 @@ function importCaseDataIntoForm(currentForm, caseData) {
   const lookup = buildImportLookup(caseData);
   const consumed = new Set();
   const next = { ...currentForm };
-  const formFields = new Set(Object.keys(currentForm));
   let importedCount = 0;
 
   caseImportMappings.forEach(([field, aliases]) => {
-    if (!formFields.has(field)) return;
-    const entry = aliases.map((alias) => lookup.get(normalizeImportKey(alias))).find(Boolean);
+    const directAliases = [
+      field,
+      `applicantDetails.${field}`,
+      `applicantDetails.secondApplicant.${field.replace(/^secondApplicant/, "")}`,
+      `loanDetails.${field}`,
+      `employment.${field}`,
+      `employment.secondApplicant.${field.replace(/^secondApplicant/, "")}`,
+      `income.${field}`,
+      `assets.${field}`,
+      `liabilities.${field}`,
+      `expenses.${field}`,
+      `creditFile.${field}`
+    ];
+    const entry = [...aliases, ...directAliases].map((alias) => lookup.get(normalizeImportKey(alias))).find(Boolean);
     if (!entry) return;
     consumed.add(entry.path);
     next[field] = typeof currentForm[field] === "boolean"
       ? /^(true|yes|y|1)$/i.test(String(entry.value))
       : String(entry.value);
+    importedCount += 1;
+  });
+
+  dynamicLoanFieldCatalog.forEach((field) => {
+    if (isFilled(next[field.key])) return;
+    const entry = [
+      field.key,
+      `loanDetails.${field.key}`,
+      `homeLoan.${field.key}`,
+      `refinance.${field.key}`,
+      `commercialLoan.${field.key}`,
+      `businessLoan.${field.key}`,
+      `carLoan.${field.key}`,
+      `personalLoan.${field.key}`
+    ].map((alias) => lookup.get(normalizeImportKey(alias))).find(Boolean);
+    if (!entry) return;
+    consumed.add(entry.path);
+    next[field.key] = String(entry.value);
     importedCount += 1;
   });
 
@@ -2522,6 +2551,124 @@ function DynamicLoanSections({ form, language, onChange }) {
   ));
 }
 
+const loanCaseManagerGroups = [
+  {
+    title: "Applicant identity",
+    fields: [
+      ["dateOfBirth", "Primary DOB", "date"],
+      ["gender", "Primary gender", "select", genderOptions],
+      ["maritalStatus", "Primary marital status", "select", maritalStatusOptions],
+      ["dependants", "Primary dependants"],
+      ["residencyStatus", "Primary residency", "select", residencyOptions],
+      ["permanentInAustralia", "Permanent in Australia", "select", yesNoOptions],
+      ["driversLicenceNo", "Driver licence no."],
+      ["licenceExpiryDate", "Licence expiry", "date"],
+      ["licenceState", "Licence state", "select", licenceStateOptions],
+      ["licenceClass", "Licence class"]
+    ]
+  },
+  {
+    title: "Address history",
+    fields: [
+      ["address", "Current residential address", "wide"],
+      ["currentSuburb", "Current suburb"],
+      ["currentState", "Current state", "select", licenceStateOptions],
+      ["currentPostcode", "Current postcode"],
+      ["currentAddressFromDate", "Current address from", "date"],
+      ["currentResidentialStatus", "Current housing situation", "select", residentialStatusOptions],
+      ["postSettlementAddress", "Post settlement address", "wide"],
+      ["mailingAddress", "Mailing address", "wide"],
+      ["previousAddress", "Previous residential address", "wide"],
+      ["previousSuburb", "Previous suburb"],
+      ["previousState", "Previous state", "select", licenceStateOptions],
+      ["previousPostcode", "Previous postcode"],
+      ["previousResidentialStatus", "Previous residential status", "select", residentialStatusOptions]
+    ]
+  },
+  {
+    title: "Second applicant full details",
+    secondOnly: true,
+    fields: [
+      ["secondApplicantDateOfBirth", "Second DOB", "date"],
+      ["secondApplicantGender", "Second gender", "select", genderOptions],
+      ["secondApplicantMaritalStatus", "Second marital status", "select", maritalStatusOptions],
+      ["secondApplicantDependants", "Second dependants"],
+      ["secondApplicantResidencyStatus", "Second residency", "select", residencyOptions],
+      ["secondApplicantPermanentInAustralia", "Second permanent in Australia", "select", yesNoOptions],
+      ["secondApplicantDriversLicenceNo", "Second licence no."],
+      ["secondApplicantLicenceExpiryDate", "Second licence expiry", "date"],
+      ["secondApplicantLicenceState", "Second licence state", "select", licenceStateOptions],
+      ["secondApplicantLicenceClass", "Second licence class"],
+      ["secondApplicantAddress", "Second current residential address", "wide"],
+      ["secondApplicantCurrentSuburb", "Second current suburb"],
+      ["secondApplicantCurrentState", "Second current state", "select", licenceStateOptions],
+      ["secondApplicantCurrentAddressFromDate", "Second address from", "date"],
+      ["secondApplicantCurrentResidentialStatus", "Second housing situation", "select", residentialStatusOptions],
+      ["secondApplicantPreviousAddress", "Second previous address", "wide"],
+      ["secondApplicantPreviousSuburb", "Second previous suburb"],
+      ["secondApplicantPreviousState", "Second previous state", "select", licenceStateOptions],
+      ["secondApplicantPreviousPostcode", "Second previous postcode"],
+      ["secondApplicantPreviousResidentialStatus", "Second previous residential status", "select", residentialStatusOptions]
+    ]
+  },
+  {
+    title: "Employment and income",
+    fields: [
+      ["employmentType", "Primary employment type", "select", employmentTypeOptions],
+      ["employerName", "Business/employer name"],
+      ["businessAddress", "Business address"],
+      ["occupation", "Job title"],
+      ["employmentBasis", "Employment basis", "select", employmentBasisOptions],
+      ["employmentFromDate", "Employment from", "date"],
+      ["rentalIncomeAnnual", "Rental income p.a."],
+      ["secondApplicantEmploymentType", "Second employment type", "select", employmentTypeOptions],
+      ["secondApplicantEmployerName", "Second employer"],
+      ["secondApplicantJobTitle", "Second job title"],
+      ["secondApplicantEmploymentBasis", "Second employment basis", "select", employmentBasisOptions],
+      ["secondApplicantEmploymentFromDate", "Second employment from", "date"]
+    ]
+  },
+  {
+    title: "Living expenses and assets",
+    fields: [
+      ["generalExpenses", "Monthly living expense total"],
+      ["applicant1Expenses", "Applicant 1 expense amount"],
+      ["applicant2Expenses", "Applicant 2 expense amount"],
+      ["privateHealthInsuranceApplicant1", "Private health insurance - Applicant 1", "select", yesNoAdviseOptions],
+      ["applicant1HealthInsuranceAmount", "Applicant 1 health amount/month"],
+      ["privateHealthInsuranceApplicant2", "Private health insurance - Applicant 2", "select", yesNoAdviseOptions],
+      ["applicant2HealthInsuranceAmount", "Applicant 2 health amount/month"],
+      ["incomeProtectionLifeInsurance", "Income protection/life insurance", "select", yesNoAdviseOptions],
+      ["cashSavingsAmount", "Cash/savings amount"],
+      ["realEstateAssetAddress", "Real estate asset address", "wide"],
+      ["realEstateAssetValue", "Real estate asset value"],
+      ["bankingWith", "Banking with"],
+      ["motorVehicleModelYear", "Motor vehicle model/year"],
+      ["motorVehicleValue", "Motor vehicle estimated value"],
+      ["homeContentsItem", "Home contents item"],
+      ["homeContentsValue", "Home contents estimated value"]
+    ]
+  },
+  {
+    title: "Loan details and credit",
+    fields: [
+      ["loanTermYears", "Loan term", "select", ["30", "25", "20", "15", "40"]],
+      ["repaymentType", "Repayment type", "select", ["Principal & Interest", "Interest Only", "Split"]],
+      ["ratePreference", "Rate preference", "select", ["Variable", "Fixed", "Fixed and variable", "Unsure"]],
+      ["offsetRequested", "Offset requested", "select", yesNoAdviseOptions],
+      ["redrawRequested", "Redraw requested", "select", yesNoAdviseOptions],
+      ["creditIssue", "Credit issue", "select", ["No", "Yes", "Unsure", "Unknown"]],
+      ["paydayLoans", "Payday loans", "select", yesNoAdviseOptions],
+      ["bnplUse", "BNPL use", "select", yesNoAdviseOptions],
+      ["gamblingTransactions", "Gambling transactions", "select", yesNoAdviseOptions],
+      ["dishonoursHistory", "Dishonours history", "select", yesNoAdviseOptions],
+      ["hardshipHistory", "Hardship history", "select", yesNoAdviseOptions],
+      ["recentDeclines", "Recent loan declines", "select", yesNoAdviseOptions],
+      ["existingDebtsSummary", "Existing debts/comments", "textarea"]
+    ]
+  }
+];
+
 function ClientLoanFormHeader({ title, description, language = "en", onLanguageChange }) {
   return (
     <header className="client-form-hero">
@@ -2562,6 +2709,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   const { session } = useSessionStatus();
   const [form, setForm] = useState(emptyCallNote);
   const emptySubmissionEdit = {
+    ...emptyCallNote,
     clientName: "",
     firstName: "",
     middleName: "",
@@ -3045,9 +3193,10 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
       financialAssetBuffer: intake.financialAssetBuffer || "",
       clientNotes: intake.clientNotes || ""
     };
+    const fullEdit = { ...emptySubmissionEdit, ...intake, ...nextEdit };
     setSelectedIntakeId(intake.id);
-    setSubmissionEdit(nextEdit);
-    setSavedSubmissionEdit(nextEdit);
+    setSubmissionEdit(fullEdit);
+    setSavedSubmissionEdit(fullEdit);
   }
 
   async function saveIntakeEdits() {
@@ -3095,6 +3244,98 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
         <button className="ghost-button" type="button" onClick={() => openEasyFlowForIntake()}><Play size={14} /> Prepare EasyFlow AI</button>
       </div>
     );
+  }
+
+  function updateSubmissionField(field, value) {
+    setSubmissionEdit((current) => {
+      const next = { ...current, [field]: value };
+      if (field === "hemMonthly") {
+        if (!isFilled(next.generalExpenses)) next.generalExpenses = value;
+        if (!isFilled(next.applicant1Expenses)) next.applicant1Expenses = value;
+      }
+      if (field === "financialAssetBuffer" && !isFilled(next.cashSavingsAmount)) {
+        next.cashSavingsAmount = value;
+      }
+      if (field === "maritalStatus" && /married|defacto/i.test(value || "")) {
+        next.hasSecondApplicant = "Yes";
+        if (!isFilled(next.secondApplicantMaritalStatus) || /single/i.test(next.secondApplicantMaritalStatus)) {
+          next.secondApplicantMaritalStatus = value;
+        }
+      }
+      return next;
+    });
+  }
+
+  function renderSubmissionField([field, label, type = "text", options = []]) {
+    const value = submissionEdit[field] ?? "";
+    if (type === "date") {
+      return <DateField key={field} label={label} value={value} onChange={(next) => updateSubmissionField(field, next)} />;
+    }
+    if (type === "select") {
+      return (
+        <label key={field}>
+          {label}
+          <select value={value} onChange={(event) => updateSubmissionField(field, event.target.value)}>
+            <option value="">Please select</option>
+            {options.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
+      );
+    }
+    if (type === "textarea") {
+      return (
+        <label className="wide-field" key={field}>
+          {label}
+          <textarea value={value} onChange={(event) => updateSubmissionField(field, event.target.value)} />
+        </label>
+      );
+    }
+    return (
+      <label className={type === "wide" ? "wide-field" : ""} key={field}>
+        {label}
+        <input value={value} onChange={(event) => updateSubmissionField(field, event.target.value)} />
+      </label>
+    );
+  }
+
+  function renderLoanCaseManagerGroup(group) {
+    const hasSecond = submissionEdit.hasSecondApplicant === "Yes" ||
+      /married|defacto/i.test(submissionEdit.maritalStatus || "") ||
+      isFilled(submissionEdit.secondApplicantFirstName) ||
+      isFilled(submissionEdit.secondApplicantSurname);
+    if (group.secondOnly && !hasSecond) return null;
+    return (
+      <section key={group.title}>
+        <h3>{group.title}</h3>
+        <div className="note-form-grid">
+          {group.fields.map(renderSubmissionField)}
+        </div>
+      </section>
+    );
+  }
+
+  function renderDynamicLoanCaseManagerSections() {
+    const sections = activeDynamicFields(submissionEdit).reduce((acc, field) => {
+      if (!acc[field.section]) acc[field.section] = [];
+      acc[field.section].push(field);
+      return acc;
+    }, {});
+    return Object.entries(sections).map(([section, fields]) => (
+      <section key={`dynamic-${section}`}>
+        <h3>{section}</h3>
+        <div className="note-form-grid">
+          {fields.map((field) => (
+            <DynamicLoanField
+              key={field.key}
+              field={field}
+              form={submissionEdit}
+              language="en"
+              onChange={updateSubmissionField}
+            />
+          ))}
+        </div>
+      </section>
+    ));
   }
 
   useEffect(() => {
@@ -3297,6 +3538,9 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                       This is a Loan Form link record only. The full submission fields will appear after the client submits the Loan Form.
                     </div>
                   )}
+                  <div className="info-banner compact">
+                    <strong>Workflow:</strong> 1. Import Case JSON or wait for the client Loan Form. 2. Review the full Loan Form fields below. 3. Save changes. 4. Download Fact Find or Prepare EasyFlow AI for Infinity/AOL.
+                  </div>
                   <div className="submission-editor-sections">
                     <section>
                       <h3>Overview</h3>
@@ -3359,10 +3603,12 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                       <div className="note-form-grid">
                         <label>Annual income<input value={submissionEdit.annualIncome} onChange={(event) => setSubmissionEdit({ ...submissionEdit, annualIncome: event.target.value })} /></label>
                         <label>Second income<input value={submissionEdit.secondAnnualIncome} onChange={(event) => setSubmissionEdit({ ...submissionEdit, secondAnnualIncome: event.target.value })} /></label>
-                        <label>HEM monthly<input value={submissionEdit.hemMonthly} onChange={(event) => setSubmissionEdit({ ...submissionEdit, hemMonthly: event.target.value })} /></label>
-                        <label>Financial assets<input value={submissionEdit.financialAssetBuffer} onChange={(event) => setSubmissionEdit({ ...submissionEdit, financialAssetBuffer: event.target.value })} /></label>
+                        <label>HEM monthly<input value={submissionEdit.hemMonthly} onChange={(event) => updateSubmissionField("hemMonthly", event.target.value)} /></label>
+                        <label>Financial assets<input value={submissionEdit.financialAssetBuffer} onChange={(event) => updateSubmissionField("financialAssetBuffer", event.target.value)} /></label>
                       </div>
                     </section>
+                    {loanCaseManagerGroups.map(renderLoanCaseManagerGroup)}
+                    {renderDynamicLoanCaseManagerSections()}
                     <section>
                       <h3>Notes</h3>
                       <div className="note-form-grid">
@@ -3380,6 +3626,9 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
           </div>
         ) : (
         <div className="notes-grid">
+          <div className="info-banner compact call-workflow-guide">
+            <strong>Call workflow:</strong> Save call note for quick phone records. Use Create Loan Form Link when the client should complete the full Loan Form. The linked case then appears in Loan Case Manager and EasyFlow AI.
+          </div>
           <section className="panel note-panel">
             <div className="panel-title"><ClipboardList size={18} /><h2>Client & Loan</h2></div>
             <div className="note-form-grid">
