@@ -590,6 +590,15 @@ h2 {
   min-width: 92px;
 }
 
+.linked-form-status {
+  align-self: center;
+  color: #52645b;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  max-width: 260px;
+}
+
 .primary-button,
 .push-button {
   background: #166a42;

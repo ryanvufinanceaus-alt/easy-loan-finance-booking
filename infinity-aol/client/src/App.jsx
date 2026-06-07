@@ -2954,6 +2954,14 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     return intake.source === "public-loan-form" ? "Public Loan Form" : "Client Call linked";
   }
 
+  function loanFormLinkDetail(item) {
+    if (!item?.intakeToken && !item?.token) return "No Loan Form link yet";
+    const copiedAt = item.intakeLinkLastCopiedAt || item.lastLinkCopiedAt;
+    const copiedText = copiedAt ? `Last copied ${new Date(copiedAt).toLocaleString()}` : "Link created, not copied yet";
+    const count = Number(item.linkCopyCount || 0);
+    return count ? `${copiedText} (${count} copy${count === 1 ? "" : "ies"})` : copiedText;
+  }
+
   function toggleRedFlag(flag) {
     setRedFlags((items) => (items.includes(flag) ? items.filter((item) => item !== flag) : [...items, flag]));
   }
@@ -3006,8 +3014,14 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
       if (convert) {
         const intake = await api(`/api/call-notes/${saved.id}/intake-link`, { method: "POST", body: "{}" });
         await navigator.clipboard?.writeText(intake.url).catch(() => {});
-        output = { ...saved, convertedCaseId: intake.caseId || saved.convertedCaseId, intakeToken: intake.token, intakeStatus: intake.status };
-        setMessage(`Loan Form link copied. Case ID: ${intake.caseId || output.convertedCaseId || saved.id}.`);
+        output = {
+          ...saved,
+          convertedCaseId: intake.caseId || saved.convertedCaseId,
+          intakeToken: intake.token,
+          intakeStatus: intake.status,
+          intakeLinkLastCopiedAt: intake.lastLinkCopiedAt || new Date().toISOString()
+        };
+        setMessage(`${saved.intakeToken ? "Existing" : "New"} Loan Form link copied. Case ID: ${intake.caseId || output.convertedCaseId || saved.id}.`);
       } else {
         setMessage(`Call note saved: ${saved.id}. No Loan Form link was created yet.`);
       }
@@ -3029,7 +3043,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     try {
       const intake = await api(`/api/call-notes/${note.id}/intake-link`, { method: "POST", body: "{}" });
       await navigator.clipboard?.writeText(intake.url).catch(() => {});
-      setMessage(`Loan Form link copied. Case ID: ${intake.caseId || note.convertedCaseId || note.id}.`);
+      setMessage(`Loan Form link copied. ${note.intakeToken ? "Existing linked form reused" : "New linked form created"}. Case ID: ${intake.caseId || note.convertedCaseId || note.id}.`);
       await refreshNotes();
       if (canViewLoanSubmissions) await refreshIntakes();
     } catch (err) {
@@ -3045,7 +3059,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     try {
       const intake = await api(`/api/call-notes/${note.id}/intake-link`, { method: "POST", body: "{}" });
       await navigator.clipboard?.writeText(intake.url).catch(() => {});
-      setMessage(`Loan Form link copied for ${note.clientName || note.id}. It stays linked to call note ${note.id}.`);
+      setMessage(`Loan Form link copied for ${note.clientName || note.id}. ${note.intakeToken ? "Existing linked form reused" : "New linked form created"} and linked to call note ${note.id}.`);
       await refreshNotes();
       if (canViewLoanSubmissions) await refreshIntakes();
     } catch (err) {
@@ -3430,9 +3444,14 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
             </button>
             <button className="primary-button" type="button" disabled={saving || !composeLegalName(form.firstName, "", form.surname, form.clientName).trim()} onClick={() => saveCallNote({ convert: true })}>
               {saving ? <RefreshCw size={17} className="spin" /> : <Play size={17} />}
-              Create Loan Form Link
-              <small>Creates case + copies link</small>
+              {form.intakeToken ? "Copy Loan Form Link" : "Create Loan Form Link"}
+              <small>{form.intakeToken ? "Uses existing linked form" : "Creates case + copies link"}</small>
             </button>
+            {form.intakeToken && (
+              <span className="linked-form-status">
+                {loanFormStatus(form)} · {loanFormLinkDetail(form)}
+              </span>
+            )}
           </div>}
         </header>
         {error && <div className="error-banner">{error}</div>}
@@ -3490,13 +3509,14 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                         <span>
                           <strong>{intake.lastSavedAt ? "Edited" : "Added"}</strong>
                           <small>{loanFormStatus(intake)} | {intake.lastSavedAt ? new Date(intake.lastSavedAt).toLocaleString() : intake.submittedAt ? new Date(intake.submittedAt).toLocaleString() : `Sent ${new Date(intake.createdAt).toLocaleString()}`}</small>
+                          <small>{loanFormLinkDetail(intake)}</small>
                         </span>
                       </button>
                       <div>
-                        <button type="button" onClick={() => loadIntake(intake)}>{intake.status === "submitted" ? "Open Submission" : "Open Link Record"}</button>
+                        <button type="button" onClick={() => loadIntake(intake)}>{intake.status === "submitted" ? "Review Loan Form Submission" : "Review Loan Form Record"}</button>
                         <button type="button" onClick={async () => {
                           await navigator.clipboard?.writeText(intake.url).catch(() => {});
-                          setMessage(`Loan Form link copied: ${intake.url}`);
+                          setMessage(`Existing Loan Form link copied: ${intake.url}`);
                         }}>Copy Loan Form link</button>
                         <button type="button" onClick={() => downloadFactFind(intake)}><Download size={13} /> Fact Find</button>
                         <button type="button" onClick={() => {
@@ -3737,18 +3757,18 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
 
           <section className="panel note-panel recent-note-panel">
             <div className="panel-title"><History size={18} /><h2>Client Call Intake Data</h2></div>
-            <p className="panel-helper inbox-helper">Short phone notes for team visibility. Use this to search calls, copy the Loan Form link, or create the draft internal case.</p>
+            <p className="panel-helper inbox-helper">Short phone records for team visibility. Save calls, create or copy the linked Loan Form, then manage full data in Loan Case Manager.</p>
             <div className="recent-note-list">
               {filteredNotes.length ? filteredNotes.map((note) => (
                 <div key={`row-${note.id}`}>
                   <button type="button" onClick={() => loadNote(note)}>
                     <strong>{[note.clientName, note.secondApplicantName].filter(Boolean).join(" & ") || "Unnamed client"}</strong>
                     <span>{note.convertedCaseId || note.status} | {new Date(note.updatedAt || note.createdAt).toLocaleString()}</span>
-                    <small>{loanFormStatus(note)}</small>
+                    <small>{loanFormStatus(note)} · {loanFormLinkDetail(note)}</small>
                   </button>
                   <div>
-                    {!note.intakeToken && <button type="button" onClick={() => convertSelected(note)}>Create Loan Form link</button>}
-                    <button type="button" onClick={() => createIntakeLink(note)}>Copy Loan Form link</button>
+                    {!note.intakeToken && <button type="button" onClick={() => convertSelected(note)}>Create Linked Loan Form</button>}
+                    <button type="button" onClick={() => createIntakeLink(note)}>{note.intakeToken ? "Copy Existing Loan Form Link" : "Create & Copy Loan Form Link"}</button>
                     {note.convertedCaseId && <button type="button" onClick={() => onOpenAutofill?.(note.convertedCaseId)}>Open EasyFlow AI</button>}
                     <button type="button" className="danger-link" onClick={() => deleteNote(note)}>Delete</button>
                   </div>
