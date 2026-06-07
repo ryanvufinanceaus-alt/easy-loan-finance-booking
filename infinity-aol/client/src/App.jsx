@@ -3535,7 +3535,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                   <SubmissionEditorActions top />
                   {selectedIntake.status !== "submitted" && (
                     <div className="info-banner compact">
-                      This is a Loan Form link record only. The full submission fields will appear after the client submits the Loan Form.
+                      This is a Loan Form Record only. The full submission fields will appear after the client submits the Loan Form.
                     </div>
                   )}
                   <div className="info-banner compact">
