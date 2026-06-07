@@ -913,6 +913,42 @@ const defaultHemProfiles = {
   coupleStandard: { label: "Couple - standard", amount: 4500, note: "Good default for two-adult households before verified expenses." },
   coupleHigher: { label: "Couple - higher buffer", amount: 5200, note: "Use when dependants, rent or higher discretionary spend are likely." }
 };
+const hemTemplateRows = [
+  ["Clothing & Personal Care", 200],
+  ["Other Insurances", 200],
+  ["Groceries", 900],
+  ["Investment Property Costs", 300],
+  ["Health Care", 100],
+  ["Home Maintenance", 300],
+  ["Entertainment", 300],
+  ["Telephone and Internet", 200],
+  ["Vehicle Maintenance & Transport", 500]
+];
+
+function scaleTemplateRows(rows, total, adjustLabel = "Groceries") {
+  const target = Number(total || 0);
+  if (!target) return rows.map(([type]) => ({ type, amount: 0, frequency: "Monthly", ownership: "100%" }));
+  const baseTotal = rows.reduce((sum, [, amount]) => sum + amount, 0) || 1;
+  const scaled = rows.map(([type, amount]) => ({
+    type,
+    amount: Math.round(((amount / baseTotal) * target) / 50) * 50,
+    frequency: "Monthly",
+    ownership: "100%"
+  }));
+  const diff = target - scaled.reduce((sum, row) => sum + row.amount, 0);
+  const adjustRow = scaled.find((row) => row.type === adjustLabel) || scaled[0];
+  if (adjustRow) adjustRow.amount += diff;
+  return scaled;
+}
+
+function hemBreakdown(total) {
+  return scaleTemplateRows(hemTemplateRows, total);
+}
+
+function assetBreakdown(total) {
+  const amount = Number(total || 0);
+  return amount ? [{ type: "Deposit Account", description: "Savings / financial asset buffer", value: amount, ownership: "100%", valueBasis: "Applicant Estimate" }] : [];
+}
 
 const maritalStatusOptions = ["Single", "Married", "Divorced", "Widowed"];
 const genderOptions = ["Female", "Male", "Other / prefer not to say"];
@@ -4737,7 +4773,9 @@ export default function App() {
       secondaryLicenceExpiryDate: hasSecondApplicant ? manualIntake.secondaryLicenceExpiryDate : "",
       hemMonthly,
       hemProfileKey,
-      financialAssetBuffer
+      hemBreakdown: hemBreakdown(hemMonthly),
+      financialAssetBuffer,
+      assetBreakdown: assetBreakdown(financialAssetBuffer)
     };
   }
 
@@ -5341,6 +5379,11 @@ Financial asset: 30000`}
                       </button>
                     ))}
                   </div>
+                  <div className="template-breakdown">
+                    {hemBreakdown(hemMonthly).map((row) => (
+                      <span key={row.type}><strong>{row.type}</strong>{currency(row.amount)}</span>
+                    ))}
+                  </div>
                   <details className="advanced-template hem-template-editor">
                     <summary>HEM template settings</summary>
                     {Object.entries(hemProfiles).map(([key, profile]) => (
@@ -5364,6 +5407,11 @@ Financial asset: 30000`}
                       >
                         {currency(value)}
                       </button>
+                    ))}
+                  </div>
+                  <div className="template-breakdown">
+                    {assetBreakdown(financialAssetBuffer).map((row) => (
+                      <span key={row.type}><strong>{row.type}</strong>{currency(row.value)}</span>
                     ))}
                   </div>
                 </div>

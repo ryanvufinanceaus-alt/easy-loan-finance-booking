@@ -295,6 +295,43 @@ function manualMoneySuggestion(path, value, reason) {
   return manualSuggestion(path, number, reason);
 }
 
+const hemTemplateRows = [
+  ["Clothing & Personal Care", 200],
+  ["Other Insurances", 200],
+  ["Groceries", 900],
+  ["Investment Property Costs", 300],
+  ["Health Care", 100],
+  ["Home Maintenance", 300],
+  ["Entertainment", 300],
+  ["Telephone and Internet", 200],
+  ["Vehicle Maintenance & Transport", 500]
+];
+
+function scaleTemplateRows(rows, total, adjustLabel = "Groceries") {
+  const target = Number(total || 0);
+  if (!target) return rows.map(([type]) => ({ type, amount: 0, frequency: "Monthly", ownership: "100%" }));
+  const baseTotal = rows.reduce((sum, [, amount]) => sum + amount, 0) || 1;
+  const scaled = rows.map(([type, amount]) => ({
+    type,
+    amount: Math.round(((amount / baseTotal) * target) / 50) * 50,
+    frequency: "Monthly",
+    ownership: "100%"
+  }));
+  const diff = target - scaled.reduce((sum, row) => sum + row.amount, 0);
+  const adjustRow = scaled.find((row) => row.type === adjustLabel) || scaled[0];
+  if (adjustRow) adjustRow.amount += diff;
+  return scaled;
+}
+
+function hemBreakdown(total) {
+  return scaleTemplateRows(hemTemplateRows, total);
+}
+
+function assetBreakdown(total) {
+  const amount = Number(total || 0);
+  return amount ? [{ type: "Deposit Account", description: "Savings / financial asset buffer", value: amount, ownership: "100%", valueBasis: "Applicant Estimate" }] : [];
+}
+
 function splitManualName(fullName = "") {
   const parts = String(fullName || "").trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return {};
@@ -349,7 +386,9 @@ export function buildDocumentDraft(files = [], options = {}) {
     templateConfig: template || null,
     assumptions: {
       hemMonthly,
+      hemBreakdown: hemBreakdown(hemMonthly),
       financialAssetBuffer,
+      assetBreakdown: assetBreakdown(financialAssetBuffer),
       assetSource: detectedFinancialAsset ? "document" : "broker preset",
       expenseSource: "broker preset",
       incomeSource: detectedIncome ? "document" : "crm",
@@ -491,6 +530,8 @@ export function mergeDocumentDraft(caseData, draft) {
   }
 
   merged.expenses.livingMonthly = draft.assumptions.hemMonthly;
+  merged.expenses.breakdown = draft.assumptions.hemBreakdown || hemBreakdown(draft.assumptions.hemMonthly);
+  merged.assets.breakdown = draft.assumptions.assetBreakdown || assetBreakdown(draft.assumptions.financialAssetBuffer);
   merged.documentIntake = draft;
   merged.selectedTemplate = template || null;
   return merged;
