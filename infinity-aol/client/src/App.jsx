@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -2826,6 +2826,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   const [selectedIntakeId, setSelectedIntakeId] = useState("");
   const [submissionEdit, setSubmissionEdit] = useState(emptySubmissionEdit);
   const [savedSubmissionEdit, setSavedSubmissionEdit] = useState(emptySubmissionEdit);
+  const submissionEditorRef = useRef(null);
   const [redFlags, setRedFlags] = useState([]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -3259,6 +3260,8 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     setSelectedIntakeId(intake.id);
     setSubmissionEdit(fullEdit);
     setSavedSubmissionEdit(fullEdit);
+    setMessage(`Opened Loan Form record for ${intake.clientName || "this client"}. Review and edit it below.`);
+    setTimeout(() => submissionEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   }
 
   async function saveIntakeEdits() {
@@ -3561,7 +3564,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                         </span>
                       </button>
                       <div>
-                        <button type="button" onClick={() => loadIntake(intake)}>{intake.status === "submitted" ? "Review Loan Form Submission" : "Review Loan Form Record"}</button>
+                        <button type="button" onClick={() => loadIntake(intake)}>{intake.status === "submitted" ? "Open Submission Review" : "Open Record Review"}</button>
                         <button type="button" onClick={async () => {
                           await navigator.clipboard?.writeText(intake.url).catch(() => {});
                           setMessage(`Existing Loan Form link copied: ${intake.url}`);
@@ -3584,7 +3587,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                 </div>
               )}
             </section>
-            {canViewLoanSubmissions && <section className="panel note-panel submission-editor-panel">
+            {canViewLoanSubmissions && <section className="panel note-panel submission-editor-panel" ref={submissionEditorRef}>
               <div className="panel-title"><FileJson size={18} /><h2>Edit Case Data</h2></div>
               {selectedIntake ? (
                 <>
