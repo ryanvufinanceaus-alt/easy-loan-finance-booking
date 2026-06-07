@@ -2200,6 +2200,28 @@ pre {
   padding-left: 18px;
 }
 
+.missing-data-report button {
+  background: transparent;
+  border: 0;
+  color: #7c2d12;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+  padding: 2px 0;
+  text-align: left;
+  text-decoration: underline;
+}
+
+.client-intake-card label[data-missing="true"] input,
+.client-intake-card label[data-missing="true"] select,
+.client-intake-card label[data-missing="true"] textarea,
+.client-intake-card .field-jump-highlight input,
+.client-intake-card .field-jump-highlight select,
+.client-intake-card .field-jump-highlight textarea {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
+}
+
 .commercial-panel,
 .conditional-panel {
   background: #f5f8f5;
@@ -2485,6 +2507,10 @@ select {
 
   .submission-meta-grid {
     grid-template-columns: 1fr;
+  }
+
+  .missing-data-report ul {
+    columns: 1;
   }
 
   .note-search {

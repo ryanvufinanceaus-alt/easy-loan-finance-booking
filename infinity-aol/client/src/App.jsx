@@ -1171,9 +1171,9 @@ function purposeOptionsForLoanType(loanType) {
   return homeLoanPurposeOptions;
 }
 
-function SelectField({ label, value, onChange, options, language = "en", required = false, help = "" }) {
+function SelectField({ label, value, onChange, options, language = "en", required = false, help = "", fieldKey = "" }) {
   return (
-    <label>
+    <label data-loan-field={fieldKey || undefined}>
       {tx(label, language)}
       <select required={required} value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">{clientFormCopy[language].select}</option>
@@ -1202,9 +1202,9 @@ function isFilled(value) {
   return value !== undefined && value !== null && String(value).trim() !== "";
 }
 
-function DateField({ label, value, onChange, language = "en", required = false, help = "" }) {
+function DateField({ label, value, onChange, language = "en", required = false, help = "", fieldKey = "" }) {
   return (
-    <label>
+    <label data-loan-field={fieldKey || undefined}>
       {tx(label, language)} <span className="field-label-note">(DD-MM-YYYY)</span>
       <input
         required={required}
@@ -2321,6 +2321,10 @@ function fieldHelp(field, language) {
   return language === "vi" ? field.helpText_vi || field.helpText_en || "" : field.helpText_en || "";
 }
 
+function missingFieldLabel(field, language) {
+  return language === "vi" ? field.label_vi || field.label_en : field.label_en;
+}
+
 function buildClientLoanMissingFields(form, language) {
   const baseRequired = [
     { key: "firstName", label_en: "First / given name(s)", label_vi: "Tên" },
@@ -2328,6 +2332,8 @@ function buildClientLoanMissingFields(form, language) {
     { key: "dateOfBirth", label_en: "Date of birth", label_vi: "Ngày sinh" },
     { key: "email", label_en: "Email", label_vi: "Email" },
     { key: "mobile", label_en: "Mobile", label_vi: "Số điện thoại" },
+    { key: "maritalStatus", label_en: "Marital Status", label_vi: "Tình trạng hôn nhân" },
+    { key: "residencyStatus", label_en: "Residential Status", label_vi: "Tình trạng cư trú" },
     { key: "loanType", label_en: "Loan type", label_vi: "Loại khoản vay" },
     { key: "loanPurpose", label_en: "Your loan purpose", label_vi: "Mục đích vay" },
     { key: "loanAmount", label_en: "How much would you like to borrow ($)", label_vi: "Số tiền muốn vay" },
@@ -2343,6 +2349,8 @@ function buildClientLoanMissingFields(form, language) {
   if (!/unemployed|retired/i.test(form.employmentType || "")) {
     baseRequired.push(
       { key: "employerName", label_en: "Business Name", label_vi: "Tên công ty" },
+      { key: "occupation", label_en: "Job Title", label_vi: "Chức danh công việc" },
+      { key: "employmentBasis", label_en: "Employment Basis", label_vi: "Hình thức làm việc" },
       { key: "employmentFromDate", label_en: "From Date", label_vi: "Làm từ ngày" }
     );
   }
@@ -2351,6 +2359,7 @@ function buildClientLoanMissingFields(form, language) {
       { key: "secondApplicantFirstName", label_en: "Second applicant first / given name(s)", label_vi: "Tên người vay thứ hai" },
       { key: "secondApplicantSurname", label_en: "Second applicant family name / surname", label_vi: "Họ người vay thứ hai" },
       { key: "secondApplicantDateOfBirth", label_en: "Second applicant date of birth", label_vi: "Ngày sinh người vay thứ hai" },
+      { key: "secondApplicantResidencyStatus", label_en: "Second applicant residency", label_vi: "Tình trạng cư trú người vay thứ hai" },
       { key: "secondAnnualIncome", label_en: "Second income p.a.", label_vi: "Thu nhập người vay thứ hai" }
     );
   }
@@ -2359,7 +2368,7 @@ function buildClientLoanMissingFields(form, language) {
     .map((field) => ({ key: field.key, label_en: field.label_en, label_vi: field.label_vi }));
   return [...baseRequired, ...dynamicRequired]
     .filter((field) => !isFilled(form[field.key]))
-    .map((field) => language === "vi" ? field.label_vi || field.label_en : field.label_en);
+    .map((field) => ({ key: field.key, label: missingFieldLabel(field, language) }));
 }
 
 function normalizeImportKey(value) {
@@ -2545,7 +2554,7 @@ function DynamicLoanField({ field, form, language, onChange }) {
   const value = form[field.key] ?? "";
   if (field.type === "select") {
     return (
-      <label>
+      <label data-loan-field={field.key}>
         {label}
         <select required={required} value={value} onChange={(event) => onChange(field.key, event.target.value)}>
           <option value="">{clientFormCopy[language].select}</option>
@@ -2557,7 +2566,7 @@ function DynamicLoanField({ field, form, language, onChange }) {
   }
   if (field.type === "textarea") {
     return (
-      <label className="client-wide-field">
+      <label className="client-wide-field" data-loan-field={field.key}>
         {label}
         <textarea required={required} value={value} onChange={(event) => onChange(field.key, event.target.value)} />
         {help ? <span className="field-help">{help}</span> : null}
@@ -2565,10 +2574,10 @@ function DynamicLoanField({ field, form, language, onChange }) {
     );
   }
   if (field.type === "date") {
-    return <DateField label={label} language={language} required={required} value={value} onChange={(next) => onChange(field.key, next)} help={help} />;
+    return <DateField fieldKey={field.key} label={label} language={language} required={required} value={value} onChange={(next) => onChange(field.key, next)} help={help} />;
   }
   return (
-    <label>
+    <label data-loan-field={field.key}>
       {label}
       <input
         required={required}
@@ -4250,6 +4259,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
   const isPersonal = /personal loan/i.test(form.loanType);
   const isRefinance = /refinance/i.test(`${form.loanPurpose} ${form.loanType}`);
   const missingFields = buildClientLoanMissingFields(form, language);
+  const missingFieldKeys = new Set(missingFields.map((field) => field.key));
   const dependantCount = Math.min(Math.max(Number(form.dependants || 0), 0), 4);
   const hasSecondApplicant = /married|defacto/i.test(form.maritalStatus)
     || form.hasSecondApplicant === "Yes"
@@ -4261,14 +4271,30 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
     ));
   const canImportCaseData = false;
   const L = (label) => tx(label, language);
+  const fieldAttrs = (key) => ({
+    "data-loan-field": key,
+    "data-missing": submitAttempted && missingFieldKeys.has(key) ? "true" : undefined
+  });
+
+  function focusLoanField(key) {
+    const wrapper = document.querySelector(`[data-loan-field="${key}"]`);
+    const target = wrapper?.matches?.("input, select, textarea")
+      ? wrapper
+      : wrapper?.querySelector?.("input, select, textarea");
+    wrapper?.classList?.add("field-jump-highlight");
+    (target || wrapper)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(() => target?.focus?.(), 250);
+    setTimeout(() => wrapper?.classList?.remove("field-jump-highlight"), 1800);
+  }
 
   async function submitIntake(event) {
     event.preventDefault();
     setSubmitAttempted(true);
     if (missingFields.length) {
+      focusLoanField(missingFields[0].key);
       setError(language === "vi"
-        ? `Vui lòng bổ sung các mục còn thiếu: ${missingFields.slice(0, 8).join(", ")}${missingFields.length > 8 ? "..." : ""}`
-        : `Please complete the missing items: ${missingFields.slice(0, 8).join(", ")}${missingFields.length > 8 ? "..." : ""}`);
+        ? `Vui long bo sung ${missingFields.length} muc con thieu. Bam vao tung muc ben duoi de di toi o can dien.`
+        : `Please complete ${missingFields.length} missing item${missingFields.length > 1 ? "s" : ""}. Click an item below to jump to that field.`);
       return;
     }
     setSaving(true);
@@ -4386,7 +4412,11 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
           <div className="missing-data-report">
             <strong>{language === "vi" ? "Missing data report" : "Missing data report"}</strong>
             <p>{language === "vi" ? "Các mục bắt buộc sẽ thay đổi theo loại khoản vay và câu trả lời của khách." : "Mandatory items change by loan type and by the client's answers."}</p>
-            <ul>{missingFields.map((field) => <li key={field}>{field}</li>)}</ul>
+            <ul>{missingFields.map((field) => (
+              <li key={field.key}>
+                <button type="button" onClick={() => focusLoanField(field.key)}>{field.label}</button>
+              </li>
+            ))}</ul>
           </div>
         ) : null}
 
@@ -4409,8 +4439,8 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
         <section>
           <h2>{L("Personal Details")}</h2>
           <div className="client-intake-grid">
-            <label>{L("First / given name(s)")}<input required value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} /><span className="field-help">{L("Enter names exactly as shown on ID. Vietnamese accents are OK.")}</span></label>
-            <label>{L("Family name / surname")}<input required value={form.surname} onChange={(event) => updateField("surname", event.target.value)} /></label>
+            <label {...fieldAttrs("firstName")}>{L("First / given name(s)")}<input required value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} /><span className="field-help">{L("Enter names exactly as shown on ID. Vietnamese accents are OK.")}</span></label>
+            <label {...fieldAttrs("surname")}>{L("Family name / surname")}<input required value={form.surname} onChange={(event) => updateField("surname", event.target.value)} /></label>
             <SelectField language={language} label="Add second applicant" value={hasSecondApplicant ? "Yes" : "No"} onChange={(value) => setForm((current) => ({
               ...current,
               hasSecondApplicant: value,
@@ -4421,15 +4451,15 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
               secondApplicantMobile: value === "Yes" ? current.secondApplicantMobile : "",
               secondApplicantEmail: value === "Yes" ? current.secondApplicantEmail : ""
             }))} options={yesNoOptions} />
-            <DateField language={language} required label="Date of birth" value={form.dateOfBirth} onChange={(value) => updateField("dateOfBirth", value)} />
+            <DateField fieldKey="dateOfBirth" language={language} required label="Date of birth" value={form.dateOfBirth} onChange={(value) => updateField("dateOfBirth", value)} />
             <SelectField language={language} label="Gender" value={form.gender} onChange={(value) => updateField("gender", value)} options={genderOptions} />
-            <label>{L("Email")}<input required value={form.email} onChange={(event) => updateField("email", event.target.value)} placeholder="example@example.com" /></label>
-            <label>{L("Mobile")}<input required value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
-            <SelectField language={language} required label="Marital Status" value={form.maritalStatus} onChange={updateMaritalStatus} options={maritalStatusOptions} />
-            <SelectField language={language} required label="Residential Status" value={form.residencyStatus} onChange={(value) => updateField("residencyStatus", value)} options={residencyOptions} />
+            <label {...fieldAttrs("email")}>{L("Email")}<input required value={form.email} onChange={(event) => updateField("email", event.target.value)} placeholder="example@example.com" /></label>
+            <label {...fieldAttrs("mobile")}>{L("Mobile")}<input required value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
+            <SelectField fieldKey="maritalStatus" language={language} required label="Marital Status" value={form.maritalStatus} onChange={updateMaritalStatus} options={maritalStatusOptions} />
+            <SelectField fieldKey="residencyStatus" language={language} required label="Residential Status" value={form.residencyStatus} onChange={(value) => updateField("residencyStatus", value)} options={residencyOptions} />
             <SelectField language={language} label="Permanent in Australia" value={form.permanentInAustralia} onChange={(value) => updateField("permanentInAustralia", value)} options={yesNoOptions} />
             <label>{L("Visa Sub-class")}<input value={form.visaSubclass || ""} onChange={(event) => updateField("visaSubclass", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
-            <label>{L("Number of Dependents")}<select required value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)}>{[0, 1, 2, 3, 4].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
+            <label {...fieldAttrs("dependants")}>{L("Number of Dependents")}<select required value={form.dependants} onChange={(event) => updateField("dependants", event.target.value)}>{[0, 1, 2, 3, 4].map((count) => <option key={count} value={count}>{count}</option>)}</select></label>
             {Array.from({ length: dependantCount }, (_, index) => {
               const field = `dependant${index + 1}Dob`;
               return <DateField key={field} language={language} label={`DOB of Dependent ${index + 1}`} value={form[field]} onChange={(value) => updateField(field, value)} />;
@@ -4439,13 +4469,13 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
             <h3>{L("Second Applicant Details")}</h3>
             <p>Only complete this section when there is a co-applicant, spouse, partner, or second borrower on the application.</p>
             <div className="client-intake-grid">
-              <label>{L("Second applicant first / given name(s)")}<input required value={form.secondApplicantFirstName} onChange={(event) => updateField("secondApplicantFirstName", event.target.value)} /><span className="field-help">{L("Enter names exactly as shown on ID. Vietnamese accents are OK.")}</span></label>
-              <label>{L("Second applicant family name / surname")}<input required value={form.secondApplicantSurname} onChange={(event) => updateField("secondApplicantSurname", event.target.value)} /></label>
-              <DateField language={language} required label="Date of birth" value={form.secondApplicantDateOfBirth} onChange={(value) => updateField("secondApplicantDateOfBirth", value)} />
+              <label {...fieldAttrs("secondApplicantFirstName")}>{L("Second applicant first / given name(s)")}<input required value={form.secondApplicantFirstName} onChange={(event) => updateField("secondApplicantFirstName", event.target.value)} /><span className="field-help">{L("Enter names exactly as shown on ID. Vietnamese accents are OK.")}</span></label>
+              <label {...fieldAttrs("secondApplicantSurname")}>{L("Second applicant family name / surname")}<input required value={form.secondApplicantSurname} onChange={(event) => updateField("secondApplicantSurname", event.target.value)} /></label>
+              <DateField fieldKey="secondApplicantDateOfBirth" language={language} required label="Date of birth" value={form.secondApplicantDateOfBirth} onChange={(value) => updateField("secondApplicantDateOfBirth", value)} />
               <SelectField language={language} label="Gender" value={form.secondApplicantGender} onChange={(value) => updateField("secondApplicantGender", value)} options={genderOptions} />
               <label>{L("Second applicant email")}<input value={form.secondApplicantEmail} onChange={(event) => updateField("secondApplicantEmail", event.target.value)} placeholder="Leave blank if same contact email" /></label>
               <label>{L("Second applicant mobile")}<input value={form.secondApplicantMobile} onChange={(event) => updateField("secondApplicantMobile", event.target.value)} placeholder="Leave blank if same contact mobile" /></label>
-              <SelectField language={language} required label="Second applicant residency" value={form.secondApplicantResidencyStatus} onChange={(value) => updateField("secondApplicantResidencyStatus", value)} options={residencyOptions} />
+              <SelectField fieldKey="secondApplicantResidencyStatus" language={language} required label="Second applicant residency" value={form.secondApplicantResidencyStatus} onChange={(value) => updateField("secondApplicantResidencyStatus", value)} options={residencyOptions} />
               <SelectField language={language} label="Permanent in Australia" value={form.secondApplicantPermanentInAustralia} onChange={(value) => updateField("secondApplicantPermanentInAustralia", value)} options={yesNoOptions} />
               <label>{L("Second applicant visa")}<input value={form.secondApplicantVisaSubclass} onChange={(event) => updateField("secondApplicantVisaSubclass", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
               <SelectField language={language} label="Marital Status" value={form.secondApplicantMaritalStatus} onChange={(value) => updateField("secondApplicantMaritalStatus", value)} options={maritalStatusOptions} />
@@ -4475,8 +4505,8 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
         <section>
           <h2>{L("Income Summary")}</h2>
           <div className="client-intake-grid income-summary-grid">
-            <label>{L("Main income p.a.")}<input required value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} /></label>
-            {hasSecondApplicant && <label>{L("Second income p.a.")}<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>}
+            <label {...fieldAttrs("annualIncome")}>{L("Main income p.a.")}<input required value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} /></label>
+            {hasSecondApplicant && <label {...fieldAttrs("secondAnnualIncome")}>{L("Second income p.a.")}<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>}
             <label>{L("Rental income p.a.")}<input value={form.rentalIncomeAnnual} onChange={(event) => updateField("rentalIncomeAnnual", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
           </div>
         </section>
@@ -4484,12 +4514,12 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
         <section>
           <h2>{L("Residential History Within The Last 3 Years")}</h2>
           <div className="client-intake-grid">
-            <label>{L("Current residential address")}<input required value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
-            <label>{L("Suburb")}<input required value={form.currentSuburb} onChange={(event) => updateField("currentSuburb", event.target.value)} /></label>
-            <label>{L("State")}<input required value={form.currentState} onChange={(event) => updateField("currentState", event.target.value)} /></label>
+            <label {...fieldAttrs("address")}>{L("Current residential address")}<input required value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
+            <label {...fieldAttrs("currentSuburb")}>{L("Suburb")}<input required value={form.currentSuburb} onChange={(event) => updateField("currentSuburb", event.target.value)} /></label>
+            <label {...fieldAttrs("currentState")}>{L("State")}<input required value={form.currentState} onChange={(event) => updateField("currentState", event.target.value)} /></label>
             <label>{L("Postcode")}<input value={form.currentPostcode} onChange={(event) => updateField("currentPostcode", event.target.value)} /></label>
-            <DateField language={language} required label="From Date" value={form.currentAddressFromDate} onChange={(value) => updateField("currentAddressFromDate", value)} />
-            <SelectField language={language} required label="Residential Status" value={form.currentResidentialStatus} onChange={(value) => updateField("currentResidentialStatus", value)} options={residentialStatusOptions} />
+            <DateField fieldKey="currentAddressFromDate" language={language} required label="From Date" value={form.currentAddressFromDate} onChange={(value) => updateField("currentAddressFromDate", value)} />
+            <SelectField fieldKey="currentResidentialStatus" language={language} required label="Residential Status" value={form.currentResidentialStatus} onChange={(value) => updateField("currentResidentialStatus", value)} options={residentialStatusOptions} />
             <label>{L("Post settlement address")}<input value={form.postSettlementAddress} onChange={(event) => updateField("postSettlementAddress", event.target.value)} placeholder="Leave blank if same as current address" /></label>
             <label>{L("Mailing address")}<input value={form.mailingAddress} onChange={(event) => updateField("mailingAddress", event.target.value)} placeholder="Leave blank if same as current address" /></label>
             <label>{L("Previous residential address")}<input value={form.previousAddress} onChange={(event) => updateField("previousAddress", event.target.value)} /><span className="field-help">{L("Only enter previous address if current address is less than 3 years.")}</span></label>
@@ -4519,12 +4549,12 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
         <section>
           <h2>{L("Employment History Within The Last 3 Years")}</h2>
           <div className="client-intake-grid">
-            <SelectField language={language} required label="Employment Type" value={form.employmentType} onChange={(value) => updateField("employmentType", value)} options={employmentTypeOptions} />
-            <label>{L("Business Name")}<input required value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
+            <SelectField fieldKey="employmentType" language={language} required label="Employment Type" value={form.employmentType} onChange={(value) => updateField("employmentType", value)} options={employmentTypeOptions} />
+            <label {...fieldAttrs("employerName")}>{L("Business Name")}<input required value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
             <label>{L("Business Address")}<input value={form.businessAddress} onChange={(event) => updateField("businessAddress", event.target.value)} /></label>
-            <label>{L("Job Title")}<input required value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
-            <SelectField language={language} required label="Employment Basis" value={form.employmentBasis} onChange={(value) => updateField("employmentBasis", value)} options={employmentBasisOptions} />
-            <DateField language={language} required label="From Date" value={form.employmentFromDate} onChange={(value) => updateField("employmentFromDate", value)} />
+            <label {...fieldAttrs("occupation")}>{L("Job Title")}<input required value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
+            <SelectField fieldKey="employmentBasis" language={language} required label="Employment Basis" value={form.employmentBasis} onChange={(value) => updateField("employmentBasis", value)} options={employmentBasisOptions} />
+            <DateField fieldKey="employmentFromDate" language={language} required label="From Date" value={form.employmentFromDate} onChange={(value) => updateField("employmentFromDate", value)} />
             <label>{L("Contact Name")}<input value={form.employmentContactName} onChange={(event) => updateField("employmentContactName", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             <label>{L("Contact Number")}<input value={form.employmentContactNumber} onChange={(event) => updateField("employmentContactNumber", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             <SelectField language={language} label="Previous Employment Type" value={form.previousEmploymentType} onChange={(value) => updateField("previousEmploymentType", value)} options={employmentBasisOptions} help="Leave blank if not applicable." />
@@ -4557,7 +4587,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
         <section>
           <h2>{L("Living Expenses")}</h2>
           <div className="client-intake-grid">
-            <label>{L("Expenses")}<input required value={form.generalExpenses} onChange={(event) => updateField("generalExpenses", event.target.value)} /></label>
+            <label {...fieldAttrs("generalExpenses")}>{L("Expenses")}<input required value={form.generalExpenses} onChange={(event) => updateField("generalExpenses", event.target.value)} /></label>
             <label>{L("AP 1 - Amount ($)")}<input value={form.applicant1Expenses} onChange={(event) => updateField("applicant1Expenses", event.target.value)} /></label>
             <label>{L("AP 2 - Amount ($)")}<input value={form.applicant2Expenses} onChange={(event) => updateField("applicant2Expenses", event.target.value)} /><span className="field-help">{L("Leave blank if there is no second applicant.")}</span></label>
             <SelectField language={language} label="Private Health Insurance - Applicant 1" value={form.applicant1PrivateHealth} onChange={(value) => updateField("applicant1PrivateHealth", value)} options={yesNoOptions} />
@@ -4587,9 +4617,9 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
         <section>
           <h2>{L("Loan Details")}</h2>
           <div className="client-intake-grid">
-            <SelectField language={language} required label="Your loan purpose" value={form.loanPurpose} onChange={(value) => updateField("loanPurpose", value)} options={purposeOptions} />
+            <SelectField fieldKey="loanPurpose" language={language} required label="Your loan purpose" value={form.loanPurpose} onChange={(value) => updateField("loanPurpose", value)} options={purposeOptions} />
             <label>{L("Type of property")}<input value={form.propertyType} onChange={(event) => updateField("propertyType", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
-            <label>{L("How much would you like to borrow ($)")}<input required value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>
+            <label {...fieldAttrs("loanAmount")}>{L("How much would you like to borrow ($)")}<input required value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>
             <label>{L("Location (intended postcode OR address)")}<input value={form.propertyLocation} onChange={(event) => updateField("propertyLocation", event.target.value)} /></label>
             <label>{L("Estimated property value ($)")}<input value={form.propertyValue} onChange={(event) => updateField("propertyValue", event.target.value)} /><span className="field-help">{L("Leave blank if unsure.")}</span></label>
             <label>{L("Deposit/equity")}<input value={form.depositEquity} onChange={(event) => updateField("depositEquity", event.target.value)} /></label>
