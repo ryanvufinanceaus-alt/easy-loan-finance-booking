@@ -11,7 +11,10 @@
     "http://localhost:3000/*",
     "https://booking.easyloanfinance.com.au/*",
     "https://*.easyloanfinance.com.au/*",
-    "https://*.onrender.com/*"
+    "https://*.onrender.com/*",
+    "https://infinity.com.au/*",
+    "https://*.infinity.com.au/*",
+    "https://*.applyonline.com.au/*"
   ],
   "icons": {
     "16": "icons/icon-16.png",

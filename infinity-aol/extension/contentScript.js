@@ -712,6 +712,11 @@ async function scanCompare({ mode, payload, mapping }) {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === "INFINITY_AOL_PING") {
+    sendResponse({ ok: true });
+    return false;
+  }
+
   if (message.type === "INFINITY_AOL_AUTOFILL") {
     autofill(message)
       .then(sendResponse)

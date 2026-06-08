@@ -116,18 +116,29 @@ async function injectContentScript(tabId) {
   });
 }
 
-async function sendToContent(message) {
-  const tab = await getActiveTab();
+async function pingContent(tabId) {
+  return chrome.tabs.sendMessage(tabId, { type: "INFINITY_AOL_PING" });
+}
+
+async function ensureContentScript(tabId) {
   try {
-    return await chrome.tabs.sendMessage(tab.id, message);
+    await pingContent(tabId);
+    return;
   } catch (error) {
     if (!/Receiving end does not exist|Could not establish connection/i.test(error.message || runtimeErrorMessage())) {
       throw error;
     }
-    await injectContentScript(tab.id);
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    return chrome.tabs.sendMessage(tab.id, message);
   }
+
+  await injectContentScript(tabId);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  await pingContent(tabId);
+}
+
+async function sendToContent(message) {
+  const tab = await getActiveTab();
+  await ensureContentScript(tab.id);
+  return chrome.tabs.sendMessage(tab.id, message);
 }
 
 async function loadPayload() {
