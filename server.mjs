@@ -23,6 +23,7 @@ const EASYFLOW_AI_HOST_RE = /^(easyflow-ai|loanops|autofill)\./i;
 const LOAN_SUBMISSIONS_HOST_RE = /^(loan-submissions-management|loan-submissions|submissions)\./i;
 const LOAN_FORM_PUBLIC_PATH_RE = /^\/(?:loan-form|client-info|apply|start|home-loan|refinance|commercial-loan|business-loan|car-loan|personal-loan)(?:\/[^/]+)?\/?$/;
 const LOAN_FORM_PUBLIC_API_RE = /^\/api\/client-intake\/[^/]+\/?$/;
+const EASYFLOW_EXTENSION_API_RE = /^\/api\/(?:infinity\/(?:payload\/[^/]+|mappings\/current|prepared-cases|autofill-log)|cases\/[^/]+\/(?:comparison-report|comparison-snapshot))\/?$/;
 const SHARED_BRAND_ASSET_RE = /^\/(?:elf-logo\.(?:png|svg)|favicon\.ico)$/i;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
@@ -1694,6 +1695,7 @@ function isPublicInfinityAolRequest(url) {
   return pathname === "/api/health"
     || LOAN_FORM_PUBLIC_PATH_RE.test(pathname)
     || LOAN_FORM_PUBLIC_API_RE.test(pathname)
+    || EASYFLOW_EXTENSION_API_RE.test(pathname)
     || isStaticAsset(pathname);
 }
 
