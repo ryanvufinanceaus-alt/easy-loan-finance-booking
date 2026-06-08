@@ -327,7 +327,7 @@ function hemBreakdown(total) {
   return scaleTemplateRows(hemTemplateRows, total);
 }
 
-function assetBreakdown(total) {
+function assetBreakdown(total, source = "generated") {
   const amount = Number(total || 0);
   if (!amount) return [];
   const rows = scaleTemplateRows([
@@ -340,8 +340,25 @@ function assetBreakdown(total) {
     description: row.type === "Deposit Account" ? "Savings / financial asset buffer" : "Applicant estimate",
     value: row.amount,
     ownership: "100%",
-    valueBasis: "Applicant Estimate"
+    valueBasis: "Applicant Estimate",
+    source
   }));
+}
+
+function hasMoney(value) {
+  return Number(value || 0) > 0;
+}
+
+function hasDetailedAssetRows(assets = []) {
+  return assets.some((asset) => hasMoney(asset.value) && !["Cash", "Deposit Account"].includes(asset.type));
+}
+
+function aggregateAssetValue(assets = []) {
+  return assets.reduce((sum, asset) => sum + Number(asset.value || 0), 0);
+}
+
+function sourceTaggedExpenses(total, source) {
+  return hemBreakdown(total).map((row) => ({ ...row, source }));
 }
 
 function splitManualName(fullName = "") {
@@ -392,8 +409,12 @@ export function buildDocumentDraft(files = [], options = {}) {
   const allSuggestions = [...fieldSuggestions, ...manualSuggestions];
   const detectedIncome = allSuggestions.find((item) => item.path === "applicants.primary.income.baseAnnual")?.value;
   const detectedFinancialAsset = documents.map((doc) => doc.fields.detectedFinancialAsset).find(Boolean);
-  const hemMonthly = presetNumber(manualIntake.hemMonthly || options.hemMonthly, template?.defaults?.hemMonthly || 4000);
-  const financialAssetBuffer = presetNumber(manualIntake.financialAssetBuffer || options.financialAssetBuffer, detectedFinancialAsset || template?.defaults?.financialAssetBuffer || 30000);
+  const explicitHemMonthly = manualIntake.hemMonthly || options.hemMonthly;
+  const explicitFinancialAsset = manualIntake.financialAssetBuffer || options.financialAssetBuffer;
+  const hemMonthly = presetNumber(explicitHemMonthly, template?.defaults?.hemMonthly || 4000);
+  const financialAssetBuffer = presetNumber(explicitFinancialAsset, detectedFinancialAsset || template?.defaults?.financialAssetBuffer || 30000);
+  const expenseSource = explicitHemMonthly ? "broker edited" : "template";
+  const assetSource = explicitFinancialAsset ? "broker edited" : detectedFinancialAsset ? "client document" : "template";
 
   return {
     preparedAt: new Date().toISOString(),
@@ -401,11 +422,11 @@ export function buildDocumentDraft(files = [], options = {}) {
     templateConfig: template || null,
     assumptions: {
       hemMonthly,
-      hemBreakdown: hemBreakdown(hemMonthly),
+      hemBreakdown: sourceTaggedExpenses(hemMonthly, expenseSource),
       financialAssetBuffer,
-      assetBreakdown: assetBreakdown(financialAssetBuffer),
-      assetSource: detectedFinancialAsset ? "document" : "broker preset",
-      expenseSource: "broker preset",
+      assetBreakdown: assetBreakdown(financialAssetBuffer, assetSource),
+      assetSource,
+      expenseSource,
       incomeSource: detectedIncome ? "document" : "crm",
       templateSource: template?.id || null
     },
@@ -513,6 +534,8 @@ export function mergeDocumentDraft(caseData, draft) {
   if (!draft) return caseData;
 
   const merged = structuredClone(caseData);
+  merged.assets = Array.isArray(merged.assets) ? merged.assets : [];
+  merged.expenses = merged.expenses || {};
   const template = draft.templateConfig;
 
   if (draft.manualIntake?.hasSecondApplicant === "No") {
@@ -524,10 +547,22 @@ export function mergeDocumentDraft(caseData, draft) {
     applySuggestion(merged, item);
   }
 
-  const assetRows = draft.assumptions.assetBreakdown || assetBreakdown(draft.assumptions.financialAssetBuffer);
-  for (const row of assetRows) {
-    const exists = merged.assets.some((asset) => asset.type === row.type && asset.description === row.description);
-    if (!exists) merged.assets.push(row);
+  const existingAssets = Array.isArray(merged.assets) ? merged.assets : [];
+  const existingAssetTotal = aggregateAssetValue(existingAssets);
+  const hasDetailedAssets = hasDetailedAssetRows(existingAssets);
+  const clientAssetTotal = existingAssetTotal || Number(draft.assumptions.financialAssetBuffer || 0);
+  const assetRows = hasDetailedAssets
+    ? existingAssets.map((asset) => ({ ...asset, source: asset.source || "client supplied" }))
+    : assetBreakdown(clientAssetTotal, existingAssetTotal ? "generated from client total" : draft.assumptions.assetSource);
+
+  if (!hasDetailedAssets && assetRows.length) {
+    merged.assets = existingAssets.filter((asset) => !(["Cash", "Deposit Account"].includes(asset.type) && hasMoney(asset.value)));
+    for (const row of assetRows) {
+      const exists = merged.assets.some((asset) => asset.type === row.type && asset.description === row.description);
+      if (!exists) merged.assets.push(row);
+    }
+  } else {
+    merged.assets = existingAssets.map((asset) => ({ ...asset, source: asset.source || "client supplied" }));
   }
 
   if (template?.defaults?.expenses) {
@@ -553,9 +588,18 @@ export function mergeDocumentDraft(caseData, draft) {
     };
   }
 
-  merged.expenses.livingMonthly = draft.assumptions.hemMonthly;
-  merged.expenses.breakdown = draft.assumptions.hemBreakdown || hemBreakdown(draft.assumptions.hemMonthly);
+  const existingLivingMonthly = Number(merged.expenses?.livingMonthly || 0);
+  const draftLivingMonthly = Number(draft.assumptions.hemMonthly || 0);
+  const useExistingLiving = existingLivingMonthly > 0 && draft.assumptions.expenseSource === "template";
+  const livingMonthly = useExistingLiving ? existingLivingMonthly : draftLivingMonthly;
+  const expenseSource = useExistingLiving ? "client supplied" : draft.assumptions.expenseSource;
+  merged.expenses.livingMonthly = livingMonthly;
+  merged.expenses.breakdown = sourceTaggedExpenses(livingMonthly, useExistingLiving ? "generated from client total" : expenseSource);
+  merged.expenses.source = useExistingLiving ? "client supplied" : expenseSource;
   merged.assets.breakdown = assetRows;
+  merged.assets.source = hasDetailedAssets ? "client supplied" : assetRows[0]?.source || draft.assumptions.assetSource;
+  merged.assetSource = hasDetailedAssets ? "client supplied" : assetRows[0]?.source || draft.assumptions.assetSource;
+  merged.expenseSource = merged.expenses.source;
   merged.documentIntake = draft;
   merged.selectedTemplate = template || null;
   return merged;

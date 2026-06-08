@@ -42,10 +42,13 @@ export function buildInfinityPayload(caseData) {
     money(expenses.transportMonthly) +
     money(expenses.otherMonthly);
   const infinity = buildInfinityTemplate(caseData);
+  const assetTotal = (caseData.assets || []).reduce((sum, asset) => sum + money(asset.value), 0);
   const serviceability = {
-    hemMonthly: caseData.documentIntake?.assumptions?.hemMonthly || expenses.livingMonthly || 0,
-    financialAssetBuffer: caseData.documentIntake?.assumptions?.financialAssetBuffer || 0,
-    documentIncomeSource: caseData.documentIntake?.assumptions?.incomeSource || "crm"
+    hemMonthly: expenses.livingMonthly || caseData.documentIntake?.assumptions?.hemMonthly || 0,
+    financialAssetBuffer: assetTotal || caseData.documentIntake?.assumptions?.financialAssetBuffer || 0,
+    documentIncomeSource: caseData.documentIntake?.assumptions?.incomeSource || "crm",
+    expenseSource: caseData.expenseSource || expenses.source || caseData.documentIntake?.assumptions?.expenseSource || "crm",
+    assetSource: caseData.assetSource || caseData.documentIntake?.assumptions?.assetSource || "crm"
   };
 
   return {
