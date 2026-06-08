@@ -51,11 +51,21 @@ label {
   gap: 5px;
 }
 
-input {
+input,
+select {
   border: 1px solid #cbd5ce;
   border-radius: 7px;
   min-height: 36px;
   padding: 8px 9px;
+}
+
+.case-picker {
+  background: #fff;
+  border: 1px solid #dfe5e0;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 10px 11px;
 }
 
 .button-row {

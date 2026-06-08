@@ -9,12 +9,22 @@
   <body>
     <main>
       <header>
-        <span>BrokerDesk CRM</span>
-        <h1>AutoFill Worker</h1>
+        <span>EasyFlow AI</span>
+        <h1>Infinity & AOL AutoFill</h1>
       </header>
 
+      <section class="case-picker">
+        <label>
+          Prepared case
+          <select id="casePicker">
+            <option value="">Load prepared cases...</option>
+          </select>
+        </label>
+        <button id="refreshCases" class="secondary-action" type="button">Refresh Cases</button>
+      </section>
+
       <label>
-        Case ID
+        Case ID or token
         <input id="caseToken" placeholder="ELF-2026-0148 or token" />
       </label>
 
@@ -24,7 +34,7 @@
       <details class="advanced">
         <summary>Advanced tools</summary>
         <label>
-          BrokerDesk API
+          EasyFlow API
           <input id="apiBase" value="https://booking.easyloanfinance.com.au/infinity-aol" />
         </label>
         <div class="button-row">

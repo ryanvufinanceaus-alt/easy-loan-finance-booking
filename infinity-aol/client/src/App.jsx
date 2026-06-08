@@ -5025,7 +5025,7 @@ export default function App() {
   async function prepareInfinity(manualOverrides = {}) {
     if (!selectedCaseId) {
       setError("Search and select a case first.");
-      return;
+      return false;
     }
     setLoading(true);
     setError("");
@@ -5044,8 +5044,10 @@ export default function App() {
       if (result.documentDraft || result.payload?.documentIntake) setDocumentDraft(result.documentDraft || result.payload.documentIntake);
       setAuditLog(await api("/api/audit-log"));
       setCaseHistory(await api(`/api/cases/${selectedCaseId}/history`));
+      return true;
     } catch (err) {
       setError(err.message);
+      return false;
     } finally {
       setLoading(false);
     }
@@ -5068,7 +5070,7 @@ export default function App() {
       const lvr = Number(((loanAmount / purchasePrice) * 100).toFixed(2));
       const next = { lvr: String(lvr), loanAmount: String(loanAmount), propertyPurchasePrice: String(purchasePrice) };
       setManualIntake((current) => ({ ...current, ...next }));
-      await prepareInfinity(next);
+      if (await prepareInfinity(next)) setFixIssue(null);
       return;
     }
     if (issue.code === "DEPOSIT_LOAN_TOTAL_MISMATCH") {
@@ -5079,7 +5081,7 @@ export default function App() {
       }
       const next = { depositEquity: String(purchasePrice - loanAmount), loanAmount: String(loanAmount), propertyPurchasePrice: String(purchasePrice) };
       setManualIntake((current) => ({ ...current, ...next }));
-      await prepareInfinity(next);
+      if (await prepareInfinity(next)) setFixIssue(null);
     }
   }
 
@@ -5475,7 +5477,9 @@ export default function App() {
               preparedPayload={prepared?.payload}
               onChange={updateValidationFixField}
               onClose={() => setFixIssue(null)}
-              onSavePrepare={() => prepareInfinity()}
+              onSavePrepare={async () => {
+                if (await prepareInfinity()) setFixIssue(null);
+              }}
             />
           </section>
 

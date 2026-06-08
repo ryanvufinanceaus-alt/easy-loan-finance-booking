@@ -7,6 +7,8 @@ const state = {
 const els = {
   apiBase: document.querySelector("#apiBase"),
   caseToken: document.querySelector("#caseToken"),
+  casePicker: document.querySelector("#casePicker"),
+  refreshCases: document.querySelector("#refreshCases"),
   startAutofill: document.querySelector("#startAutofill"),
   fillSection: document.querySelector("#fillSection"),
   comparePage: document.querySelector("#comparePage"),
@@ -22,6 +24,7 @@ chrome.storage.local.get(["apiBase", "caseToken"], (stored) => {
       : stored.apiBase;
   }
   if (stored.caseToken) els.caseToken.value = stored.caseToken;
+  loadPreparedCases().catch((error) => setStatus(error.message, "error"));
 });
 
 function setStatus(message, type = "muted") {
@@ -32,6 +35,15 @@ function setStatus(message, type = "muted") {
 function enableAdvanced(enabled) {
   els.fillSection.disabled = !enabled;
   els.compareCase.disabled = !enabled;
+}
+
+async function readJsonResponse(response, fallbackMessage) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch (_error) {
+    throw new Error(`${fallbackMessage}. The API returned a web page instead of JSON; check the EasyFlow API URL.`);
+  }
 }
 
 function shortValue(value) {
@@ -100,20 +112,23 @@ async function sendToContent(message) {
 
 async function loadPayload() {
   const apiBase = els.apiBase.value.replace(/\/$/, "");
-  const caseToken = els.caseToken.value.trim();
+  const selectedToken = els.casePicker.value.trim();
+  const caseToken = (selectedToken || els.caseToken.value).trim();
   if (!caseToken) throw new Error("Enter the Case ID first.");
 
   chrome.storage.local.set({ apiBase, caseToken });
   const [preparedResponse, mappingResponse] = await Promise.all([
-    fetch(`${apiBase}/api/infinity/payload/${encodeURIComponent(caseToken)}`, { credentials: "include" }),
-    fetch(`${apiBase}/api/infinity/mappings/current`, { credentials: "include" })
+    fetch(`${apiBase}/api/infinity/payload/${encodeURIComponent(caseToken)}`),
+    fetch(`${apiBase}/api/infinity/mappings/current`)
   ]);
 
-  if (!preparedResponse.ok) throw new Error((await preparedResponse.json()).error || "Payload not found");
-  if (!mappingResponse.ok) throw new Error("Mapping endpoint is not available");
+  const preparedJson = await readJsonResponse(preparedResponse, "Payload endpoint is not available");
+  const mappingJson = await readJsonResponse(mappingResponse, "Mapping endpoint is not available");
+  if (!preparedResponse.ok) throw new Error(preparedJson.error || "Payload not found");
+  if (!mappingResponse.ok) throw new Error(mappingJson.error || "Mapping endpoint is not available");
 
-  state.prepared = await preparedResponse.json();
-  state.mapping = await mappingResponse.json();
+  state.prepared = preparedJson;
+  state.mapping = mappingJson;
   state.lastResult = null;
   enableAdvanced(state.prepared.validation.okToAutofill);
 
@@ -122,9 +137,37 @@ async function loadPayload() {
   }
 }
 
+function renderPreparedCases(cases) {
+  els.casePicker.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = cases.length ? "Choose a prepared case" : "No prepared case found";
+  els.casePicker.append(placeholder);
+
+  for (const item of cases) {
+    const option = document.createElement("option");
+    option.value = item.token || item.caseId;
+    option.textContent = `${item.label} - ${item.caseId}${item.okToAutofill ? "" : " (fix first)"}`;
+    option.dataset.caseId = item.caseId || "";
+    els.casePicker.append(option);
+  }
+}
+
+async function loadPreparedCases() {
+  const apiBase = els.apiBase.value.replace(/\/$/, "");
+  setStatus("Loading prepared cases...", "muted");
+  const response = await fetch(`${apiBase}/api/infinity/prepared-cases`);
+  const data = await readJsonResponse(response, "Prepared case list is not available");
+  if (!response.ok) throw new Error(data.error || "Prepared case list is not available");
+  renderPreparedCases(data.cases || []);
+  const storedToken = els.caseToken.value.trim();
+  if (storedToken) els.casePicker.value = storedToken;
+  setStatus(data.cases?.length ? "Choose a prepared case, then start AutoFill." : "Prepare a case in EasyFlow AI first.", "muted");
+}
+
 async function fetchComparisonReport() {
   const apiBase = els.apiBase.value.replace(/\/$/, "");
-  const response = await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/comparison-report`, { credentials: "include" });
+  const response = await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/comparison-report`);
   if (!response.ok) return null;
   return response.json();
 }
@@ -188,7 +231,6 @@ async function checkCurrentPage() {
   const apiBase = els.apiBase.value.replace(/\/$/, "");
   await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/comparison-snapshot`, {
     method: "POST",
-    credentials: "include",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(result)
   });
@@ -210,6 +252,11 @@ async function compareCase() {
 }
 
 els.startAutofill.addEventListener("click", startAutofill);
+els.refreshCases.addEventListener("click", () => loadPreparedCases().catch((error) => setStatus(error.message, "error")));
+els.casePicker.addEventListener("change", () => {
+  els.caseToken.value = els.casePicker.value;
+  chrome.storage.local.set({ caseToken: els.casePicker.value });
+});
 els.fillSection.addEventListener("click", () => fillCurrentPopup().catch((error) => setStatus(error.message, "error")));
 els.comparePage.addEventListener("click", () => checkCurrentPage().catch((error) => setStatus(error.message, "error")));
 els.compareCase.addEventListener("click", () => compareCase().catch((error) => setStatus(error.message, "error")));

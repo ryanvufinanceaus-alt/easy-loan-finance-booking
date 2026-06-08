@@ -1771,6 +1771,7 @@ function prepareCase(caseData, source = "prepare", options = {}) {
     payload,
     validation,
     mappingVersion: payload.meta.mappingVersion,
+    preparedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
   };
 
@@ -2494,6 +2495,35 @@ app.get("/api/infinity/payload/:tokenOrCaseId", (request, response) => {
   const prepared = preparedCases.get(request.params.tokenOrCaseId);
   if (!prepared) return response.status(404).json({ error: "Prepared payload not found. Prepare the case from CRM first." });
   response.json(prepared);
+});
+
+app.get("/api/infinity/prepared-cases", (_request, response) => {
+  const seen = new Set();
+  const cases = preparedArchive
+    .filter((prepared) => {
+      if (!prepared?.caseId || seen.has(prepared.caseId)) return false;
+      seen.add(prepared.caseId);
+      return true;
+    })
+    .slice(0, 30)
+    .map((prepared) => {
+      const applicants = prepared.payload?.applicants || {};
+      const primary = applicants.primary || {};
+      const secondary = applicants.secondary || {};
+      const primaryName = [primary.firstName, primary.lastName].filter(Boolean).join(" ") || prepared.caseId;
+      const secondaryName = [secondary.firstName, secondary.lastName].filter(Boolean).join(" ");
+      return {
+        token: prepared.token,
+        caseId: prepared.caseId,
+        label: secondaryName ? `${primaryName} & ${secondaryName}` : primaryName,
+        loanAmount: prepared.payload?.loan?.loanAmount || 0,
+        security: prepared.payload?.property?.address || "",
+        okToAutofill: Boolean(prepared.validation?.okToAutofill),
+        preparedAt: prepared.preparedAt || null,
+        expiresAt: prepared.expiresAt || null
+      };
+    });
+  response.json({ cases });
 });
 
 app.get("/api/infinity/mappings/current", (_request, response) => {
