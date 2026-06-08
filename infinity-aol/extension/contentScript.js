@@ -17,6 +17,15 @@ function isVisible(element) {
   return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
 }
 
+function isBackdropOnly(element) {
+  const marker = normalize(`${element.className || ""} ${element.id || ""}`);
+  return marker.includes("backdrop") || marker === "overlay";
+}
+
+function hasUsableControls(element) {
+  return Boolean(element.querySelector("input, textarea, select, button, a, [role='button']"));
+}
+
 function activeModal() {
   const candidates = [
     ...document.querySelectorAll(
@@ -25,7 +34,7 @@ function activeModal() {
   ]
     .filter(isVisible)
     .map((element) => ({ element, rect: element.getBoundingClientRect() }))
-    .filter(({ rect }) => rect.width > 180 && rect.height > 120)
+    .filter(({ element, rect }) => rect.width > 180 && rect.height > 120 && !isBackdropOnly(element) && hasUsableControls(element))
     .sort((a, b) => b.rect.width * b.rect.height - a.rect.width * a.rect.height);
 
   return candidates[0]?.element || null;
@@ -33,6 +42,45 @@ function activeModal() {
 
 function activeSurfaceRoot() {
   return activeModal() || document;
+}
+
+function showAutomationStatus(message, type = "running") {
+  let status = document.querySelector("#easyflow-ai-extension-status");
+  if (!status) {
+    status = document.createElement("div");
+    status.id = "easyflow-ai-extension-status";
+    document.documentElement.appendChild(status);
+  }
+  const colors = {
+    running: ["#0f2b1f", "#ffffff"],
+    success: ["#157347", "#ffffff"],
+    error: ["#8b2018", "#ffffff"]
+  };
+  const [background, color] = colors[type] || colors.running;
+  Object.assign(status.style, {
+    position: "fixed",
+    top: "14px",
+    right: "14px",
+    zIndex: "2147483647",
+    maxWidth: "360px",
+    padding: "12px 14px",
+    borderRadius: "10px",
+    boxShadow: "0 14px 40px rgba(0,0,0,.22)",
+    font: "700 14px/1.35 Arial, sans-serif",
+    background,
+    color
+  });
+  status.textContent = message;
+}
+
+function cleanupStuckModalState() {
+  if (activeModal()) return;
+  document.querySelectorAll(".modal-backdrop, [class*='backdrop']").forEach((element) => element.remove());
+  document.body?.classList.remove("modal-open");
+  if (document.body) {
+    document.body.style.overflow = "";
+    document.body.style.paddingRight = "";
+  }
 }
 
 function nativeSetValue(element, value) {
@@ -115,8 +163,9 @@ async function clickModalSave() {
   const save = findClickableByText(["Save Changes", "Save", "Done", "Update"], modal);
   if (!save || isUnsafeFinalAction(save)) return false;
   clickElement(save);
-  await waitFor(() => !activeModal(), 5000);
-  return true;
+  const closed = await waitFor(() => !activeModal(), 5000);
+  if (!closed) cleanupStuckModalState();
+  return Boolean(closed);
 }
 
 function readFieldValue(element) {
@@ -549,6 +598,7 @@ async function runPopupWorkflow(workflow, payload, mapping, apiBase, result) {
   }
 
   for (let index = 0; index < workflow.rowCount; index += 1) {
+    showAutomationStatus(`EasyFlow AI: filling ${workflow.sectionId} ${index + 1}/${workflow.rowCount}...`);
     const addButton = findClickableByText(workflow.addLabels);
     if (!addButton) {
       result.fieldsSkipped.push({
@@ -582,7 +632,15 @@ async function runPopupWorkflow(workflow, payload, mapping, apiBase, result) {
       label: saved ? "Save Changes" : "Save button not found"
     });
 
-    if (!saved) return;
+    if (!saved) {
+      result.errors.push({
+        section: workflow.sectionId,
+        label: workflow.addLabels[0],
+        message: "Popup was filled but did not close. Please review and save it manually.",
+        rowIndex: index
+      });
+      return;
+    }
     await sleep(350);
   }
 }
@@ -655,6 +713,7 @@ async function runAllPages({ payload, mapping, apiBase }) {
   }
 
   for (const step of plan) {
+    showAutomationStatus(`EasyFlow AI: opening ${step.labels[0]}...`);
     const navigated = await navigateToPage(step);
     result.pages.push({ id: step.id, labels: step.labels, navigated });
     if (!navigated) {
@@ -676,9 +735,17 @@ async function runAllPages({ payload, mapping, apiBase }) {
       missing: compareResult.missing.length
     });
     await sleep(500);
+    cleanupStuckModalState();
   }
 
   await logAutofill(apiBase, payload, result);
+  const issueCount = result.errors.length + result.fieldsSkipped.length;
+  showAutomationStatus(
+    issueCount
+      ? `EasyFlow AI finished with ${issueCount} item(s) to review.`
+      : "EasyFlow AI finished. Review before Push AOL or Submit.",
+    issueCount ? "error" : "success"
+  );
   return result;
 }
 
