@@ -45,9 +45,11 @@
       "label": "Add/Edit Expense",
       "aliases": ["Monthly Expenses"],
       "fields": [
+        { "payloadPath": "infinity.financials.expenses.0.type", "defaultValue": "Other", "label": "Expense Type", "labelContains": ["Expense Type"] },
         { "payloadPath": "serviceability.hemMonthly", "label": "Expense Amount", "labelContains": ["Expense Amount", "HEM monthly", "Monthly Expenses"] },
-        { "payloadPath": "expenses.totalMonthly", "label": "Total Monthly Expenses", "labelContains": ["Total Monthly Expenses"], "optional": true },
-        { "payloadPath": "expenses.livingMonthly", "label": "Living Expenses", "labelContains": ["Living expenses"], "optional": true }
+        { "payloadPath": "infinity.financials.expenses.0.frequency", "defaultValue": "Monthly", "label": "Expense Frequency", "labelContains": ["Expense Frequency", "Frequency"] },
+        { "payloadPath": "infinity.financials.expenses.0.description", "defaultValue": "Living expenses / HEM", "label": "Description", "labelContains": ["Description"], "optional": true },
+        { "payloadPath": "infinity.financials.expenses.0.continuePostSettlement", "defaultValue": "Yes", "label": "Continue Post Settlement", "labelContains": ["Continue Post Settlement"], "optional": true }
       ]
     },
     {
@@ -72,6 +74,19 @@
         { "payloadPath": "infinity.financials.liabilities.0.limit", "label": "Limit Amount", "labelContains": ["Limit Amount", "Limit"] },
         { "payloadPath": "infinity.financials.liabilities.0.repaymentMonthly", "label": "Monthly Repayment", "labelContains": ["Monthly Repayment"], "optional": true },
         { "payloadPath": "infinity.financials.liabilities.0.interestRate", "label": "Interest Rate", "labelContains": ["Interest Rate"], "optional": true }
+      ]
+    },
+    {
+      "id": "loansProducts",
+      "label": "Loans & Products",
+      "aliases": ["Loan Purpose", "Loans & Securities", "Opportunities"],
+      "fields": [
+        { "payloadPath": "infinity.loansSecuritiesCommentary.loanPurpose", "label": "Loan Purpose", "labelContains": ["Loan Purpose"] },
+        { "payloadPath": "infinity.loansSecuritiesCommentary.facilityAmount", "label": "Facility Amount", "labelContains": ["Facility Amount"] },
+        { "payloadPath": "infinity.loansSecuritiesCommentary.preApprovalLoan", "label": "Pre-Approval Loan", "labelContains": ["Pre-Approval Loan"], "optional": true },
+        { "payloadPath": "infinity.loansSecuritiesCommentary.capitaliseLmi", "label": "Capitalise LMI", "labelContains": ["Capitalise LMI"], "optional": true },
+        { "payloadPath": "infinity.loansSecuritiesCommentary.opportunity", "label": "Opportunity", "labelContains": ["Opportunity"], "optional": true },
+        { "payloadPath": "infinity.loansSecuritiesCommentary.opportunityName", "label": "Name", "labelContains": ["Name"], "optional": true }
       ]
     },
     {

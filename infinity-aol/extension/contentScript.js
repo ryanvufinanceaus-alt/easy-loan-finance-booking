@@ -168,6 +168,15 @@ async function clickModalSave() {
   return Boolean(closed);
 }
 
+async function clickPageSaveIfVisible() {
+  if (activeModal()) return false;
+  const save = findClickableByText(["Save Changes", "Save", "Done", "Update"], document);
+  if (!save || isUnsafeFinalAction(save)) return false;
+  clickElement(save);
+  await sleep(900);
+  return true;
+}
+
 function readFieldValue(element) {
   if (!element) return "";
   if (element.tagName === "SELECT") return element.selectedOptions?.[0]?.textContent?.trim() || element.value || "";
@@ -434,6 +443,14 @@ function collectionAt(payload, path) {
   return Array.isArray(collection) ? collection : [];
 }
 
+function fieldValue(payload, field) {
+  const value = getValue(payload, field.payloadPath);
+  if ((value === undefined || value === null || value === "") && field.defaultValue !== undefined) {
+    return field.defaultValue;
+  }
+  return value;
+}
+
 function sectionForRepeatCursor(section, payload) {
   const repeatPath = repeatPathForSection(section.id);
   if (!repeatPath || !activeModal()) return { section, rowIndex: null, rowCount: null };
@@ -500,7 +517,7 @@ async function autofill({ mode, payload, mapping, apiBase }) {
     const filledBeforeSection = result.fieldsFilled.length;
 
     for (const field of section.fields) {
-      const value = getValue(payload, field.payloadPath);
+      const value = fieldValue(payload, field);
       if ((value === undefined || value === null || value === "") && field.optional) {
         result.fieldsSkipped.push({ section: section.id, label: field.label, reason: "optional empty value", rowIndex });
         continue;
@@ -651,6 +668,10 @@ async function runWorkflow({ payload, mapping, apiBase }) {
   const visibleResult = await autofill({ mode: "visible", payload, mapping, apiBase });
   mergeAutofillResult(result, visibleResult);
   result.actions.push({ action: "fill-visible-fields", section: "visible", filled: visibleResult.fieldsFilled.length });
+  if (visibleResult.fieldsFilled.length) {
+    const saved = await clickPageSaveIfVisible();
+    result.actions.push({ action: saved ? "save-page" : "review-page", section: "visible", label: saved ? "Save" : "No page save button visible" });
+  }
 
   for (const workflow of supportedPopupWorkflows(payload)) {
     await runPopupWorkflow(workflow, payload, mapping, apiBase, result);
@@ -760,7 +781,7 @@ async function scanCompare({ mode, payload, mapping }) {
 
   for (const section of sections) {
     for (const field of section.fields) {
-      const expected = getValue(payload, field.payloadPath);
+      const expected = fieldValue(payload, field);
       if ((expected === undefined || expected === null || expected === "") && field.optional) continue;
       const found = findElement(field, expected);
       if (!found) {
