@@ -258,9 +258,71 @@ function IssueList({ issues }) {
             <strong>{issue.code.replaceAll("_", " ")}</strong>
             <span>{issue.message}</span>
             <small>{issue.path}</small>
+            <IssueFixGuide issue={issue} />
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function IssueFixGuide({ issue }) {
+  const guides = {
+    LVR_MISMATCH: {
+      title: "Where to fix",
+      steps: [
+        "Open Loan Case Manager or the linked Loan Form record.",
+        "Check Loan amount and Security / Property value.",
+        "If those numbers are correct, update CRM LVR to the calculated LVR, then Save and Prepare again."
+      ]
+    },
+    DEPOSIT_LOAN_TOTAL_MISMATCH: {
+      title: "Where to fix",
+      steps: [
+        "Check Purchase price, Deposit/equity, and Loan amount in the Loan Request / Property section.",
+        "Deposit plus loan amount should match the purchase price unless there is a clear reason in notes."
+      ]
+    },
+    MISSING_REQUIRED_FIELD: {
+      title: "Where to fix",
+      steps: [
+        "Open the selected case in Loan Case Manager.",
+        "Search for the field path shown above, fill the missing client information, then Save and Prepare again."
+      ]
+    },
+    LMI_REVIEW_REQUIRED: {
+      title: "Broker check",
+      steps: [
+        "Review whether LMI applies before Push AOL.",
+        "Confirm LMI treatment, lender policy, and notes before final broker review."
+      ]
+    },
+    PENDING_DOCUMENTS: {
+      title: "Document check",
+      steps: [
+        "Review the document checklist and mark received files before treating the case as complete.",
+        "You can still prepare autofill if no hard validation errors remain."
+      ]
+    },
+    DOCUMENT_EXTRACTION_NEEDS_REVIEW: {
+      title: "Document check",
+      steps: [
+        "Open Document Intake and review OCR/AI extracted values.",
+        "Correct any licence, income, bank, or contract values before preparing AOL."
+      ]
+    }
+  };
+  const guide = guides[issue.code];
+  if (!guide) return null;
+
+  return (
+    <div className="issue-guide">
+      <b>{guide.title}</b>
+      <ol>
+        {guide.steps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
     </div>
   );
 }
