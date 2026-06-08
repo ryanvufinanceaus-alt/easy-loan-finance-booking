@@ -245,15 +245,40 @@ function setAriaChecked(element, value) {
   return true;
 }
 
-function setFieldValue(element, value) {
+function looksLikeChoiceControl(element) {
+  const role = element.getAttribute("role");
+  const popup = element.getAttribute("aria-haspopup");
+  const classText = String(element.className || "").toLowerCase();
+  return role === "combobox" || popup === "listbox" || classText.includes("select") || classText.includes("dropdown");
+}
+
+function optionAliases(value) {
+  const text = String(value ?? "").trim();
+  const aliases = [text];
+  const normalized = normalize(text);
+  if (normalized === "groceries") aliases.push("Food & Groceries");
+  if (normalized === "monthly") aliases.push("Monthly");
+  return [...new Set(aliases.filter(Boolean))];
+}
+
+function formatDateValue(value, format) {
+  if (!format || value === undefined || value === null || value === "") return value;
+  const text = String(value).trim();
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso && format === "au") return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  return text;
+}
+
+async function setFieldValue(element, value) {
   if (element.disabled || element.readOnly || element.getAttribute("aria-disabled") === "true") {
     return false;
   }
 
   if (element.tagName === "SELECT") {
     const stringValue = String(value ?? "");
+    const wanted = normalize(stringValue);
     const option = [...element.options].find(
-      (item) => item.value === stringValue || normalize(item.textContent) === normalize(stringValue)
+      (item) => item.value === stringValue || normalize(item.textContent) === wanted || normalize(item.textContent).includes(wanted) || wanted.includes(normalize(item.textContent))
     );
     if (!option) return false;
     element.value = option.value;
@@ -279,6 +304,15 @@ function setFieldValue(element, value) {
     return setAriaChecked(element, value);
   }
 
+  if (looksLikeChoiceControl(element)) {
+    clickElement(element);
+    await sleep(250);
+    for (const alias of optionAliases(value)) {
+      if (chooseVisibleOption(alias)) return true;
+    }
+    return false;
+  }
+
   if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
     nativeSetValue(element, value);
     return true;
@@ -289,11 +323,6 @@ function setFieldValue(element, value) {
     element.dispatchEvent(new Event("input", { bubbles: true }));
     element.dispatchEvent(new Event("change", { bubbles: true }));
     return true;
-  }
-
-  if (element.getAttribute("role") === "combobox" || element.getAttribute("aria-haspopup") === "listbox") {
-    element.click();
-    return chooseVisibleOption(value);
   }
 
   if (element.tagName === "BUTTON" || element.getAttribute("role") === "button") {
@@ -446,9 +475,9 @@ function collectionAt(payload, path) {
 function fieldValue(payload, field) {
   const value = getValue(payload, field.payloadPath);
   if ((value === undefined || value === null || value === "") && field.defaultValue !== undefined) {
-    return field.defaultValue;
+    return formatDateValue(field.defaultValue, field.dateFormat);
   }
-  return value;
+  return formatDateValue(value, field.dateFormat);
 }
 
 function sectionForRepeatCursor(section, payload) {
@@ -478,7 +507,6 @@ async function logAutofill(apiBase, payload, result) {
   try {
     await fetch(`${apiBase}/api/infinity/autofill-log`, {
       method: "POST",
-      credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         brokerUser: payload.meta?.brokerUser,
@@ -498,7 +526,6 @@ async function logComparisonSnapshot(apiBase, payload, result) {
   try {
     await fetch(`${apiBase}/api/cases/${encodeURIComponent(payload.meta?.caseId || "unknown")}/comparison-snapshot`, {
       method: "POST",
-      credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(result)
     });
@@ -530,7 +557,7 @@ async function autofill({ mode, payload, mapping, apiBase }) {
       }
 
       try {
-        const ok = setFieldValue(found.element, value);
+      const ok = await setFieldValue(found.element, value);
         if (ok) {
           result.fieldsFilled.push({ section: section.id, label: field.label, selector: found.selector, expected: value, rowIndex });
         } else {
@@ -607,6 +634,36 @@ function supportedPopupWorkflows(payload) {
     .filter((workflow) => workflow.rowCount > 0 && pageHasAnyText(workflow.pageHints));
 }
 
+function numericTokens(value) {
+  const raw = String(value ?? "").replace(/[^\d.-]/g, "");
+  const number = Number(raw);
+  if (!Number.isFinite(number)) return [];
+  return [...new Set([raw, String(number), number.toLocaleString("en-AU")].filter(Boolean))];
+}
+
+function rowIdentity(workflow, payload, index) {
+  const row = workflow.repeatPath ? collectionAt(payload, workflow.repeatPath)[index] : null;
+  if (workflow.sectionId === "financialsExpense") {
+    return { labels: ["Groceries"], values: [getValue(payload, "serviceability.hemMonthly")] };
+  }
+  if (!row) return null;
+  if (workflow.sectionId === "financialsAsset") return { labels: [row.type, row.description], values: [row.value] };
+  if (workflow.sectionId === "financialsIncome") return { labels: [row.type, row.employer, row.ownership], values: [row.amount] };
+  if (workflow.sectionId === "financialsLiability") return { labels: [row.type, row.description, row.lender], values: [row.balance, row.limit] };
+  return null;
+}
+
+function existingWorkflowRowVisible(workflow, payload, index) {
+  const identity = rowIdentity(workflow, payload, index);
+  if (!identity) return false;
+  const text = normalize(document.body?.innerText || "");
+  const labels = (identity.labels || []).filter((item) => item !== undefined && item !== null && String(item).trim());
+  const values = (identity.values || []).flatMap(numericTokens);
+  const hasLabel = labels.some((label) => text.includes(normalize(label)));
+  const hasValue = values.some((value) => text.includes(normalize(value)));
+  return hasLabel && (hasValue || !values.length);
+}
+
 async function runPopupWorkflow(workflow, payload, mapping, apiBase, result) {
   const section = mapping.sections.find((item) => item.id === workflow.sectionId);
   if (!section) {
@@ -616,6 +673,11 @@ async function runPopupWorkflow(workflow, payload, mapping, apiBase, result) {
 
   for (let index = 0; index < workflow.rowCount; index += 1) {
     showAutomationStatus(`EasyFlow AI: filling ${workflow.sectionId} ${index + 1}/${workflow.rowCount}...`);
+    if (existingWorkflowRowVisible(workflow, payload, index)) {
+      result.actions.push({ action: "skip-existing-row", section: workflow.sectionId, rowIndex: index });
+      continue;
+    }
+
     const addButton = findClickableByText(workflow.addLabels);
     if (!addButton) {
       result.fieldsSkipped.push({
