@@ -800,6 +800,30 @@ h2 {
   margin: 3px 0;
 }
 
+.issue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.validation-fix-panel {
+  border-top: 1px solid #dce4df;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.validation-fix-panel small {
+  color: #66746c;
+  display: block;
+  margin-top: 3px;
+}
+
+.compact-grid {
+  padding: 0;
+}
+
 .empty-state {
   align-items: center;
   color: #66746c;

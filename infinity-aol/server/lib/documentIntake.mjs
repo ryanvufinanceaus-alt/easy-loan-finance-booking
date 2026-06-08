@@ -365,6 +365,9 @@ export function buildDocumentDraft(files = [], options = {}) {
   const fieldSuggestions = documents.flatMap((doc) => doc.suggestions);
   const manualSuggestions = [
     manualMoneySuggestion("loan.loanAmount", manualIntake.loanAmount, "Broker typed loan amount"),
+    manualMoneySuggestion("property.purchasePrice", manualIntake.propertyPurchasePrice, "Broker typed property/security value"),
+    manualMoneySuggestion("loan.deposit", manualIntake.depositEquity, "Broker typed deposit/equity"),
+    manualMoneySuggestion("loan.lvr", manualIntake.lvr, "Broker typed LVR"),
     manualMoneySuggestion("expenses.livingMonthly", manualIntake.hemMonthly, "Broker typed HEM/living expense"),
     manualMoneySuggestion("assets.cash.value", manualIntake.financialAssetBuffer, "Broker typed financial asset buffer"),
     manualSuggestion("applicants.primary.firstName", primaryName.firstName, "Broker confirmed primary applicant name"),
@@ -464,6 +467,18 @@ function applySuggestion(merged, item) {
   if (item.confidence < 0.72) return;
   if (item.path === "loan.loanAmount") {
     merged.loan = { ...(merged.loan || {}), loanAmount: Number(item.value) || merged.loan?.loanAmount };
+    return;
+  }
+  if (item.path === "loan.deposit") {
+    merged.loan = { ...(merged.loan || {}), deposit: Number(item.value) || merged.loan?.deposit };
+    return;
+  }
+  if (item.path === "loan.lvr") {
+    merged.loan = { ...(merged.loan || {}), lvr: Number(item.value) || merged.loan?.lvr };
+    return;
+  }
+  if (item.path === "property.purchasePrice") {
+    merged.property = { ...(merged.property || {}), purchasePrice: Number(item.value) || merged.property?.purchasePrice };
     return;
   }
   if (item.path === "expenses.livingMonthly") {

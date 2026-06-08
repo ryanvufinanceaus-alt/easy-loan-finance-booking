@@ -185,6 +185,9 @@ function initialManualIntake(caseData) {
     primaryApplicantName: [primary.firstName, primary.middleName, primary.lastName].filter(Boolean).join(" ") || primary.name || "",
     secondaryApplicantName: [secondary.firstName, secondary.middleName, secondary.lastName].filter(Boolean).join(" ") || secondary.name || "",
     loanAmount: caseData.loan?.loanAmount || "",
+    propertyPurchasePrice: caseData.property?.purchasePrice || caseData.property?.estimatedValue || "",
+    depositEquity: caseData.loan?.deposit || "",
+    lvr: caseData.loan?.lvr || "",
     primaryAnnualIncome: primary.income?.baseAnnual || "",
     secondaryAnnualIncome: secondary.income?.baseAnnual || "",
     primaryDateOfBirth: primary.dateOfBirth || "",
@@ -235,7 +238,7 @@ async function api(path, options) {
   return data;
 }
 
-function IssueList({ issues }) {
+function IssueList({ issues, onFixIssue, onAutoFixIssue }) {
   if (!issues) {
     return <div className="empty-state">Prepare the CRM case to run Infinity/AOL validation.</div>;
   }
@@ -259,9 +262,64 @@ function IssueList({ issues }) {
             <span>{issue.message}</span>
             <small>{issue.path}</small>
             <IssueFixGuide issue={issue} />
+            <div className="issue-actions">
+              {["LVR_MISMATCH", "DEPOSIT_LOAN_TOTAL_MISMATCH"].includes(issue.code) && (
+                <button className="ghost-button mini-button" type="button" onClick={() => onAutoFixIssue?.(issue)}>
+                  Auto fix
+                </button>
+              )}
+              <button className="ghost-button mini-button" type="button" onClick={() => onFixIssue?.(issue)}>
+                Fix here
+              </button>
+            </div>
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function ValidationFixPanel({ issue, manualIntake, preparedPayload, onChange, onClose, onSavePrepare }) {
+  if (!issue) return null;
+  const loanAmount = manualIntake.loanAmount || preparedPayload?.loan?.loanAmount || "";
+  const purchasePrice = manualIntake.propertyPurchasePrice || preparedPayload?.property?.purchasePrice || "";
+  const deposit = manualIntake.depositEquity || preparedPayload?.loan?.deposit || "";
+  const lvr = manualIntake.lvr || preparedPayload?.loan?.lvr || "";
+  const missingPath = issue.code === "MISSING_REQUIRED_FIELD" ? issue.path : "";
+
+  return (
+    <div className="validation-fix-panel">
+      <div className="split-title">
+        <div>
+          <strong>Fix validation issue</strong>
+          <small>{issue.code.replaceAll("_", " ")} {issue.path ? `- ${issue.path}` : ""}</small>
+        </div>
+        <button className="ghost-button mini-button" type="button" onClick={onClose}>Close</button>
+      </div>
+      {missingPath && (
+        <p className="panel-helper">This field is missing from the prepared payload. Fill the matching field below if shown, or update it in Loan Case Manager / Loan Form record.</p>
+      )}
+      <div className="quick-input-grid compact-grid">
+        <label>
+          Loan amount
+          <input value={loanAmount} onChange={(event) => onChange("loanAmount", event.target.value)} />
+        </label>
+        <label>
+          Property / security value
+          <input value={purchasePrice} onChange={(event) => onChange("propertyPurchasePrice", event.target.value)} />
+        </label>
+        <label>
+          Deposit/equity
+          <input value={deposit} onChange={(event) => onChange("depositEquity", event.target.value)} />
+        </label>
+        <label>
+          LVR %
+          <input value={lvr} onChange={(event) => onChange("lvr", event.target.value)} />
+        </label>
+      </div>
+      <button className="primary-button" type="button" onClick={onSavePrepare}>
+        Save fix & prepare again
+      </button>
     </div>
   );
 }
@@ -4715,6 +4773,7 @@ export default function App() {
   const [selectedCaseId, setSelectedCaseId] = useState("");
   const [caseData, setCaseData] = useState(null);
   const [prepared, setPrepared] = useState(null);
+  const [fixIssue, setFixIssue] = useState(null);
   const [auditLog, setAuditLog] = useState([]);
   const [caseHistory, setCaseHistory] = useState([]);
   const [recentCaseIds, setRecentCaseIds] = useState(() => storageGet("infinity-aol-recent-cases", []));
@@ -4866,18 +4925,22 @@ export default function App() {
     });
   }
 
-  function currentManualIntake() {
+  function currentManualIntake(overrides = {}) {
     const hasSecondApplicant = caseHasSecondApplicant(caseData, manualIntake);
+    const nextManualIntake = { ...manualIntake, ...overrides };
     return {
-      ...manualIntake,
+      ...nextManualIntake,
       hasSecondApplicant: hasSecondApplicant ? "Yes" : "No",
-      secondaryApplicantName: hasSecondApplicant ? manualIntake.secondaryApplicantName : "",
-      loanAmount: parseMoneyInput(manualIntake.loanAmount),
-      primaryAnnualIncome: parseMoneyInput(manualIntake.primaryAnnualIncome),
-      secondaryAnnualIncome: hasSecondApplicant ? parseMoneyInput(manualIntake.secondaryAnnualIncome) : 0,
-      secondaryDriversLicenceNo: hasSecondApplicant ? manualIntake.secondaryDriversLicenceNo : "",
-      secondaryLicenceCardNumber: hasSecondApplicant ? manualIntake.secondaryLicenceCardNumber : "",
-      secondaryLicenceExpiryDate: hasSecondApplicant ? manualIntake.secondaryLicenceExpiryDate : "",
+      secondaryApplicantName: hasSecondApplicant ? nextManualIntake.secondaryApplicantName : "",
+      loanAmount: parseMoneyInput(nextManualIntake.loanAmount),
+      propertyPurchasePrice: parseMoneyInput(nextManualIntake.propertyPurchasePrice),
+      depositEquity: parseMoneyInput(nextManualIntake.depositEquity),
+      lvr: Number(nextManualIntake.lvr || 0),
+      primaryAnnualIncome: parseMoneyInput(nextManualIntake.primaryAnnualIncome),
+      secondaryAnnualIncome: hasSecondApplicant ? parseMoneyInput(nextManualIntake.secondaryAnnualIncome) : 0,
+      secondaryDriversLicenceNo: hasSecondApplicant ? nextManualIntake.secondaryDriversLicenceNo : "",
+      secondaryLicenceCardNumber: hasSecondApplicant ? nextManualIntake.secondaryLicenceCardNumber : "",
+      secondaryLicenceExpiryDate: hasSecondApplicant ? nextManualIntake.secondaryLicenceExpiryDate : "",
       hemMonthly,
       hemProfileKey,
       hemBreakdown: hemBreakdown(hemMonthly),
@@ -4959,7 +5022,7 @@ export default function App() {
     }
   }
 
-  async function prepareInfinity() {
+  async function prepareInfinity(manualOverrides = {}) {
     if (!selectedCaseId) {
       setError("Search and select a case first.");
       return;
@@ -4972,7 +5035,7 @@ export default function App() {
         body: JSON.stringify({
           templateId: selectedTemplateId,
           templateOverrides: currentTemplatePayload(),
-          manualIntake: currentManualIntake(),
+          manualIntake: currentManualIntake(manualOverrides),
           hemMonthly,
           financialAssetBuffer
         })
@@ -4985,6 +5048,38 @@ export default function App() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function updateValidationFixField(key, value) {
+    setManualIntake((current) => ({ ...current, [key]: value }));
+  }
+
+  async function autoFixIssue(issue) {
+    const payload = prepared?.payload || {};
+    const loanAmount = parseMoneyInput(manualIntake.loanAmount || payload.loan?.loanAmount);
+    const purchasePrice = parseMoneyInput(manualIntake.propertyPurchasePrice || payload.property?.purchasePrice);
+    if (issue.code === "LVR_MISMATCH") {
+      if (!loanAmount || !purchasePrice) {
+        setFixIssue(issue);
+        setError("Need loan amount and property/security value before auto-fixing LVR.");
+        return;
+      }
+      const lvr = Number(((loanAmount / purchasePrice) * 100).toFixed(2));
+      const next = { lvr: String(lvr), loanAmount: String(loanAmount), propertyPurchasePrice: String(purchasePrice) };
+      setManualIntake((current) => ({ ...current, ...next }));
+      await prepareInfinity(next);
+      return;
+    }
+    if (issue.code === "DEPOSIT_LOAN_TOTAL_MISMATCH") {
+      if (!loanAmount || !purchasePrice || purchasePrice < loanAmount) {
+        setFixIssue(issue);
+        setError("Need a property/security value higher than loan amount before auto-fixing deposit.");
+        return;
+      }
+      const next = { depositEquity: String(purchasePrice - loanAmount), loanAmount: String(loanAmount), propertyPurchasePrice: String(purchasePrice) };
+      setManualIntake((current) => ({ ...current, ...next }));
+      await prepareInfinity(next);
     }
   }
 
@@ -5213,7 +5308,7 @@ export default function App() {
             <h1>{selectedCaseId || "Search and select a case"}</h1>
           </div>
           <div className="actions">
-            <button className="primary-button" type="button" disabled={loading || !caseData || !selectedCaseId} onClick={prepareInfinity}>
+            <button className="primary-button" type="button" disabled={loading || !caseData || !selectedCaseId} onClick={() => prepareInfinity()}>
               {loading ? <RefreshCw size={17} className="spin" /> : <Play size={17} />}
               Prepare for Extension
             </button>
@@ -5269,6 +5364,30 @@ export default function App() {
                   value={manualIntake.loanAmount || ""}
                   onChange={(event) => setManualIntake((value) => ({ ...value, loanAmount: event.target.value }))}
                   placeholder="$390,000"
+                />
+              </label>
+              <label>
+                Property/security value
+                <input
+                  value={manualIntake.propertyPurchasePrice || ""}
+                  onChange={(event) => setManualIntake((value) => ({ ...value, propertyPurchasePrice: event.target.value }))}
+                  placeholder="$500,000"
+                />
+              </label>
+              <label>
+                Deposit/equity
+                <input
+                  value={manualIntake.depositEquity || ""}
+                  onChange={(event) => setManualIntake((value) => ({ ...value, depositEquity: event.target.value }))}
+                  placeholder="$225,000"
+                />
+              </label>
+              <label>
+                LVR %
+                <input
+                  value={manualIntake.lvr || ""}
+                  onChange={(event) => setManualIntake((value) => ({ ...value, lvr: event.target.value }))}
+                  placeholder="55"
                 />
               </label>
               <label>
@@ -5349,7 +5468,15 @@ export default function App() {
               <ClipboardList size={18} />
               <h2>Validation</h2>
             </div>
-            <IssueList issues={prepared?.validation?.issues} />
+            <IssueList issues={prepared?.validation?.issues} onFixIssue={setFixIssue} onAutoFixIssue={autoFixIssue} />
+            <ValidationFixPanel
+              issue={fixIssue}
+              manualIntake={manualIntake}
+              preparedPayload={prepared?.payload}
+              onChange={updateValidationFixField}
+              onClose={() => setFixIssue(null)}
+              onSavePrepare={() => prepareInfinity()}
+            />
           </section>
 
           <section className="panel">
