@@ -177,6 +177,15 @@ async function clickPageSaveIfVisible() {
   return true;
 }
 
+async function clickPageNextIfVisible() {
+  if (activeModal()) return false;
+  const next = findClickableByText(["Save & Next", "Save and Next", "Next", "Continue"], document);
+  if (!next || isUnsafeFinalAction(next)) return false;
+  clickElement(next);
+  await sleep(1200);
+  return true;
+}
+
 function readFieldValue(element) {
   if (!element) return "";
   if (element.tagName === "SELECT") return element.selectedOptions?.[0]?.textContent?.trim() || element.value || "";
@@ -596,6 +605,30 @@ function detectPlatform() {
   return "unknown";
 }
 
+function isInfinityLoansSummaryPage() {
+  const url = normalize(location.href);
+  return url.includes("infinity.com.au") && url.includes("#!/loans") && !url.includes("/soca/");
+}
+
+async function ensureBestInterestDutyApplication(result) {
+  if (!isInfinityLoansSummaryPage()) return false;
+  if (pageHasAnyText(["Needs Analysis", "Loans, Securities & Commentary"])) return false;
+  const create = findClickableByText(["Create Application +", "Create Application"]);
+  if (!create) return false;
+  result.actions.push({ action: "open-create-application", section: "loansProducts", label: visibleText(create) });
+  const modal = await clickAndWaitForModal(create);
+  await sleep(300);
+  const bid = findClickableByText(["Best Interest Duty"], modal || document);
+  if (!bid) {
+    result.fieldsSkipped.push({ section: "loansProducts", label: "Best Interest Duty", reason: "application flow button not visible" });
+    return false;
+  }
+  clickElement(bid);
+  result.actions.push({ action: "choose-application-flow", section: "loansProducts", label: "Best Interest Duty" });
+  await waitFor(() => normalize(location.href).includes("/soca/") || pageHasAnyText(["Needs Analysis"]), 8000, 250);
+  return true;
+}
+
 const popupWorkflows = [
   {
     sectionId: "financialsIncome",
@@ -627,11 +660,42 @@ const popupWorkflows = [
 function supportedPopupWorkflows(payload) {
   return popupWorkflows
     .map((workflow) => {
-      const rows = workflow.repeatPath ? collectionAt(payload, workflow.repeatPath) : [];
-      const rowCount = workflow.repeatPath ? rows.length : workflow.defaultCount || 1;
-      return { ...workflow, rowCount };
+      const rowIndexes = workflowRowIndexes(workflow, payload);
+      return { ...workflow, rowIndexes, rowCount: rowIndexes.length };
     })
     .filter((workflow) => workflow.rowCount > 0 && pageHasAnyText(workflow.pageHints));
+}
+
+function hasPositiveMoney(value) {
+  const raw = String(value ?? "").replace(/[^\d.-]/g, "");
+  if (!raw) return false;
+  const number = Number(raw);
+  return Number.isFinite(number) && Math.abs(number) > 0;
+}
+
+function hasMeaningfulText(value) {
+  const text = normalize(value);
+  return Boolean(text) && !["none", "n/a", "na", "not applicable", "no existing liabilities declared"].includes(text);
+}
+
+function isEmptyLiabilityRow(row) {
+  if (!row) return true;
+  const combined = normalize([row.type, row.description, row.lender, row.financialInstitution, row.otherInstitution].filter(Boolean).join(" "));
+  const hasDebtAmount = [row.balance, row.limit, row.amountOwing, row.amount, row.monthlyRepayment].some(hasPositiveMoney);
+  const hasCreditor = [row.lender, row.financialInstitution, row.otherInstitution, row.accountNo, row.bsb].some(hasMeaningfulText);
+  const noDebtText = combined.includes("no existing liabilities") || combined.includes("no debt") || combined === "other";
+  return !hasDebtAmount && (noDebtText || !hasCreditor);
+}
+
+function workflowRowIndexes(workflow, payload) {
+  if (workflow.sectionId === "financialsExpense") {
+    return hasPositiveMoney(getValue(payload, "serviceability.hemMonthly")) ? [0] : [];
+  }
+  if (!workflow.repeatPath) return Array.from({ length: workflow.defaultCount || 1 }, (_, index) => index);
+  return collectionAt(payload, workflow.repeatPath)
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => workflow.sectionId !== "financialsLiability" || !isEmptyLiabilityRow(row))
+    .map(({ index }) => index);
 }
 
 function numericTokens(value) {
@@ -672,9 +736,10 @@ async function runPopupWorkflow(workflow, payload, mapping, apiBase, result) {
   }
 
   for (let index = 0; index < workflow.rowCount; index += 1) {
+    const sourceIndex = workflow.rowIndexes?.[index] ?? index;
     showAutomationStatus(`EasyFlow AI: filling ${workflow.sectionId} ${index + 1}/${workflow.rowCount}...`);
-    if (existingWorkflowRowVisible(workflow, payload, index)) {
-      result.actions.push({ action: "skip-existing-row", section: workflow.sectionId, rowIndex: index });
+    if (existingWorkflowRowVisible(workflow, payload, sourceIndex)) {
+      result.actions.push({ action: "skip-existing-row", section: workflow.sectionId, rowIndex: sourceIndex });
       continue;
     }
 
@@ -684,20 +749,20 @@ async function runPopupWorkflow(workflow, payload, mapping, apiBase, result) {
         section: workflow.sectionId,
         label: workflow.addLabels[0],
         reason: "Add/Edit button not visible on this page",
-        rowIndex: index
+        rowIndex: sourceIndex
       });
       return;
     }
 
-    result.actions.push({ action: "open-popup", section: workflow.sectionId, label: visibleText(addButton), rowIndex: index });
+    result.actions.push({ action: "open-popup", section: workflow.sectionId, label: visibleText(addButton), rowIndex: sourceIndex });
     const modal = await clickAndWaitForModal(addButton);
     if (!modal) {
-      result.errors.push({ section: workflow.sectionId, label: workflow.addLabels[0], message: "Popup did not open", rowIndex: index });
+      result.errors.push({ section: workflow.sectionId, label: workflow.addLabels[0], message: "Popup did not open", rowIndex: sourceIndex });
       return;
     }
 
     if (workflow.repeatPath) {
-      repeatCursors[repeatCursorKey(payload, workflow.sectionId)] = index;
+      repeatCursors[repeatCursorKey(payload, workflow.sectionId)] = sourceIndex;
     }
 
     const filled = await autofill({ mode: "currentSection", payload, mapping, apiBase });
@@ -727,12 +792,20 @@ async function runPopupWorkflow(workflow, payload, mapping, apiBase, result) {
 async function runWorkflow({ payload, mapping, apiBase }) {
   const result = { sectionId: "workflow", fieldsFilled: [], fieldsSkipped: [], errors: [], actions: [] };
 
+  if (detectPlatform() === "infinity") {
+    await ensureBestInterestDutyApplication(result);
+  }
+
   const visibleResult = await autofill({ mode: "visible", payload, mapping, apiBase });
   mergeAutofillResult(result, visibleResult);
   result.actions.push({ action: "fill-visible-fields", section: "visible", filled: visibleResult.fieldsFilled.length });
   if (visibleResult.fieldsFilled.length) {
     const saved = await clickPageSaveIfVisible();
     result.actions.push({ action: saved ? "save-page" : "review-page", section: "visible", label: saved ? "Save" : "No page save button visible" });
+    if (normalize(location.href).includes("/loans/soca/")) {
+      const advanced = await clickPageNextIfVisible();
+      result.actions.push({ action: advanced ? "next-page" : "review-page", section: "visible", label: advanced ? "Next" : "No next button visible" });
+    }
   }
 
   for (const workflow of supportedPopupWorkflows(payload)) {
@@ -748,6 +821,12 @@ const navigationPlans = {
     { id: "clientDetails", labels: ["Client Details"] },
     { id: "financials", labels: ["Financials"] },
     { id: "loansProducts", labels: ["Loans & Products", "Loans and Products"] },
+    { id: "needsAnalysis", labels: ["Needs Analysis"] },
+    { id: "loansSecuritiesCommentary", labels: ["Loans, Securities & Commentary"] },
+    { id: "preferredLoanFeaturesScenarios", labels: ["Preferred Loan Features", "Scenarios"] },
+    { id: "recommendation", labels: ["Recommendation"] },
+    { id: "commissionsConflictInterest", labels: ["Commissions", "Conflict of Interest"] },
+    { id: "clientForms", labels: ["Client Forms"] },
     { id: "factFind", labels: ["Fact Find"] },
     { id: "notes", labels: ["Notes"] },
     { id: "documents", labels: ["Documents"] }
