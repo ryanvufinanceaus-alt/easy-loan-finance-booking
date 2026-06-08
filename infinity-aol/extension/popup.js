@@ -105,9 +105,29 @@ async function getActiveTab() {
   return tab;
 }
 
+function runtimeErrorMessage() {
+  return chrome.runtime.lastError?.message || "";
+}
+
+async function injectContentScript(tabId) {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: ["contentScript.js"]
+  });
+}
+
 async function sendToContent(message) {
   const tab = await getActiveTab();
-  return chrome.tabs.sendMessage(tab.id, message);
+  try {
+    return await chrome.tabs.sendMessage(tab.id, message);
+  } catch (error) {
+    if (!/Receiving end does not exist|Could not establish connection/i.test(error.message || runtimeErrorMessage())) {
+      throw error;
+    }
+    await injectContentScript(tab.id);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    return chrome.tabs.sendMessage(tab.id, message);
+  }
 }
 
 async function loadPayload() {
