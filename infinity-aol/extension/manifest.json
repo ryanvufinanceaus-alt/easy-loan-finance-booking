@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Infinity AOL AutoFill Assistant",
+  "name": "EasyFlow AI Extension",
   "version": "0.1.1",
   "description": "Section-by-section AOL autofill from EasyFlow AI prepared payloads.",
   "permissions": ["activeTab", "scripting", "storage"],
@@ -23,7 +23,7 @@
     "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "Infinity AOL AutoFill",
+    "default_title": "EasyFlow AI Extension",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
