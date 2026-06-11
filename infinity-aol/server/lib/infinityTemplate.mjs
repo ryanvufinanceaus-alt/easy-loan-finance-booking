@@ -4,6 +4,44 @@ function fullName(applicant) {
   return [applicant?.firstName, applicant?.middleName, applicant?.lastName].filter(Boolean).join(" ").trim();
 }
 
+function formatClientAddress(applicant) {
+  return applicant?.address?.line1
+    ? `${applicant.address.line1}, ${applicant.address.suburb} ${applicant.address.state} ${applicant.address.postcode}, Australia`
+    : "";
+}
+
+function looksLikeDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$|^\d{1,2}\/\d{1,2}\/\d{4}$/.test(String(value || "").trim());
+}
+
+function clientDetailsForApplicant(applicant, options = {}) {
+  const rawLicenceNo = applicant?.id?.driversLicenceNo || "";
+  const rawExpiry = applicant?.id?.licenceExpiryDate || "";
+  return {
+    entityType: "Individual",
+    primaryApplicant: options.primaryApplicant ? "Yes" : "No",
+    applicantType: "Applicant",
+    title: applicant?.title || (applicant?.gender === "Female" ? "Ms." : ""),
+    firstName: applicant?.firstName || "",
+    middleName: applicant?.middleName || "",
+    surname: applicant?.lastName || "",
+    dateOfBirth: applicant?.dateOfBirth || "",
+    gender: applicant?.gender || "",
+    maritalStatus: applicant?.maritalStatus || (options.relatedSpouse ? "Married" : ""),
+    relatedSpouse: options.relatedSpouse || "",
+    mobile: applicant?.mobile || "",
+    email: applicant?.email || "",
+    currentAddress: formatClientAddress(applicant),
+    numberOfDependants: applicant?.dependants ?? 0,
+    currentHousingSituation: options.currentHousingSituation || "",
+    permanentInAustralia: applicant?.permanentInAustralia || (applicant?.residencyStatus ? "Yes" : ""),
+    driversLicenceNo: looksLikeDate(rawLicenceNo) ? "" : rawLicenceNo,
+    licenceExpiryDate: rawExpiry || (looksLikeDate(rawLicenceNo) ? rawLicenceNo : ""),
+    licenceState: applicant?.id?.licenceState || "",
+    licenceClass: applicant?.id?.licenceClass || ""
+  };
+}
+
 function sentenceName(applicants) {
   if (applicants.length > 1) return "The clients";
   return "The client";
@@ -181,7 +219,9 @@ export function buildTemplateTextPreview(caseData) {
 }
 
 export function buildInfinityTemplate(caseData) {
-  const applicants = (caseData.applicants || []).filter(Boolean);
+  const applicants = (caseData.applicants || [])
+    .filter(Boolean)
+    .sort((a, b) => (a.role === "primary" ? -1 : 0) - (b.role === "primary" ? -1 : 0));
   const primary = applicants.find((applicant) => applicant.role === "primary") || applicants[0];
   const secondary = applicants.find((applicant) => applicant.role === "secondary") || null;
   const narrative = applyNarrativeOverrides(buildNarrative(caseData, applicants), caseData, applicants);
@@ -201,41 +241,54 @@ export function buildInfinityTemplate(caseData) {
 
   return {
     applicantMode: secondary ? "couple" : "single",
-    clientDetails: {
-      entityType: "Individual",
-      primaryApplicant: "Yes",
-      applicantType: "Applicant",
-      title: primary?.title || (primary?.gender === "Female" ? "Ms." : ""),
-      firstName: primary?.firstName || "",
-      middleName: primary?.middleName || "",
-      surname: primary?.lastName || "",
-      dateOfBirth: primary?.dateOfBirth || "",
-      gender: primary?.gender || "",
-      maritalStatus: primary?.maritalStatus || "",
-      mobile: primary?.mobile || "",
-      email: primary?.email || "",
-      currentAddress: primary?.address?.line1 ? `${primary.address.line1}, ${primary.address.suburb} ${primary.address.state} ${primary.address.postcode}, Australia` : "",
-      numberOfDependants: primary?.dependants ?? 0,
-      currentHousingSituation: caseData.clientProfile?.currentHousingSituation || "",
-      permanentInAustralia: primary?.permanentInAustralia || (primary?.residencyStatus ? "Yes" : ""),
-      driversLicenceNo: primary?.id?.driversLicenceNo || "",
-      licenceExpiryDate: primary?.id?.licenceExpiryDate || "",
-      licenceState: primary?.id?.licenceState || "",
-      licenceClass: primary?.id?.licenceClass || ""
-    },
+    clientDetails: clientDetailsForApplicant(primary, {
+      primaryApplicant: true,
+      relatedSpouse: secondary ? fullName(secondary) : "",
+      currentHousingSituation: caseData.clientProfile?.currentHousingSituation || ""
+    }),
+    applicants: applicants.map((applicant, index) =>
+      clientDetailsForApplicant(applicant, {
+        primaryApplicant: index === 0,
+        relatedSpouse: applicants.length > 1 ? fullName(index === 0 ? applicants[1] : applicants[0]) : "",
+        currentHousingSituation: caseData.clientProfile?.currentHousingSituation || ""
+      })
+    ),
     coApplicant: secondary
       ? {
           firstName: secondary.firstName || "",
           middleName: secondary.middleName || "",
           surname: secondary.lastName || "",
           dateOfBirth: secondary.dateOfBirth || "",
+          gender: secondary.gender || "",
+          maritalStatus: secondary.maritalStatus || "",
+          relatedSpouse: primary ? fullName(primary) : "",
           mobile: secondary.mobile || "",
-          email: secondary.email || ""
+          email: secondary.email || "",
+          currentAddress: formatClientAddress(secondary),
+          driversLicenceNo: secondary.id?.driversLicenceNo || "",
+          licenceExpiryDate: secondary.id?.licenceExpiryDate || "",
+          licenceState: secondary.id?.licenceState || "",
+          licenceClass: secondary.id?.licenceClass || ""
         }
       : null,
     financials: {
       assets: caseData.assets || [],
       liabilities: caseData.liabilities || [],
+      expenses: (caseData.expenses?.breakdown?.length ? caseData.expenses.breakdown : [
+        {
+          type: caseData.expenses?.type || "Groceries",
+          amount: currency(caseData.documentIntake?.assumptions?.hemMonthly || caseData.expenses?.livingMonthly),
+          frequency: "Monthly",
+          description: "Living expenses / HEM",
+          continuePostSettlement: "Yes"
+        }
+      ]).map((expense) => ({
+        type: expense.type || "Groceries",
+        amount: currency(expense.amount || expense.value),
+        frequency: expense.frequency || "Monthly",
+        description: expense.description || expense.type || "Living expenses / HEM",
+        continuePostSettlement: expense.continuePostSettlement || "Yes"
+      })).filter((expense) => expense.amount > 0),
       incomes: applicants.flatMap((applicant) => {
         const rows = [];
         if (primaryIncome(applicant)) {

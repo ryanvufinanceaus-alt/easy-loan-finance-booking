@@ -17,6 +17,7 @@
         { "payloadPath": "infinity.clientDetails.dateOfBirth", "label": "Date of Birth", "labelContains": ["Date of Birth"], "dateFormat": "au" },
         { "payloadPath": "infinity.clientDetails.gender", "label": "Gender", "labelContains": ["Gender"], "optional": true },
         { "payloadPath": "infinity.clientDetails.maritalStatus", "label": "Marital Status", "labelContains": ["Marital Status"] },
+        { "payloadPath": "infinity.clientDetails.relatedSpouse", "label": "Related Spouse", "labelContains": ["Related Spouse"], "optional": true },
         { "payloadPath": "infinity.clientDetails.currentHousingSituation", "label": "Current Housing Situation", "labelContains": ["Current Housing Situation"], "optional": true },
         { "payloadPath": "infinity.clientDetails.permanentInAustralia", "label": "Permanent in Australia", "labelContains": ["Permanent in Australia"], "optional": true },
         { "payloadPath": "infinity.clientDetails.mobile", "label": "Mobile", "labelContains": ["Mobile"] },
@@ -45,7 +46,7 @@
       "aliases": ["Monthly Expenses"],
       "fields": [
         { "payloadPath": "infinity.financials.expenses.0.type", "defaultValue": "Groceries", "label": "Expense Type", "labelContains": ["Expense Type"] },
-        { "payloadPath": "serviceability.hemMonthly", "label": "Expense Amount", "labelContains": ["Expense Amount", "HEM monthly", "Monthly Expenses"] },
+        { "payloadPath": "infinity.financials.expenses.0.amount", "label": "Expense Amount", "labelContains": ["Expense Amount", "HEM monthly", "Monthly Expenses"] },
         { "payloadPath": "infinity.financials.expenses.0.frequency", "defaultValue": "Monthly", "label": "Expense Frequency", "labelContains": ["Expense Frequency", "Frequency"] },
         { "payloadPath": "infinity.financials.expenses.0.description", "defaultValue": "Living expenses / HEM", "label": "Description", "labelContains": ["Description"], "optional": true },
         { "payloadPath": "infinity.financials.expenses.0.continuePostSettlement", "defaultValue": "Yes", "label": "Continue Post Settlement", "labelContains": ["Continue Post Settlement"], "optional": true }

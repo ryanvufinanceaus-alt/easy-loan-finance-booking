@@ -199,9 +199,13 @@ function initialManualIntake(caseData) {
     primaryDriversLicenceNo: primary.id?.driversLicenceNo || "",
     primaryLicenceExpiryDate: primary.id?.licenceExpiryDate || "",
     primaryLicenceCardNumber: primary.id?.licenceCardNumber || "",
+    primaryLicenceState: primary.id?.licenceState || "",
+    primaryLicenceClass: primary.id?.licenceClass || "",
     secondaryDriversLicenceNo: secondary.id?.driversLicenceNo || "",
     secondaryLicenceExpiryDate: secondary.id?.licenceExpiryDate || "",
-    secondaryLicenceCardNumber: secondary.id?.licenceCardNumber || ""
+    secondaryLicenceCardNumber: secondary.id?.licenceCardNumber || "",
+    secondaryLicenceState: secondary.id?.licenceState || "",
+    secondaryLicenceClass: secondary.id?.licenceClass || ""
   };
 }
 
@@ -4768,6 +4772,15 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
 export default function App() {
   const { session } = useSessionStatus();
   const [view, setView] = useState(() => (isLoanSubmissionsRoute || isClientCallHost || location.pathname.includes("call-notes") || location.pathname.includes("client-call") ? "notes" : "autofill"));
+  const [deepLinkFix] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      caseId: params.get("caseId") || params.get("case") || "",
+      fix: params.get("fix") || "",
+      path: params.get("path") || "",
+      code: params.get("code") || ""
+    };
+  });
   const [cases, setCases] = useState([]);
   const [caseSearch, setCaseSearch] = useState("");
   const [selectedCaseId, setSelectedCaseId] = useState("");
@@ -4787,6 +4800,7 @@ export default function App() {
   const [manualIntake, setManualIntake] = useState({});
   const [incomeFormatText, setIncomeFormatText] = useState("");
   const [hemMonthly, setHemMonthly] = useState(4000);
+  const [hemConfirmed, setHemConfirmed] = useState(false);
   const [hemProfileKey, setHemProfileKey] = useState("singleStandard");
   const [hemProfiles, setHemProfiles] = useState(() => storageGet("easyflow-hem-profiles", defaultHemProfiles));
   const [financialAssetBuffer, setFinancialAssetBuffer] = useState(30000);
@@ -4796,6 +4810,8 @@ export default function App() {
   const [ocrRunning, setOcrRunning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState("");
+  const selectedTemplateIdRef = useRef("");
+  const templateAutoSaveRef = useRef({ canonical: "" });
 
   useEffect(() => {
     document.title = pageTitle();
@@ -4808,6 +4824,18 @@ export default function App() {
   const intakeToken = location.pathname.match(/^\/(?:infinity-aol\/)?(?:client-info|loan-form|apply)\/([^/]+)/)?.[1] || "";
   const publicEntry = getPublicLoanEntry(location.pathname);
   const publicLoanForm = Boolean(publicEntry) || (isLoanFormHost && location.pathname === "/");
+
+  useEffect(() => {
+    if (!deepLinkFix.caseId) return;
+    setView("autofill");
+    selectCase(deepLinkFix.caseId);
+  }, [deepLinkFix.caseId]);
+
+  useEffect(() => {
+    if (!deepLinkFix.fix || !caseData || caseData.id !== selectedCaseId) return;
+    const timer = setTimeout(() => jumpToFixTarget(deepLinkFix), 350);
+    return () => clearTimeout(timer);
+  }, [deepLinkFix, caseData, selectedCaseId]);
 
   useEffect(() => {
     if (showMock || internalLogin) return;
@@ -4839,6 +4867,7 @@ export default function App() {
     const intake = { ...initialManualIntake(caseData), ...saved };
     setManualIntake(intake);
     setHemMonthly(Number(saved.hemMonthly || caseData.expenses?.livingMonthly || recommendedHem(caseData)));
+    setHemConfirmed(saved.hemConfirmed === true);
     setHemProfileKey(saved.hemProfileKey || (caseHasSecondApplicant(caseData, intake) ? "coupleStandard" : "singleStandard"));
     setFinancialAssetBuffer(Number(saved.financialAssetBuffer || 30000));
   }, [caseData]);
@@ -4883,11 +4912,34 @@ export default function App() {
 
   useEffect(() => {
     if (!selectedTemplate) return;
+    const switchedTemplate = selectedTemplateIdRef.current !== selectedTemplate.id;
+    selectedTemplateIdRef.current = selectedTemplate.id;
+    templateAutoSaveRef.current.canonical = JSON.stringify(selectedTemplate);
+    if (!switchedTemplate) return;
     setTemplateJson(JSON.stringify(selectedTemplate, null, 2));
-    if (selectedTemplate.defaults?.hemMonthly) setHemMonthly(selectedTemplate.defaults.hemMonthly);
-    if (selectedTemplate.defaults?.financialAssetBuffer) setFinancialAssetBuffer(selectedTemplate.defaults.financialAssetBuffer);
+    if (selectedTemplate.defaults?.hemMonthly) updateHemMonthly(selectedTemplate.defaults.hemMonthly);
+    if (selectedTemplate.defaults?.financialAssetBuffer) updateFinancialAssetBuffer(selectedTemplate.defaults.financialAssetBuffer);
     setTemplateMessage("");
   }, [selectedTemplate]);
+
+  useEffect(() => {
+    if (!selectedTemplateId || !templateJson.trim()) return;
+    let parsed = null;
+    try {
+      parsed = JSON.parse(templateJson);
+    } catch (_error) {
+      setTemplateMessage("Template auto-save paused until JSON is valid.");
+      return;
+    }
+    if (!parsed?.id || parsed.id !== selectedTemplateId) return;
+    const canonical = JSON.stringify(parsed);
+    if (canonical === templateAutoSaveRef.current.canonical) return;
+    setTemplateMessage("Auto-saving template edits...");
+    const timer = setTimeout(() => {
+      saveTemplate({ silent: true }).catch(() => {});
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [templateJson, selectedTemplateId]);
 
   function currentTemplatePayload() {
     if (!templateJson.trim()) return null;
@@ -4913,7 +4965,9 @@ export default function App() {
           secondaryEmail: "",
           secondaryDriversLicenceNo: "",
           secondaryLicenceCardNumber: "",
-          secondaryLicenceExpiryDate: ""
+          secondaryLicenceExpiryDate: "",
+          secondaryLicenceState: "",
+          secondaryLicenceClass: ""
         };
       }
       return {
@@ -4928,25 +4982,49 @@ export default function App() {
   function currentManualIntake(overrides = {}) {
     const hasSecondApplicant = caseHasSecondApplicant(caseData, manualIntake);
     const nextManualIntake = { ...manualIntake, ...overrides };
+    const effectiveHemConfirmed = overrides.hemConfirmed ?? hemConfirmed;
+    const effectiveHemMonthly = overrides.hemMonthly ?? hemMonthly;
+    const effectiveFinancialAssetBuffer = overrides.financialAssetBuffer ?? financialAssetBuffer;
+    const loanAmount = parseMoneyInput(nextManualIntake.loanAmount);
+    const propertyPurchasePrice = parseMoneyInput(nextManualIntake.propertyPurchasePrice);
+    const calculatedLvr = loanAmount > 0 && propertyPurchasePrice > 0
+      ? Number(((loanAmount / propertyPurchasePrice) * 100).toFixed(2))
+      : 0;
     return {
       ...nextManualIntake,
       hasSecondApplicant: hasSecondApplicant ? "Yes" : "No",
       secondaryApplicantName: hasSecondApplicant ? nextManualIntake.secondaryApplicantName : "",
-      loanAmount: parseMoneyInput(nextManualIntake.loanAmount),
-      propertyPurchasePrice: parseMoneyInput(nextManualIntake.propertyPurchasePrice),
+      loanAmount,
+      propertyPurchasePrice,
       depositEquity: parseMoneyInput(nextManualIntake.depositEquity),
-      lvr: Number(nextManualIntake.lvr || 0),
+      lvr: calculatedLvr || Number(nextManualIntake.lvr || 0),
       primaryAnnualIncome: parseMoneyInput(nextManualIntake.primaryAnnualIncome),
       secondaryAnnualIncome: hasSecondApplicant ? parseMoneyInput(nextManualIntake.secondaryAnnualIncome) : 0,
       secondaryDriversLicenceNo: hasSecondApplicant ? nextManualIntake.secondaryDriversLicenceNo : "",
       secondaryLicenceCardNumber: hasSecondApplicant ? nextManualIntake.secondaryLicenceCardNumber : "",
       secondaryLicenceExpiryDate: hasSecondApplicant ? nextManualIntake.secondaryLicenceExpiryDate : "",
-      hemMonthly,
+      secondaryLicenceState: hasSecondApplicant ? nextManualIntake.secondaryLicenceState : "",
+      secondaryLicenceClass: hasSecondApplicant ? nextManualIntake.secondaryLicenceClass : "",
+      hemMonthly: effectiveHemMonthly,
+      hemConfirmed: effectiveHemConfirmed,
       hemProfileKey,
-      hemBreakdown: hemBreakdown(hemMonthly),
-      financialAssetBuffer,
-      assetBreakdown: assetBreakdown(financialAssetBuffer)
+      hemBreakdown: hemBreakdown(effectiveHemMonthly),
+      financialAssetBuffer: effectiveFinancialAssetBuffer,
+      assetBreakdown: assetBreakdown(effectiveFinancialAssetBuffer)
     };
+  }
+
+  useEffect(() => {
+    if (!selectedCaseId || !caseData) return;
+    const timer = setTimeout(() => {
+      storageSet(caseStorageKey(selectedCaseId), currentManualIntake());
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [manualIntake, hemMonthly, hemConfirmed, hemProfileKey, financialAssetBuffer, selectedCaseId, caseData]);
+
+  function persistCaseInputs(overrides = {}) {
+    if (!selectedCaseId) return;
+    storageSet(caseStorageKey(selectedCaseId), currentManualIntake(overrides));
   }
 
   function updateHemProfile(profileKey, changes) {
@@ -4955,13 +5033,69 @@ export default function App() {
       storageSet("easyflow-hem-profiles", next);
       return next;
     });
+    setTemplateMessage("HEM template saved.");
+    if (profileKey === hemProfileKey && Object.prototype.hasOwnProperty.call(changes, "amount")) {
+      updateHemMonthly(changes.amount);
+    }
+  }
+
+  function updateHemMonthly(value) {
+    const nextValue = Number(value || 0);
+    setHemMonthly(nextValue);
+    setHemConfirmed(false);
+    persistCaseInputs({ hemMonthly: nextValue, hemConfirmed: false });
+  }
+
+  function setHemConfirmation(value) {
+    setHemConfirmed(value);
+    persistCaseInputs({ hemConfirmed: value });
+  }
+
+  function updateFinancialAssetBuffer(value) {
+    const nextValue = Number(value || 0);
+    setFinancialAssetBuffer(nextValue);
+    persistCaseInputs({ financialAssetBuffer: nextValue });
+  }
+
+  function confirmHemIfNeeded() {
+    if (!hemMonthly) {
+      setError("Set HEM / living expense monthly before preparing Infinity Financials.");
+      return false;
+    }
+    if (hemConfirmed) return true;
+    const lines = hemBreakdown(hemMonthly)
+      .map((row) => `${row.type}: ${currency(row.amount)}`)
+      .join("\n");
+    const ok = window.confirm(`Confirm HEM / living expense monthly ${currency(hemMonthly)} before preparing Financials?\n\n${lines}`);
+    if (ok) setHemConfirmation(true);
+    return ok;
   }
 
   function applyHemProfile(profileKey) {
     const profile = hemProfiles[profileKey];
     if (!profile) return;
     setHemProfileKey(profileKey);
-    setHemMonthly(Number(profile.amount || 0));
+    updateHemMonthly(profile.amount);
+  }
+
+  function fixSectionForTarget(target = {}) {
+    const text = `${target.fix || ""} ${target.path || ""} ${target.code || ""}`.toLowerCase();
+    if (text.includes("hem") || text.includes("living") || text.includes("expense")) return "hem";
+    if (text.includes("document") || text.includes("ocr") || text.includes("intake")) return "documents";
+    if (text.includes("handoff") || text.includes("payload")) return "handoff";
+    if (text.includes("validation")) return "validation";
+    return "quick-inputs";
+  }
+
+  function jumpToFixTarget(target = {}) {
+    const section = fixSectionForTarget(target);
+    const node = document.querySelector(`[data-fix-section="${section}"]`) || document.querySelector("[data-fix-section='validation']");
+    if (!node) return;
+    node.classList.add("fix-jump-highlight");
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    const focusTarget = node.querySelector("input, select, textarea, button");
+    setTimeout(() => focusTarget?.focus?.(), 300);
+    setTimeout(() => node.classList.remove("fix-jump-highlight"), 2200);
   }
 
   function selectCase(caseId) {
@@ -5027,6 +5161,12 @@ export default function App() {
       setError("Search and select a case first.");
       return false;
     }
+    const confirmedHem = confirmHemIfNeeded();
+    if (!confirmedHem) {
+      setError("Confirm HEM / living expense breakdown before preparing Infinity Financials.");
+      return false;
+    }
+    const nextManualOverrides = { ...manualOverrides, hemConfirmed: true };
     setLoading(true);
     setError("");
     try {
@@ -5035,8 +5175,9 @@ export default function App() {
         body: JSON.stringify({
           templateId: selectedTemplateId,
           templateOverrides: currentTemplatePayload(),
-          manualIntake: currentManualIntake(manualOverrides),
+          manualIntake: currentManualIntake(nextManualOverrides),
           hemMonthly,
+          hemConfirmed: true,
           financialAssetBuffer
         })
       });
@@ -5094,6 +5235,10 @@ export default function App() {
       setError("Choose at least one customer document or paste the broker intake format first.");
       return;
     }
+    if (prepare && !confirmHemIfNeeded()) {
+      setError("Confirm HEM / living expense breakdown before preparing Infinity Financials.");
+      return;
+    }
 
     setUploading(true);
     setError("");
@@ -5106,10 +5251,11 @@ export default function App() {
         formData.append("documents", new File([incomeFormatText], "broker-intake-format.txt", { type: "text/plain" }));
       }
       formData.append("hemMonthly", String(hemMonthly));
+      formData.append("hemConfirmed", String(prepare ? true : hemConfirmed));
       formData.append("financialAssetBuffer", String(financialAssetBuffer));
       formData.append("templateId", selectedTemplateId);
       formData.append("templateOverrides", JSON.stringify(currentTemplatePayload()));
-      formData.append("manualIntake", JSON.stringify(currentManualIntake()));
+      formData.append("manualIntake", JSON.stringify(currentManualIntake(prepare ? { hemConfirmed: true } : {})));
 
       const endpoint = prepare ? "intake-and-prepare" : "document-intake";
       const response = await fetch(`${apiBase}/api/cases/${selectedCaseId}/${endpoint}`, {
@@ -5130,23 +5276,31 @@ export default function App() {
     }
   }
 
-  async function saveTemplate() {
-    setError("");
-    setTemplateMessage("");
+  async function saveTemplate({ silent = false } = {}) {
+    if (!silent) {
+      setError("");
+      setTemplateMessage("");
+    }
     try {
       const template = currentTemplatePayload();
       const saved = await api(`/api/templates/${template.id}`, {
         method: "PUT",
         body: JSON.stringify(template)
       });
+      templateAutoSaveRef.current.canonical = JSON.stringify(saved);
       setTemplates((items) => {
         const next = items.filter((item) => item.id !== saved.id);
         return [...next, saved].sort((a, b) => a.name.localeCompare(b.name));
       });
       setSelectedTemplateId(saved.id);
-      setTemplateMessage("Template saved. Future prepares can use this edited version.");
+      if (!silent) setTemplateJson(JSON.stringify(saved, null, 2));
+      setTemplateMessage(silent ? "Template auto-saved." : "Template saved. Future prepares can use this edited version.");
     } catch (err) {
-      setError(`Template JSON is not valid: ${err.message}`);
+      if (silent) {
+        setTemplateMessage(`Template auto-save paused: ${err.message}`);
+      } else {
+        setError(`Template JSON is not valid: ${err.message}`);
+      }
     }
   }
 
@@ -5324,7 +5478,7 @@ export default function App() {
         <WorkflowGuide selectedCaseId={selectedCaseId} prepared={prepared} documentDraft={documentDraft} />
 
         <div className="main-grid">
-          <section className="panel">
+          <section className="panel" data-fix-section="quick-inputs">
             <div className="panel-title split-title">
               <div>
                 <ClipboardList size={18} />
@@ -5443,6 +5597,22 @@ export default function App() {
                   placeholder="DD-MM-YYYY"
                 />
               </label>
+              <label>
+                Primary licence state
+                <input
+                  value={manualIntake.primaryLicenceState || ""}
+                  onChange={(event) => setManualIntake((value) => ({ ...value, primaryLicenceState: event.target.value.toUpperCase() }))}
+                  placeholder="SA"
+                />
+              </label>
+              <label>
+                Primary licence class
+                <input
+                  value={manualIntake.primaryLicenceClass || ""}
+                  onChange={(event) => setManualIntake((value) => ({ ...value, primaryLicenceClass: event.target.value.toUpperCase() }))}
+                  placeholder="C"
+                />
+              </label>
               {easyFlowHasSecondApplicant && (
                 <>
                   <label>
@@ -5460,12 +5630,28 @@ export default function App() {
                       placeholder="DD-MM-YYYY"
                     />
                   </label>
+                  <label>
+                    Secondary licence state
+                    <input
+                      value={manualIntake.secondaryLicenceState || ""}
+                      onChange={(event) => setManualIntake((value) => ({ ...value, secondaryLicenceState: event.target.value.toUpperCase() }))}
+                      placeholder="SA"
+                    />
+                  </label>
+                  <label>
+                    Secondary licence class
+                    <input
+                      value={manualIntake.secondaryLicenceClass || ""}
+                      onChange={(event) => setManualIntake((value) => ({ ...value, secondaryLicenceClass: event.target.value.toUpperCase() }))}
+                      placeholder="C"
+                    />
+                  </label>
                 </>
               )}
             </div>
           </section>
 
-          <section className="panel">
+          <section className="panel" data-fix-section="validation">
             <div className="panel-title">
               <ClipboardList size={18} />
               <h2>Validation</h2>
@@ -5483,7 +5669,7 @@ export default function App() {
             />
           </section>
 
-          <section className="panel">
+          <section className="panel" data-fix-section="documents">
             <div className="panel-title">
               <UploadCloud size={18} />
               <h2>Document Intake</h2>
@@ -5508,7 +5694,7 @@ export default function App() {
                     value={templateJson}
                     onChange={(event) => {
                       setTemplateJson(event.target.value);
-                      setTemplateMessage("Unsaved template edits will still be used for the next prepare.");
+                      setTemplateMessage("Auto-saving template edits...");
                     }}
                   />
                 </details>
@@ -5595,7 +5781,7 @@ Financial asset: 30000`}
               </label>
 
               <div className="preset-grid">
-                <div className="hem-tool">
+                <div className="hem-tool" data-fix-section="hem">
                   <span>HEM / living expense monthly</span>
                   <div className="hem-row">
                     <select value={hemProfileKey} onChange={(event) => applyHemProfile(event.target.value)}>
@@ -5605,14 +5791,21 @@ Financial asset: 30000`}
                     </select>
                     <input
                       value={hemMonthly || ""}
-                      onChange={(event) => setHemMonthly(Number(String(event.target.value).replace(/[$,\s]/g, "")) || 0)}
+                      onChange={(event) => updateHemMonthly(Number(String(event.target.value).replace(/[$,\s]/g, "")) || 0)}
                       placeholder="Manual e.g. 3450"
                     />
                   </div>
                   <small>{hemProfiles[hemProfileKey]?.note || "Manual amount overrides the selected profile for this case."}</small>
+                  <button
+                    className={`hem-confirm-button ${hemConfirmed ? "confirmed" : ""}`}
+                    type="button"
+                    onClick={() => setHemConfirmation(!hemConfirmed)}
+                  >
+                    {hemConfirmed ? "HEM confirmed for Financials" : "Confirm HEM for Financials"}
+                  </button>
                   <div className="segmented">
                     {[recommendedHem(caseData), 3000, 3450, 4000, 4500, 5200].filter((value, index, arr) => value && arr.indexOf(value) === index).map((value) => (
-                      <button className={hemMonthly === value ? "selected" : ""} type="button" key={value} onClick={() => setHemMonthly(value)}>
+                      <button className={hemMonthly === value ? "selected" : ""} type="button" key={value} onClick={() => updateHemMonthly(value)}>
                         {currency(value)}
                       </button>
                     ))}
@@ -5641,7 +5834,7 @@ Financial asset: 30000`}
                         className={financialAssetBuffer === value ? "selected" : ""}
                         type="button"
                         key={value}
-                        onClick={() => setFinancialAssetBuffer(value)}
+                        onClick={() => updateFinancialAssetBuffer(value)}
                       >
                         {currency(value)}
                       </button>
@@ -5716,7 +5909,7 @@ Financial asset: 30000`}
             </div>
           </section>
 
-          <section className="panel payload-panel">
+          <section className="panel payload-panel" data-fix-section="handoff">
             <div className="panel-title">
               <FileJson size={18} />
               <h2>Extension Handoff</h2>

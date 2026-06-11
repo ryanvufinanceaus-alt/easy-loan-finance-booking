@@ -150,12 +150,33 @@ button:disabled {
   padding: 8px 0;
 }
 
+button.review-row {
+  background: #fff;
+  border: 0;
+  border-top: 1px solid #eef1ee;
+  border-radius: 0;
+  color: inherit;
+  cursor: pointer;
+  min-height: 0;
+  text-align: left;
+  width: 100%;
+}
+
+button.review-row:hover {
+  background: #f3f8f5;
+}
+
 .review-row strong {
   font-size: 13px;
 }
 
 .review-row span,
+.review-row small,
 .safety {
   color: #617069;
   font-size: 12px;
+}
+
+.issue-link.error strong {
+  color: #8b2018;
 }

@@ -2412,6 +2412,7 @@ app.post("/api/cases/:caseId/document-intake", upload.array("documents"), (reque
 
   const draft = buildDocumentDraft(request.files, {
     hemMonthly: request.body.hemMonthly,
+    hemConfirmed: request.body.hemConfirmed,
     financialAssetBuffer: request.body.financialAssetBuffer,
     templateId: request.body.templateId,
     templateOverrides: request.body.templateOverrides,
@@ -2448,6 +2449,7 @@ app.post("/api/cases/:caseId/intake-and-prepare", upload.array("documents"), (re
   if (request.files?.length || request.body.templateId || request.body.templateOverrides || request.body.hemMonthly || request.body.financialAssetBuffer || request.body.manualIntake) {
     draft = buildDocumentDraft(request.files, {
       hemMonthly: request.body.hemMonthly,
+      hemConfirmed: request.body.hemConfirmed,
       financialAssetBuffer: request.body.financialAssetBuffer,
       templateId: request.body.templateId,
       templateOverrides: request.body.templateOverrides,

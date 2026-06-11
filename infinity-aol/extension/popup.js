@@ -51,6 +51,51 @@ function shortValue(value) {
   return text.length > 60 ? `${text.slice(0, 57)}...` : text;
 }
 
+function easyFlowUrlForIssue(issue = {}) {
+  if (!state.prepared?.caseId) return "";
+  const apiBase = els.apiBase.value.replace(/\/$/, "");
+  const url = new URL(apiBase);
+  const path = url.pathname.replace(/\/api\/?.*$/, "").replace(/\/$/, "");
+  url.pathname = path || "/";
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("caseId", state.prepared.caseId);
+  url.searchParams.set("fix", issue.fixTarget || fixTargetForIssue(issue));
+  if (issue.path) url.searchParams.set("path", issue.path);
+  if (issue.code) url.searchParams.set("code", issue.code);
+  return url.toString();
+}
+
+function fixTargetForIssue(issue = {}) {
+  const text = `${issue.code || ""} ${issue.path || ""} ${issue.section || ""} ${issue.label || ""}`.toLowerCase();
+  if (text.includes("hem") || text.includes("living") || text.includes("expense")) return "hem";
+  if (text.includes("document") || text.includes("ocr") || text.includes("intake")) return "documents";
+  if (text.includes("serviceability") || text.includes("loan") || text.includes("property") || text.includes("applicant") || text.includes("income")) return "quick-inputs";
+  if (text.includes("validation")) return "validation";
+  return "validation";
+}
+
+async function openIssueInEasyFlow(issue) {
+  const url = easyFlowUrlForIssue(issue);
+  if (!url) return;
+  await chrome.tabs.create({ url });
+}
+
+function appendIssueRow(issue) {
+  const row = document.createElement("button");
+  row.className = `review-row issue-link ${issue.severity || ""}`;
+  row.type = "button";
+  const strong = document.createElement("strong");
+  strong.textContent = issue.label;
+  const span = document.createElement("span");
+  span.textContent = issue.value;
+  const small = document.createElement("small");
+  small.textContent = "Click to fix in EasyFlow AI";
+  row.append(strong, span, small);
+  row.addEventListener("click", () => openIssueInEasyFlow(issue).catch((error) => setStatus(error.message, "error")));
+  els.reviewRows.append(row);
+}
+
 function renderReview() {
   els.reviewRows.innerHTML = "";
   if (!state.prepared) return;
@@ -82,21 +127,43 @@ function renderReview() {
   }
 
   const issues = [
+    ...(state.prepared?.validation?.issues || []).map((issue) => ({
+      label: issue.code?.replaceAll("_", " ") || "Validation issue",
+      value: issue.message || issue.path || "Fix this prepared payload issue.",
+      code: issue.code,
+      path: issue.path,
+      severity: issue.severity
+    })),
+    ...(!hasConfirmedHem(state.prepared?.payload) && !(state.prepared?.validation?.issues || []).some((issue) => issue.code === "HEM_NOT_CONFIRMED") ? [{
+      label: "HEM NOT CONFIRMED",
+      value: "Confirm HEM / living expense breakdown before Financials autofill.",
+      code: "HEM_NOT_CONFIRMED",
+      path: "serviceability.hemConfirmed",
+      severity: "error",
+      fixTarget: "hem"
+    }] : []),
+    ...(state.lastResult?.errors || []).map((issue) => ({
+      label: `${issue.section || "AutoFill"} error`,
+      value: issue.message || issue.label || "Review this section.",
+      section: issue.section,
+      severity: "error"
+    })),
     ...(state.lastResult?.pageIssues || []).map((issue) => ({
       label: `${issue.platform || "page"}: ${issue.label}`,
-      value: `${shortValue(issue.actual ?? "missing")} -> ${shortValue(issue.expected ?? "")}`
+      value: `${shortValue(issue.actual ?? "missing")} -> ${shortValue(issue.expected ?? "")}`,
+      path: issue.fieldPath || issue.path,
+      section: issue.platform
     })),
     ...(state.lastResult?.crossPlatformMismatches || []).map((issue) => ({
       label: `Infinity/AOL: ${issue.label}`,
-      value: `${shortValue(issue.infinityValue ?? "blank")} <> ${shortValue(issue.aolValue ?? "blank")}`
+      value: `${shortValue(issue.infinityValue ?? "blank")} <> ${shortValue(issue.aolValue ?? "blank")}`,
+      path: issue.fieldPath || issue.path,
+      section: "comparison"
     }))
-  ].slice(0, 5);
+  ].slice(0, 8);
 
   for (const issue of issues) {
-    const row = document.createElement("div");
-    row.className = "review-row";
-    row.innerHTML = `<strong>${issue.label}</strong><span>${issue.value}</span>`;
-    els.reviewRows.append(row);
+    appendIssueRow(issue);
   }
 }
 
@@ -141,6 +208,12 @@ async function sendToContent(message) {
   return chrome.tabs.sendMessage(tab.id, message);
 }
 
+function hasConfirmedHem(payload) {
+  return payload?.serviceability?.hemConfirmed === true ||
+    payload?.expenses?.hemConfirmed === true ||
+    payload?.documentIntake?.assumptions?.hemConfirmed === true;
+}
+
 async function loadPayload() {
   const apiBase = els.apiBase.value.replace(/\/$/, "");
   const selectedToken = els.casePicker.value.trim();
@@ -162,9 +235,13 @@ async function loadPayload() {
   state.mapping = mappingJson;
   state.lastResult = null;
   enableAdvanced(state.prepared.validation.okToAutofill);
+  renderReview();
 
   if (!state.prepared.validation.okToAutofill) {
     throw new Error("Prepared case has validation errors. Fix those before autofill.");
+  }
+  if (!hasConfirmedHem(state.prepared.payload)) {
+    throw new Error("Confirm HEM / living expense breakdown in EasyFlow AI, then prepare again before autofill.");
   }
 }
 

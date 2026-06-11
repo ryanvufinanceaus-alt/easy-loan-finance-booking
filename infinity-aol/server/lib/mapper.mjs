@@ -45,6 +45,7 @@ export function buildInfinityPayload(caseData) {
   const assetTotal = (caseData.assets || []).reduce((sum, asset) => sum + money(asset.value), 0);
   const serviceability = {
     hemMonthly: expenses.livingMonthly || caseData.documentIntake?.assumptions?.hemMonthly || 0,
+    hemConfirmed: expenses.hemConfirmed === true || caseData.documentIntake?.assumptions?.hemConfirmed === true,
     financialAssetBuffer: assetTotal || caseData.documentIntake?.assumptions?.financialAssetBuffer || 0,
     documentIncomeSource: caseData.documentIntake?.assumptions?.incomeSource || "crm",
     expenseSource: caseData.expenseSource || expenses.source || caseData.documentIntake?.assumptions?.expenseSource || "crm",

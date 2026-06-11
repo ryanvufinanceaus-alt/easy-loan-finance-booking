@@ -42,6 +42,20 @@ export function validateInfinityPayload(payload) {
   const purchasePrice = Number(valueAt(payload, "property.purchasePrice") || 0);
   const deposit = Number(valueAt(payload, "loan.deposit") || 0);
   const lvr = Number(valueAt(payload, "loan.lvr") || 0);
+  const hemMonthly = Number(valueAt(payload, "serviceability.hemMonthly") || valueAt(payload, "expenses.livingMonthly") || 0);
+  const hemConfirmed =
+    valueAt(payload, "serviceability.hemConfirmed") === true ||
+    valueAt(payload, "expenses.hemConfirmed") === true ||
+    valueAt(payload, "documentIntake.assumptions.hemConfirmed") === true;
+
+  if (hemMonthly > 0 && !hemConfirmed) {
+    issues.push({
+      severity: "error",
+      code: "HEM_NOT_CONFIRMED",
+      path: "serviceability.hemConfirmed",
+      message: "Confirm HEM / living expense breakdown before Infinity Financials autofill."
+    });
+  }
 
   if (purchasePrice > 0 && loanAmount > purchasePrice) {
     issues.push({

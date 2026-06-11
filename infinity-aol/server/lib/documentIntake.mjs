@@ -402,9 +402,13 @@ export function buildDocumentDraft(files = [], options = {}) {
     manualSuggestion("applicants.primary.id.driversLicenceNo", manualIntake.primaryDriversLicenceNo, "Broker typed primary licence number"),
     manualSuggestion("applicants.primary.id.licenceCardNumber", manualIntake.primaryLicenceCardNumber, "Broker typed primary licence card number"),
     manualSuggestion("applicants.primary.id.licenceExpiryDate", manualIntake.primaryLicenceExpiryDate, "Broker typed primary licence expiry"),
+    manualSuggestion("applicants.primary.id.licenceState", manualIntake.primaryLicenceState, "Broker typed primary licence state"),
+    manualSuggestion("applicants.primary.id.licenceClass", manualIntake.primaryLicenceClass, "Broker typed primary licence class"),
     manualSuggestion("applicants.secondary.id.driversLicenceNo", manualIntake.secondaryDriversLicenceNo, "Broker typed secondary licence number"),
     manualSuggestion("applicants.secondary.id.licenceCardNumber", manualIntake.secondaryLicenceCardNumber, "Broker typed secondary licence card number"),
-    manualSuggestion("applicants.secondary.id.licenceExpiryDate", manualIntake.secondaryLicenceExpiryDate, "Broker typed secondary licence expiry")
+    manualSuggestion("applicants.secondary.id.licenceExpiryDate", manualIntake.secondaryLicenceExpiryDate, "Broker typed secondary licence expiry"),
+    manualSuggestion("applicants.secondary.id.licenceState", manualIntake.secondaryLicenceState, "Broker typed secondary licence state"),
+    manualSuggestion("applicants.secondary.id.licenceClass", manualIntake.secondaryLicenceClass, "Broker typed secondary licence class")
   ].filter(Boolean);
   const allSuggestions = [...fieldSuggestions, ...manualSuggestions];
   const detectedIncome = allSuggestions.find((item) => item.path === "applicants.primary.income.baseAnnual")?.value;
@@ -413,6 +417,7 @@ export function buildDocumentDraft(files = [], options = {}) {
   const explicitFinancialAsset = manualIntake.financialAssetBuffer || options.financialAssetBuffer;
   const hemMonthly = presetNumber(explicitHemMonthly, template?.defaults?.hemMonthly || 4000);
   const financialAssetBuffer = presetNumber(explicitFinancialAsset, detectedFinancialAsset || template?.defaults?.financialAssetBuffer || 30000);
+  const hemConfirmed = manualIntake.hemConfirmed === true || manualIntake.hemConfirmed === "true" || options.hemConfirmed === true || options.hemConfirmed === "true";
   const expenseSource = explicitHemMonthly ? "broker edited" : "template";
   const assetSource = explicitFinancialAsset ? "broker edited" : detectedFinancialAsset ? "client document" : "template";
 
@@ -422,6 +427,7 @@ export function buildDocumentDraft(files = [], options = {}) {
     templateConfig: template || null,
     assumptions: {
       hemMonthly,
+      hemConfirmed,
       hemBreakdown: sourceTaggedExpenses(hemMonthly, expenseSource),
       financialAssetBuffer,
       assetBreakdown: assetBreakdown(financialAssetBuffer, assetSource),
@@ -594,6 +600,7 @@ export function mergeDocumentDraft(caseData, draft) {
   const livingMonthly = useExistingLiving ? existingLivingMonthly : draftLivingMonthly;
   const expenseSource = useExistingLiving ? "client supplied" : draft.assumptions.expenseSource;
   merged.expenses.livingMonthly = livingMonthly;
+  merged.expenses.hemConfirmed = draft.assumptions.hemConfirmed === true;
   merged.expenses.breakdown = sourceTaggedExpenses(livingMonthly, useExistingLiving ? "generated from client total" : expenseSource);
   merged.expenses.source = useExistingLiving ? "client supplied" : expenseSource;
   merged.assets.breakdown = assetRows;
