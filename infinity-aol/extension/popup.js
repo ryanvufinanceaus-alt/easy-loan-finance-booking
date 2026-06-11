@@ -110,6 +110,7 @@ function renderReview() {
     rows.push(["Filled", String(state.lastResult.fieldsFilled.length)]);
     rows.push(["Skipped", String(state.lastResult.fieldsSkipped.length)]);
     rows.push(["Errors", String(state.lastResult.errors.length)]);
+    rows.push(["Verify", String(state.lastResult.verificationFailures?.length || 0)]);
   }
 
   if (state.lastResult?.crossPlatformMismatches) {
@@ -146,6 +147,13 @@ function renderReview() {
       label: `${issue.section || "AutoFill"} error`,
       value: issue.message || issue.label || "Review this section.",
       section: issue.section,
+      severity: "error"
+    })),
+    ...(state.lastResult?.verificationFailures || []).map((issue) => ({
+      label: `${issue.section || "Verify"}: ${issue.label || "verification"}`,
+      value: issue.message || "Expected value was not visible after save.",
+      section: issue.section,
+      path: issue.path,
       severity: "error"
     })),
     ...(state.lastResult?.pageIssues || []).map((issue) => ({
@@ -298,7 +306,7 @@ async function startAutofill() {
 
     const report = await fetchComparisonReport();
     state.lastResult = report || result;
-    const issues = (report?.pageIssues?.length || 0) + (report?.crossPlatformMismatches?.length || 0) + (result.errors?.length || 0);
+    const issues = (report?.pageIssues?.length || 0) + (report?.crossPlatformMismatches?.length || 0) + (result.errors?.length || 0) + (result.verificationFailures?.length || 0);
     setStatus(
       issues
         ? `AutoFill finished, but ${issues} item(s) need review. See Broker Review below.`
@@ -323,7 +331,8 @@ async function fillCurrentPopup() {
     apiBase: els.apiBase.value.replace(/\/$/, "")
   });
   state.lastResult = result;
-  setStatus(`${result.fieldsFilled.length} filled, ${result.fieldsSkipped.length} skipped, ${result.errors.length} errors.`, result.errors.length ? "error" : "success");
+  const issueCount = (result.errors?.length || 0) + (result.verificationFailures?.length || 0);
+  setStatus(`${result.fieldsFilled.length} filled, ${result.fieldsSkipped.length} skipped, ${issueCount} issue(s).`, issueCount ? "error" : "success");
   renderReview();
 }
 

@@ -11,6 +11,10 @@ function normalize(value) {
     .toLowerCase();
 }
 
+function normalizeText(text) {
+  return normalize(text);
+}
+
 function isVisible(element) {
   const rect = element.getBoundingClientRect();
   const style = window.getComputedStyle(element);
@@ -97,6 +101,10 @@ function nativeSetValue(element, value) {
   element.dispatchEvent(new Event("blur", { bubbles: true }));
 }
 
+function setNativeValue(element, value) {
+  nativeSetValue(element, value);
+}
+
 function clickElement(element) {
   element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
   element.click();
@@ -108,6 +116,11 @@ function sleep(ms) {
 }
 
 async function waitFor(predicate, timeoutMs = 5000, intervalMs = 150) {
+  if (typeof timeoutMs === "object") {
+    const options = timeoutMs || {};
+    timeoutMs = options.timeoutMs || options.timeout || 5000;
+    intervalMs = options.intervalMs || options.interval || 150;
+  }
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     const value = predicate();
@@ -115,6 +128,41 @@ async function waitFor(predicate, timeoutMs = 5000, intervalMs = 150) {
     await sleep(intervalMs);
   }
   return null;
+}
+
+async function waitForAngularSettle() {
+  await sleep(250);
+  await waitFor(() => !document.querySelector(".loading, .spinner, .fa-spinner, [aria-busy='true']"), { timeout: 2500, interval: 150 });
+  cleanupStuckModalState();
+  await sleep(150);
+}
+
+function ensureResultShape(result) {
+  result.fieldsFilled = result.fieldsFilled || [];
+  result.fieldsSkipped = result.fieldsSkipped || [];
+  result.errors = result.errors || [];
+  result.actions = result.actions || [];
+  result.verificationFailures = result.verificationFailures || [];
+  return result;
+}
+
+async function safeClick(element, result, actionName, meta = {}) {
+  ensureResultShape(result);
+  if (!element || !isVisible(element)) {
+    result.fieldsSkipped.push({ action: actionName, reason: "click target not visible", ...meta });
+    return false;
+  }
+  clickElement(element);
+  result.actions.push({ action: actionName, label: visibleText(element), ...meta });
+  await waitForAngularSettle();
+  return true;
+}
+
+async function clearAndType(element, value) {
+  if (!element) return false;
+  await setFieldValue(element, "");
+  await sleep(60);
+  return setFieldValue(element, value);
 }
 
 function visibleText(element) {
@@ -539,6 +587,102 @@ function findElement(field, value) {
   return findByLabelText(fieldLabels(field), value, root);
 }
 
+function findFieldByLabel(label, scope = activeSurfaceRoot()) {
+  return findByLabelText(Array.isArray(label) ? label : [label], "", scope);
+}
+
+function recordFieldFilled(result, section, label, value, found, meta = {}) {
+  ensureResultShape(result);
+  result.fieldsFilled.push({ section, label, selector: found?.selector, expected: value, actual: found?.element ? readFieldValue(found.element) : undefined, ...meta });
+}
+
+function recordFieldSkipped(result, section, label, reason, meta = {}) {
+  ensureResultShape(result);
+  result.fieldsSkipped.push({ section, label, reason, ...meta });
+}
+
+function recordError(result, section, label, message, meta = {}) {
+  ensureResultShape(result);
+  result.errors.push({ section, label, message, ...meta });
+}
+
+function recordVerificationFailure(result, section, label, message, meta = {}) {
+  ensureResultShape(result);
+  result.verificationFailures.push({ section, label, message, ...meta });
+}
+
+async function fillInputByLabel(label, value, scope = activeSurfaceRoot(), result, meta = {}) {
+  if (value === undefined || value === null || value === "") return false;
+  await scrollToText([label], scope === document ? document : undefined);
+  const found = findByLabelText([label], value, scope);
+  if (!found) {
+    recordFieldSkipped(result, meta.section || "workflow", label, "field not found", meta);
+    return false;
+  }
+  const ok = await clearAndType(found.element, value);
+  if (ok) recordFieldFilled(result, meta.section || "workflow", label, value, found, meta);
+  else recordFieldSkipped(result, meta.section || "workflow", label, "control refused value", meta);
+  await sleep(80);
+  return ok;
+}
+
+async function fillDateByLabel(label, value, scope = activeSurfaceRoot(), result, meta = {}) {
+  return fillInputByLabel(label, formatDateValue(value, "au"), scope, result, meta);
+}
+
+function findDropdownOption(value, root = document) {
+  const aliases = optionAliases(value).map(normalize);
+  return [...root.querySelectorAll("option, [role='option'], li, .option, .dropdown-item, .select-item, a, span")]
+    .filter(isVisible)
+    .find((item) => {
+      const text = normalize(item.textContent || item.getAttribute("value"));
+      return aliases.some((alias) => text === alias || text.includes(alias) || alias.includes(text));
+    }) || null;
+}
+
+async function selectDropdownByText(label, value, scope = activeSurfaceRoot(), result, meta = {}) {
+  if (value === undefined || value === null || value === "") return false;
+  await scrollToText([label], scope === document ? document : undefined);
+  const found = findByLabelText([label], value, scope);
+  if (!found) {
+    recordFieldSkipped(result, meta.section || "workflow", label, "dropdown not found", meta);
+    return false;
+  }
+  const ok = await setFieldValue(found.element, value);
+  if (ok) recordFieldFilled(result, meta.section || "workflow", label, value, found, meta);
+  else recordFieldSkipped(result, meta.section || "workflow", label, `option not found: ${value}`, meta);
+  await sleep(120);
+  return ok;
+}
+
+async function clickCheckboxByLabel(label, result, meta = {}) {
+  await scrollToText([label]);
+  const node = findTextNode([label]);
+  if (!node) {
+    recordFieldSkipped(result, meta.section || "workflow", label, "checkbox label not found", meta);
+    return false;
+  }
+  let container = node.closest("label") || node.parentElement;
+  for (let depth = 0; depth < 6 && container; depth += 1) {
+    const input = [...container.querySelectorAll("input[type='checkbox'], input[type='radio'], [role='checkbox'], [aria-checked], button, [ng-click], [data-ng-click]")]
+      .filter(isVisible)
+      .find((item) => {
+        const text = visibleText(item);
+        return item.type === "checkbox" || item.type === "radio" || item.hasAttribute("aria-checked") || !text || text.includes(normalize(label));
+      });
+    if (input) {
+      const checked = input.checked === true || input.getAttribute("aria-checked") === "true" || normalize(input.className).includes("active") || normalize(input.className).includes("selected");
+      if (!checked) clickElement(input);
+      result.actions.push({ action: checked ? "checkbox-already-selected" : "select-checkbox", label, ...meta });
+      await waitForAngularSettle();
+      return true;
+    }
+    container = container.parentElement;
+  }
+  recordFieldSkipped(result, meta.section || "workflow", label, "checkbox control not found", meta);
+  return false;
+}
+
 function findAllByLabelText(labels, value, root = activeSurfaceRoot()) {
   const wanted = labels.map(normalize);
   const nodes = [...root.querySelectorAll("label, span, div, p, strong, h1, h2, h3, h4, td, th")]
@@ -638,6 +782,7 @@ async function logAutofill(apiBase, payload, result) {
         fieldsFilled: result.fieldsFilled,
         fieldsSkipped: result.fieldsSkipped,
         errors: result.errors,
+        verificationFailures: result.verificationFailures || [],
         sectionId: result.sectionId
       })
     });
@@ -661,7 +806,7 @@ async function logComparisonSnapshot(apiBase, payload, result) {
 
 async function autofill({ mode, payload, mapping, apiBase }) {
   const { sectionId, sections } = fieldsForMode(mapping, mode);
-  const result = { sectionId, fieldsFilled: [], fieldsSkipped: [], errors: [] };
+  const result = ensureResultShape({ sectionId, fieldsFilled: [], fieldsSkipped: [], errors: [], actions: [], verificationFailures: [] });
 
   for (const originalSection of sections) {
     const { section, rowIndex, rowCount } = sectionForRepeatCursor(originalSection, payload);
@@ -702,9 +847,12 @@ async function autofill({ mode, payload, mapping, apiBase }) {
 }
 
 function mergeAutofillResult(target, source) {
+  ensureResultShape(target);
   target.fieldsFilled.push(...(source.fieldsFilled || []));
   target.fieldsSkipped.push(...(source.fieldsSkipped || []));
   target.errors.push(...(source.errors || []));
+  target.actions.push(...(source.actions || []));
+  target.verificationFailures.push(...(source.verificationFailures || []));
 }
 
 function pageHasAnyText(labels) {
@@ -860,6 +1008,135 @@ function existingWorkflowRowVisible(workflow, payload, index) {
   return hasLabel && (hasValue || !values.length);
 }
 
+function buildHemExpenseRows(total, payload) {
+  const preparedRows = collectionAt(payload, "infinity.financials.expenses")
+    .filter((row) => hasPositiveMoney(row.amount))
+    .map((row) => ({
+      type: row.type || "Other",
+      amount: row.amount,
+      frequency: row.frequency || "Monthly",
+      description: row.description || row.type || "Living expense",
+      continuePostSettlement: row.continuePostSettlement || "Yes"
+    }));
+  if (preparedRows.length) return preparedRows;
+  const amount = Number(String(total || getValue(payload, "serviceability.hemMonthly") || 0).replace(/[^\d.-]/g, ""));
+  if (!Number.isFinite(amount) || amount <= 0) return [];
+  const template = [
+    ["Groceries", 0.31],
+    ["Clothing & Personal Care", 0.07],
+    ["Other Insurances", 0.07],
+    ["Health Care", 0.04],
+    ["Home Maintenance", 0.1],
+    ["Entertainment", 0.1],
+    ["Telephone and Internet", 0.07],
+    ["Vehicle Maintenance & Transport", 0.16],
+    ["Investment Property Costs", 0.08]
+  ];
+  let assigned = 0;
+  return template.map(([type, ratio], index) => {
+    const rowAmount = index === template.length - 1 ? Math.max(0, amount - assigned) : Math.round(amount * ratio / 10) * 10;
+    assigned += rowAmount;
+    return { type, amount: rowAmount, frequency: "Monthly", description: type, continuePostSettlement: "Yes" };
+  }).filter((row) => row.amount > 0);
+}
+
+async function closeActiveModalWithoutSaving() {
+  const modal = activeModal();
+  if (!modal) return false;
+  const close = findClickableByText(["Close", "Cancel", "×", "x"], modal);
+  if (!close) return false;
+  clickElement(close);
+  await waitFor(() => !activeModal(), { timeout: 2500, interval: 120 });
+  cleanupStuckModalState();
+  return true;
+}
+
+async function selectExpenseTypeWithFallback(preferredType, modal, result) {
+  const fallbacks = [preferredType, "Other", "Groceries"].filter(Boolean);
+  for (const type of fallbacks) {
+    const ok = await selectDropdownByText("Expense Type", type, modal, result, { section: "financialsExpense", expenseType: preferredType });
+    if (ok) return type;
+  }
+  recordError(result, "financialsExpense", "Expense Type", `Could not select expense type ${preferredType}`);
+  return "";
+}
+
+async function fillExpenseOwnership(modal, payload, result, expenseType) {
+  const applicants = infinityApplicantRows(payload);
+  if (applicants.length > 1) {
+    const inputs = [...modal.querySelectorAll("input:not([type='hidden'])")].filter(isVisible);
+    const percentInputs = inputs.filter((input) => normalize(input.value).includes("%") || input.value === "" || /^\d+%?$/.test(String(input.value || "")));
+    if (percentInputs.length >= 2) {
+      await setFieldValue(percentInputs[0], "50%");
+      await setFieldValue(percentInputs[1], "50%");
+      result.actions.push({ action: "set-expense-ownership", section: "financialsExpense", label: expenseType, split: "50/50" });
+      return true;
+    }
+  }
+  result.actions.push({ action: "review-expense-ownership", section: "financialsExpense", label: expenseType, reason: applicants.length > 1 ? "ownership inputs not found" : "single applicant default" });
+  return false;
+}
+
+function tableSectionText(sectionLabel) {
+  const node = findTextNode([sectionLabel]);
+  if (!node) return normalize(document.body?.innerText || "");
+  let container = node.parentElement;
+  for (let depth = 0; depth < 6 && container; depth += 1) {
+    const text = normalize(container.textContent);
+    if (text.includes(normalize(sectionLabel)) && (text.includes("actions") || text.includes("add expense") || text.includes("nothing to show"))) return text;
+    container = container.parentElement;
+  }
+  return normalize(document.body?.innerText || "");
+}
+
+function verifyTableRow(section, expectedText, result) {
+  const text = tableSectionText(section);
+  const ok = normalize(expectedText).split(/\s+/).filter(Boolean).every((part) => text.includes(part));
+  if (!ok) {
+    recordVerificationFailure(result, "financials", expectedText, `Expected row not visible in ${section}`);
+    return false;
+  }
+  result.actions.push({ action: "verify-table-row", section: "financials", label: section, expectedText });
+  return true;
+}
+
+async function upsertExpenseRow(row, payload, result) {
+  await scrollToText(["Monthly Expenses", "Add Expense"]);
+  const existingText = tableSectionText("Monthly Expenses");
+  if (existingText.includes(normalize(row.type)) && numericTokens(row.amount).some((token) => existingText.includes(normalize(token)))) {
+    result.actions.push({ action: "skip-existing-expense", section: "financialsExpense", label: row.type, amount: row.amount });
+    return true;
+  }
+
+  const addButton = findClickableByText(["Add Expense", "+ Add Expense"]);
+  if (!addButton) {
+    recordFieldSkipped(result, "financialsExpense", "Add Expense", "Add Expense button not visible", { expenseType: row.type });
+    return false;
+  }
+  const modal = await clickAndWaitForModal(addButton);
+  if (!modal) {
+    recordError(result, "financialsExpense", "Add Expense", "Expense modal did not open", { expenseType: row.type });
+    return false;
+  }
+  result.actions.push({ action: "open-expense-modal", section: "financialsExpense", label: row.type });
+
+  const selectedType = await selectExpenseTypeWithFallback(row.type, modal, result);
+  if (!selectedType) {
+    await closeActiveModalWithoutSaving();
+    return false;
+  }
+  await fillInputByLabel("Expense Amount", row.amount, modal, result, { section: "financialsExpense", expenseType: selectedType });
+  await selectDropdownByText("Expense Frequency", row.frequency || "Monthly", modal, result, { section: "financialsExpense", expenseType: selectedType });
+  await fillInputByLabel("Description", row.description || selectedType, modal, result, { section: "financialsExpense", expenseType: selectedType });
+  await selectDropdownByText("Continue Post Settlement", row.continuePostSettlement || "Yes", modal, result, { section: "financialsExpense", expenseType: selectedType });
+  await fillExpenseOwnership(modal, payload, result, selectedType);
+
+  const saved = await saveModalAndVerifyClosed(result, `Expense ${selectedType}`);
+  if (!saved) return false;
+  await sleep(400);
+  return verifyTableRow("Monthly Expenses", selectedType, result);
+}
+
 function fullApplicantName(applicant) {
   return [applicant?.firstName, applicant?.middleName, applicant?.lastName || applicant?.surname].filter(Boolean).join(" ").trim();
 }
@@ -893,6 +1170,60 @@ function clickApplicantTabByName(name) {
   if (!tab) return false;
   clickElement(tab);
   return true;
+}
+
+async function clickMainTabByText(text, result) {
+  const target = findNavigationTarget([text]) || findClickableByText([text]);
+  if (!target) {
+    recordFieldSkipped(result, "navigation", text, "main tab not found");
+    return false;
+  }
+  return safeClick(target, result, "open-main-tab", { section: "navigation", label: text });
+}
+
+async function clickSubTab(text, result) {
+  const target = findClickableByText([text]) || findNavigationTarget([text]);
+  if (!target) {
+    recordFieldSkipped(result, "loansProducts", text, "subtab not found");
+    return false;
+  }
+  return safeClick(target, result, "open-subtab", { section: "loansProducts", label: text });
+}
+
+async function waitForActiveApplicant(applicantName) {
+  if (!applicantName) return document;
+  const wanted = normalize(applicantName);
+  return waitFor(() => {
+    const activeCandidates = [...document.querySelectorAll(".active, .selected, [aria-selected='true'], li, a, span")]
+      .filter(isVisible)
+      .filter((element) => {
+        const text = visibleText(element);
+        const marker = normalize(`${element.className || ""} ${element.getAttribute("aria-selected") || ""}`);
+        return text && (text === wanted || text.includes(wanted)) && (marker.includes("active") || marker.includes("selected") || element.getAttribute("aria-selected") === "true");
+      });
+    return activeCandidates[0] || (pageHasAnyText([applicantName]) ? document : null);
+  }, { timeout: 4000, interval: 150 });
+}
+
+function getActiveApplicantScope(applicantName) {
+  const wanted = normalize(applicantName);
+  const activeTab = [...document.querySelectorAll(".active, .selected, [aria-selected='true'], li, a")]
+    .filter(isVisible)
+    .find((element) => {
+      const text = visibleText(element);
+      return text && (text === wanted || text.includes(wanted));
+    });
+  let container = activeTab?.parentElement;
+  for (let depth = 0; depth < 6 && container; depth += 1) {
+    const marker = normalize(`${container.className || ""} ${container.id || ""}`);
+    if (marker.includes("tab") || marker.includes("client") || marker.includes("account")) break;
+    container = container.parentElement;
+  }
+  const visibleForms = [...document.querySelectorAll("form, .tab-pane.active, .tab-content .active, [ng-show]:not(.ng-hide), [data-ng-show]:not(.ng-hide), .panel, .card")]
+    .filter(isVisible)
+    .filter((element) => element.querySelector(controlSelector))
+    .sort((a, b) => (b.getBoundingClientRect().width * b.getBoundingClientRect().height) - (a.getBoundingClientRect().width * a.getBoundingClientRect().height));
+  return visibleForms[0] || document;
 }
 
 function addressPartsFromApplicant(applicant, fallbackAddressText = "") {
@@ -930,19 +1261,24 @@ function addressPartsFromApplicant(applicant, fallbackAddressText = "") {
     "Tce",
     "Way"
   ];
-  const line = String(address.line1 || fullText)
-    .replace(/\b(ACT|NSW|NT|QLD|SA|TAS|VIC|WA)\b.*$/i, "")
+  const stateValue = address.state || stateMatch?.[1]?.toUpperCase() || "";
+  const postcodeValue = address.postcode || postcodeMatch?.[1] || "";
+  const addressBeforeState = String(address.line1 || fullText)
     .replace(/\b\d{4}\b.*$/i, "")
-    .split(",")[0]
+    .replace(/\b(ACT|NSW|NT|QLD|SA|TAS|VIC|WA)\b.*$/i, "")
+    .replace(/,/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
-  const unit = line.match(/\b(?:unit|u|apt|apartment)\s*([a-z0-9/-]+)/i)?.[1] || "";
-  const withoutUnit = line.replace(/\b(?:unit|u|apt|apartment)\s*[a-z0-9/-]+\s*,?\s*/i, "").trim();
+  const unit = addressBeforeState.match(/\b(?:unit|u|apt|apartment)\s*([a-z0-9/-]+)/i)?.[1] || "";
+  const withoutUnit = addressBeforeState.replace(/\b(?:unit|u|apt|apartment)\s*[a-z0-9/-]+\s*/i, "").trim();
   const number = withoutUnit.match(/^(\d+[a-z]?(?:-\d+[a-z]?)?)/i)?.[1] || "";
   const afterNumber = withoutUnit.replace(/^(\d+[a-z]?(?:-\d+[a-z]?)?)\s*/i, "").trim();
   const typePattern = new RegExp(`\\b(${streetTypes.join("|")})\\b\\.?$`, "i");
-  const typeMatch = afterNumber.match(typePattern);
+  const typeAnywherePattern = new RegExp(`\\b(${streetTypes.join("|")})\\b\\.?`, "i");
+  const typeMatch = afterNumber.match(typeAnywherePattern);
   const streetType = typeMatch?.[1] || "";
-  const streetName = streetType ? afterNumber.replace(typePattern, "").trim() : afterNumber;
+  const streetName = streetType ? afterNumber.slice(0, typeMatch.index).trim() : afterNumber;
+  const suburbAfterStreet = streetType ? afterNumber.slice((typeMatch.index || 0) + typeMatch[0].length).trim() : "";
 
   return {
     buildingName: address.buildingName || "",
@@ -951,12 +1287,16 @@ function addressPartsFromApplicant(applicant, fallbackAddressText = "") {
     streetNumber: address.streetNumber || number,
     streetName: address.streetName || streetName,
     streetType: address.streetType || streetType,
-    suburb: address.suburb || inferSuburb(fullText, stateMatch?.[1], postcodeMatch?.[1]),
-    state: address.state || stateMatch?.[1]?.toUpperCase() || "",
-    postcode: address.postcode || postcodeMatch?.[1] || "",
+    suburb: address.suburb || suburbAfterStreet || inferSuburb(fullText, stateValue, postcodeValue),
+    state: stateValue,
+    postcode: postcodeValue,
     country: address.country || "Australia",
     startDate: address.startDate || address.fromDate || ""
   };
+}
+
+function parseAustralianAddress(raw) {
+  return addressPartsFromApplicant({ address: typeof raw === "string" ? { line1: raw } : raw }, typeof raw === "string" ? raw : "");
 }
 
 function inferSuburb(text, state, postcode) {
@@ -966,6 +1306,24 @@ function inferSuburb(text, state, postcode) {
   const words = beforeState.replace(/[,]/g, " ").trim().split(/\s+/).filter(Boolean);
   if (words.length < 2) return "";
   return words.slice(-2).join(" ");
+}
+
+function rowForAddressLabel(addressLabel) {
+  const wanted = normalize(addressLabel);
+  const nodes = [...document.querySelectorAll("label, span, div, p, strong, h1, h2, h3, h4, td, th")]
+    .filter(isVisible)
+    .filter((node) => {
+      const text = normalize(node.textContent);
+      return text && text.length <= 180 && (text === wanted || text.includes(wanted));
+    });
+  for (const node of nodes) {
+    let container = node.parentElement;
+    for (let depth = 0; depth < 8 && container; depth += 1) {
+      if (findClickableByText(["Edit"], container) || normalize(container.textContent).includes("please start typing address")) return container;
+      container = container.parentElement;
+    }
+  }
+  return null;
 }
 
 function findEditButtonForAddress(addressLabel) {
@@ -996,50 +1354,78 @@ function findEditButtonForAddress(addressLabel) {
   return null;
 }
 
-async function fillAddressModal(addressLabel, applicant, fallbackAddressText, result, rowIndex) {
+async function clickAddressEdit(addressLabel, result, meta = {}) {
   await scrollToText([addressLabel]);
   const edit = findEditButtonForAddress(addressLabel);
   if (!edit) {
-    result.fieldsSkipped.push({ section: "clientDetails", label: `${addressLabel} Edit`, reason: "Edit button not visible", rowIndex });
-    return false;
+    recordFieldSkipped(result, "clientDetails", `${addressLabel} Edit`, "Edit button not visible", meta);
+    return null;
   }
   const modal = await clickAndWaitForModal(edit);
   if (!modal) {
-    result.errors.push({ section: "clientDetails", label: addressLabel, message: "Edit Address modal did not open", rowIndex });
-    return false;
+    recordError(result, "clientDetails", addressLabel, "Edit Address modal did not open", meta);
+    return null;
   }
+  result.actions.push({ action: "open-address-edit", section: "clientDetails", label: addressLabel, ...meta });
+  return modal;
+}
 
-  const parts = addressPartsFromApplicant(applicant, fallbackAddressText);
+async function fillAddressModal(parsed, modal, result, meta = {}) {
   const addressFields = [
-    ["Building Name", parts.buildingName],
-    ["Floor Number", parts.floorNumber],
-    ["Unit Number", parts.unitNumber],
-    ["Street Number", parts.streetNumber],
-    ["Street Name", parts.streetName],
-    ["Street Type", parts.streetType],
-    ["Suburb/City", parts.suburb],
-    ["State", parts.state],
-    ["Postcode", parts.postcode],
-    ["Country", parts.country],
-    ["Start Date", formatDateValue(parts.startDate, "au")]
+    ["Building Name", parsed.buildingName],
+    ["Floor Number", parsed.floorNumber],
+    ["Unit Number", parsed.unitNumber],
+    ["Street Number", parsed.streetNumber],
+    ["Street Name", parsed.streetName],
+    ["Street Type", parsed.streetType],
+    ["Suburb/City", parsed.suburb],
+    ["State", parsed.state],
+    ["Postcode", parsed.postcode],
+    ["Country", parsed.country],
+    ["Start Date", formatDateValue(parsed.startDate, "au")]
   ];
 
   for (const [label, value] of addressFields) {
     if (value === undefined || value === null || value === "") continue;
-    const found = findByLabelText([label], value, modal);
-    if (!found) {
-      result.fieldsSkipped.push({ section: "clientDetails", label, reason: "address modal field not visible", rowIndex });
-      continue;
-    }
-    const ok = await setFieldValue(found.element, value);
-    if (ok) result.fieldsFilled.push({ section: "clientDetails", label, selector: found.selector, expected: value, rowIndex });
+    const isDropdown = ["Street Type", "State", "Country"].includes(label);
+    if (isDropdown) await selectDropdownByText(label, value, modal, result, { section: "clientDetails", ...meta });
+    else await fillInputByLabel(label, value, modal, result, { section: "clientDetails", ...meta });
   }
+  return true;
+}
 
+async function saveModalAndVerifyClosed(result, description) {
   const saved = await clickModalSave();
-  result.actions.push({ action: saved ? "save-address" : "review-address", section: "clientDetails", rowIndex });
+  result.actions.push({ action: saved ? "save-modal" : "review-modal", section: "modal", label: description });
   if (!saved) {
-    result.errors.push({ section: "clientDetails", label: addressLabel, message: "Address modal was filled but did not close", rowIndex });
+    recordError(result, "modal", description, "Modal was filled but did not close");
   }
+  return saved;
+}
+
+async function verifyAddressRowNotPlaceholder(addressLabel, parsed, result, applicantName) {
+  await scrollToText([addressLabel]);
+  const row = rowForAddressLabel(addressLabel);
+  const text = normalize(row?.textContent || "");
+  if (!row || text.includes("please start typing address")) {
+    recordVerificationFailure(result, "clientDetails", addressLabel, "Address row still shows placeholder after save", { applicantName, expected: parsed });
+    return false;
+  }
+  result.actions.push({ action: "verify-address-row", section: "clientDetails", label: addressLabel, applicantName });
+  return true;
+}
+
+async function fillAddressForApplicant(addressLabel, applicant, rawAddress, result, meta = {}) {
+  if (!rawAddress || (typeof rawAddress === "object" && !Object.values(rawAddress).some(Boolean))) {
+    recordFieldSkipped(result, "clientDetails", addressLabel, "address data missing; skipped by rule", meta);
+    return false;
+  }
+  const modal = await clickAddressEdit(addressLabel, result, meta);
+  if (!modal) return false;
+  const parsed = addressPartsFromApplicant({ ...applicant, address: rawAddress }, typeof rawAddress === "string" ? rawAddress : "");
+  await fillAddressModal(parsed, modal, result, meta);
+  const saved = await saveModalAndVerifyClosed(result, `Address ${addressLabel}`);
+  if (saved) await verifyAddressRowNotPlaceholder(addressLabel, parsed, result, meta.applicantName);
   return saved;
 }
 
@@ -1056,6 +1442,10 @@ function payloadForApplicant(payload, applicantDetails) {
 function looksLikeAddressValue(value) {
   const text = normalize(value);
   return /\b(unit|street|st|road|rd|avenue|ave|lane|ln|drive|dr|court|ct|sa|nsw|vic|qld|wa|tas|act|nt|\d{4})\b/.test(text) && !/^\+?\d[\d\s()-]{6,}$/.test(text);
+}
+
+function isAddressLikeText(value) {
+  return looksLikeAddressValue(value);
 }
 
 function looksLikeDateValue(value) {
@@ -1107,6 +1497,35 @@ async function cleanupMisfilledClientDetails(result, rowIndex) {
   }
 }
 
+async function clearAddressGarbageFromPhoneFields(scope, result, applicantName) {
+  const phoneFields = ["Home Phone", "Work Phone", "Fax"];
+  for (const label of phoneFields) {
+    const found = findByLabelText([label], "", scope || document);
+    const actual = found ? readFieldValue(found.element) : "";
+    if (actual && isAddressLikeText(actual)) {
+      await setFieldValue(found.element, "");
+      result.actions.push({ action: "clear-invalid-field", section: "clientDetails", label, reason: "address detected in phone field", actual, applicantName });
+    }
+  }
+}
+
+async function detectAndFixDateSwap(applicant, scope, result) {
+  const dob = formatDateValue(applicant?.dateOfBirth, "au");
+  const expiry = formatDateValue(applicant?.licenceExpiryDate, "au");
+  const dobField = findByLabelText(["Date of Birth"], dob, scope || document);
+  const expiryField = findByLabelText(["Licence Expiry Date"], expiry, scope || document);
+  const dobActual = dobField ? readFieldValue(dobField.element) : "";
+  const expiryActual = expiryField ? readFieldValue(expiryField.element) : "";
+  if (dob && expiry && normalize(dobActual) === normalize(expiry)) {
+    await setFieldValue(dobField.element, dob);
+    result.actions.push({ action: "fix-date-swap", section: "clientDetails", label: "Date of Birth", expected: dob, actual: dobActual });
+  }
+  if (dob && expiry && normalize(expiryActual) === normalize(dob)) {
+    await setFieldValue(expiryField.element, expiry);
+    result.actions.push({ action: "fix-date-swap", section: "clientDetails", label: "Licence Expiry Date", expected: expiry, actual: expiryActual });
+  }
+}
+
 function clientDetailsFieldMap() {
   return [
     ["Entity Type", "entityType"],
@@ -1133,14 +1552,14 @@ function clientDetailsFieldMap() {
   ];
 }
 
-async function fillClientDetailsDirect(applicant, result, rowIndex) {
+async function fillClientDetailsDirect(applicant, result, rowIndex, scope = document) {
   let filledCount = 0;
   for (const [label, key, dateFormat] of clientDetailsFieldMap()) {
     const rawValue = applicant?.[key];
     if (rawValue === undefined || rawValue === null || rawValue === "") continue;
     const value = formatDateValue(rawValue, dateFormat);
     await scrollToText([label]);
-    const found = findByLabelText([label], value, document);
+    const found = findByLabelText([label], value, scope);
     if (!found) {
       result.fieldsSkipped.push({ section: "clientDetails", label, reason: "field not found after scroll", rowIndex });
       continue;
@@ -1163,16 +1582,20 @@ async function fillClientDetailsDirect(applicant, result, rowIndex) {
 }
 
 async function fillApplicantAddresses(applicant, rawApplicant, result, rowIndex) {
-  const labels = ["Current Address", "Previous Address", "Post Settlement Address", "Mailing Address"];
-  for (const label of labels) {
-    const addressSource = label === "Previous Address" ? rawApplicant?.previousAddress || rawApplicant?.address : rawApplicant?.address;
-    const fallback = label === "Previous Address" ? rawApplicant?.previousAddressText || applicant?.currentAddress : applicant?.currentAddress;
-    await fillAddressModal(label, addressSource ? { ...rawApplicant, address: addressSource } : rawApplicant, fallback, result, rowIndex);
+  const addressRows = [
+    ["Current Address", rawApplicant?.address || applicant?.currentAddress],
+    ["Previous Address", rawApplicant?.previousAddress || rawApplicant?.previousResidentialAddress || applicant?.previousAddress],
+    ["Post Settlement Address", rawApplicant?.postSettlementAddress || applicant?.postSettlementAddress],
+    ["Mailing Address", rawApplicant?.mailingAddress || applicant?.mailingAddress]
+  ];
+  for (const [label, addressSource] of addressRows) {
+    await fillAddressForApplicant(label, applicant, addressSource, result, { rowIndex, applicantName: fullApplicantName(applicant) });
     await sleep(250);
   }
 }
 
 async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
+  ensureResultShape(result);
   if (!isClientDetailsPage()) return false;
   const section = mapping.sections.find((item) => item.id === "clientDetails");
   if (!section) return false;
@@ -1183,16 +1606,21 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     const applicant = applicants[index];
     const name = fullApplicantName(applicant);
     showAutomationStatus(`EasyFlow AI: filling Client Details ${index + 1}/${applicants.length}...`);
-    if (index > 0) {
-      const clicked = clickApplicantTabByName(name);
-      result.actions.push({ action: clicked ? "open-applicant-tab" : "review-applicant-tab", section: "clientDetails", label: name, rowIndex: index });
-      if (clicked) await sleep(700);
+    const clicked = clickApplicantTabByName(name);
+    result.actions.push({ action: clicked ? "open-applicant-tab" : "review-applicant-tab", section: "clientDetails", label: name, rowIndex: index });
+    if (clicked) {
+      await waitForAngularSettle();
+      await waitForActiveApplicant(name);
     }
 
+    const scope = getActiveApplicantScope(name);
+    await clearAddressGarbageFromPhoneFields(scope, result, name);
     await cleanupMisfilledClientDetails(result, index);
-    await fillClientDetailsDirect(applicant, result, index);
+    await fillClientDetailsDirect(applicant, result, index, scope);
+    await detectAndFixDateSwap(applicant, scope, result);
     await fillApplicantAddresses(applicant, rawApplicantForIndex(payload, index), result, index);
-    await cleanupMisfilledClientDetails(result, index);
+    await clearAddressGarbageFromPhoneFields(scope, result, name);
+    await detectAndFixDateSwap(applicant, scope, result);
     const saved = await clickPageSaveIfVisible();
     result.actions.push({ action: saved ? "save-client-details" : "review-client-details", section: "clientDetails", rowIndex: index });
     await sleep(500);
@@ -1263,21 +1691,20 @@ async function runPopupWorkflow(workflow, payload, mapping, apiBase, result) {
 }
 
 async function runFinancialsWorkflow(payload, mapping, apiBase, result) {
+  ensureResultShape(result);
   if (!isInfinityFinancialsPage()) return false;
   if (!isHemConfirmed(payload)) {
-    result.errors.push({
-      section: "financials",
-      message: "HEM / living expense breakdown is not confirmed. Confirm it in EasyFlow AI and prepare again before Financials autofill."
-    });
+    recordFieldSkipped(result, "financialsExpense", "Monthly Expenses", "HEM / living expense breakdown is not confirmed. Confirm it in EasyFlow AI and prepare again before Financials autofill.");
     return true;
   }
-  const workflows = supportedPopupWorkflows(payload);
-  if (!workflows.length) {
-    result.fieldsSkipped.push({ section: "financials", label: "Financials popups", reason: "No supported Add buttons or payload rows found" });
+  const rows = buildHemExpenseRows(getValue(payload, "serviceability.hemMonthly"), payload);
+  if (!rows.length) {
+    recordFieldSkipped(result, "financialsExpense", "Monthly Expenses", "No HEM expense rows found in prepared payload");
     return true;
   }
-  for (const workflow of workflows) {
-    await runPopupWorkflow(workflow, payload, mapping, apiBase, result);
+  showAutomationStatus(`EasyFlow AI: filling ${rows.length} monthly expense row(s)...`);
+  for (const row of rows) {
+    await upsertExpenseRow(row, payload, result);
   }
   return true;
 }
@@ -1316,33 +1743,101 @@ async function selectNeedsAnalysisApplicants(payload, result) {
   }
 }
 
-async function runSocaWorkflow(payload, mapping, apiBase, result) {
-  if (!isInfinitySocaPage()) return false;
-  await selectNeedsAnalysisApplicants(payload, result);
-  const currentResult = await autofill({ mode: "currentSection", payload, mapping, apiBase });
-  mergeAutofillResult(result, currentResult);
-  result.actions.push({ action: "fill-soca-current-section", section: currentResult.sectionId || "soca", filled: currentResult.fieldsFilled.length });
-  if (currentResult.fieldsFilled.length) {
-    const saved = await clickPageSaveIfVisible();
-    result.actions.push({ action: saved ? "save-soca-page" : "review-soca-page", section: currentResult.sectionId || "soca" });
-    const advanced = await clickPageNextIfVisible();
-    if (advanced) result.actions.push({ action: "next-soca-page", section: currentResult.sectionId || "soca" });
+function isLoansProductsArea() {
+  return isInfinityLoansSummaryPage() || isInfinitySocaPage() || pageHasAnyText(["Loans & Products", "Create Application", "Best Interest Duty"]);
+}
+
+function isNeedsAnalysisVisible() {
+  return pageHasAnyText(["Needs Analysis", "Loan Requirements", "Loan Objectives", "Select Applicant"]);
+}
+
+async function fillNeedsAnalysisField(field, payload, result) {
+  const value = fieldValue(payload, field);
+  if (value === undefined || value === null || value === "") {
+    if (!field.optional) recordFieldSkipped(result, "needsAnalysis", field.label, "payload value missing");
+    return false;
   }
+  const meta = { section: "needsAnalysis", payloadPath: field.payloadPath };
+  if (typeof value === "boolean") {
+    if (!value) {
+      result.actions.push({ action: "skip-false-checkbox", section: "needsAnalysis", label: field.label });
+      return true;
+    }
+    return clickCheckboxByLabel(field.label, result, meta);
+  }
+  if (field.dateFormat === "au" || /date/i.test(field.label)) {
+    return fillDateByLabel(field.label, value, document, result, meta);
+  }
+  if (isChoiceValue(value) || /method|frequency|type|status/i.test(field.label)) {
+    const selected = await selectDropdownByText(field.label, value, document, result, meta);
+    if (selected) return true;
+  }
+  return fillInputByLabel(field.label, value, document, result, meta);
+}
+
+async function fillNeedsAnalysis(payload, mapping, result) {
+  await selectNeedsAnalysisApplicants(payload, result);
+  const section = mapping.sections.find((item) => item.id === "needsAnalysis");
+  if (!section) {
+    recordFieldSkipped(result, "needsAnalysis", "Needs Analysis", "mapping section not found");
+    return false;
+  }
+  let filledCount = 0;
+  for (const field of section.fields) {
+    await scrollToText(fieldLabels(field));
+    const ok = await fillNeedsAnalysisField(field, payload, result);
+    if (ok) filledCount += 1;
+    await sleep(90);
+  }
+  result.actions.push({ action: "fill-needs-analysis", section: "needsAnalysis", filled: filledCount });
+  return filledCount > 0;
+}
+
+async function runLoansProductsWorkflow(payload, mapping, apiBase, result) {
+  ensureResultShape(result);
+  if (!isLoansProductsArea()) return false;
+  showAutomationStatus("EasyFlow AI: filling Loans & Products / Needs Analysis...");
+
+  if (isInfinityLoansSummaryPage() || pageHasAnyText(["Create Application"])) {
+    await ensureBestInterestDutyApplication(result);
+    await waitForAngularSettle();
+  }
+
+  if (!isNeedsAnalysisVisible()) {
+    const opened = await clickSubTab("Needs Analysis", result);
+    if (opened) await waitFor(() => isNeedsAnalysisVisible(), { timeout: 5000, interval: 150 });
+  }
+
+  if (!isNeedsAnalysisVisible()) {
+    recordFieldSkipped(result, "loansProducts", "Needs Analysis", "Needs Analysis UI not visible after create/open application");
+    return true;
+  }
+
+  const filled = await fillNeedsAnalysis(payload, mapping, result);
+  if (!filled) {
+    recordVerificationFailure(result, "needsAnalysis", "Needs Analysis", "No Needs Analysis fields were filled");
+    return true;
+  }
+
+  const saved = await clickPageSaveIfVisible();
+  result.actions.push({ action: saved ? "save-needs-analysis" : "review-needs-analysis", section: "needsAnalysis" });
+  const next = await clickPageNextIfVisible();
+  result.actions.push({
+    action: next ? "next-after-needs-analysis" : "stop-after-needs-analysis",
+    section: "needsAnalysis",
+    label: next ? "Stopped before broker lender selection / later SOCA tabs" : "No next button visible"
+  });
   return true;
 }
 
 async function runWorkflow({ payload, mapping, apiBase }) {
-  const result = { sectionId: "workflow", fieldsFilled: [], fieldsSkipped: [], errors: [], actions: [] };
-
-  if (detectPlatform() === "infinity") {
-    await ensureBestInterestDutyApplication(result);
-  }
+  const result = ensureResultShape({ sectionId: "workflow", fieldsFilled: [], fieldsSkipped: [], errors: [], actions: [], verificationFailures: [] });
 
   const clientDetailsHandled = await runClientDetailsWorkflow(payload, mapping, apiBase, result);
   const financialsHandled = clientDetailsHandled ? false : await runFinancialsWorkflow(payload, mapping, apiBase, result);
-  const socaHandled = clientDetailsHandled || financialsHandled ? false : await runSocaWorkflow(payload, mapping, apiBase, result);
+  const loansProductsHandled = clientDetailsHandled || financialsHandled ? false : await runLoansProductsWorkflow(payload, mapping, apiBase, result);
 
-  if (!clientDetailsHandled && !financialsHandled && !socaHandled) {
+  if (!clientDetailsHandled && !financialsHandled && !loansProductsHandled) {
     const visibleResult = await autofill({ mode: "visible", payload, mapping, apiBase });
     mergeAutofillResult(result, visibleResult);
     result.actions.push({ action: "fill-visible-fields", section: "visible", filled: visibleResult.fieldsFilled.length });
@@ -1356,7 +1851,7 @@ async function runWorkflow({ payload, mapping, apiBase }) {
     }
   }
 
-  for (const workflow of clientDetailsHandled || financialsHandled ? [] : supportedPopupWorkflows(payload)) {
+  for (const workflow of clientDetailsHandled || financialsHandled || loansProductsHandled ? [] : supportedPopupWorkflows(payload)) {
     await runPopupWorkflow(workflow, payload, mapping, apiBase, result);
   }
 
@@ -1369,12 +1864,6 @@ const navigationPlans = {
     { id: "clientDetails", labels: ["Client Details"] },
     { id: "financials", labels: ["Financials"] },
     { id: "loansProducts", labels: ["Loans & Products", "Loans and Products"] },
-    { id: "needsAnalysis", labels: ["Needs Analysis"] },
-    { id: "loansSecuritiesCommentary", labels: ["Loans, Securities & Commentary"] },
-    { id: "preferredLoanFeaturesScenarios", labels: ["Preferred Loan Features", "Scenarios"] },
-    { id: "recommendation", labels: ["Recommendation"] },
-    { id: "commissionsConflictInterest", labels: ["Commissions", "Conflict of Interest"] },
-    { id: "clientForms", labels: ["Client Forms"] },
     { id: "factFind", labels: ["Fact Find"] },
     { id: "notes", labels: ["Notes"] },
     { id: "documents", labels: ["Documents"] }
@@ -1415,7 +1904,7 @@ async function navigateToPage(step) {
 async function runAllPages({ payload, mapping, apiBase }) {
   const platform = detectPlatform();
   const plan = navigationPlans[platform] || [];
-  const result = { sectionId: "all-pages", fieldsFilled: [], fieldsSkipped: [], errors: [], actions: [], pages: [], platform };
+  const result = ensureResultShape({ sectionId: "all-pages", fieldsFilled: [], fieldsSkipped: [], errors: [], actions: [], verificationFailures: [], pages: [], platform });
 
   if (!plan.length) {
     result.errors.push({ message: "Could not detect Infinity or AOL page. Open a case page first." });
@@ -1433,7 +1922,6 @@ async function runAllPages({ payload, mapping, apiBase }) {
 
     const pageResult = await runWorkflow({ payload, mapping, apiBase });
     mergeAutofillResult(result, pageResult);
-    result.actions.push(...(pageResult.actions || []));
 
     const compareResult = await scanCompare({ mode: "visible", payload, mapping });
     await logComparisonSnapshot(apiBase, payload, compareResult);
@@ -1449,7 +1937,7 @@ async function runAllPages({ payload, mapping, apiBase }) {
   }
 
   await logAutofill(apiBase, payload, result);
-  const issueCount = result.errors.length + result.fieldsSkipped.length;
+  const issueCount = result.errors.length + result.fieldsSkipped.length + result.verificationFailures.length;
   showAutomationStatus(
     issueCount
       ? `EasyFlow AI finished with ${issueCount} item(s) to review.`
@@ -1497,7 +1985,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "INFINITY_AOL_AUTOFILL") {
     autofill(message)
       .then(sendResponse)
-      .catch((error) => sendResponse({ sectionId: null, fieldsFilled: [], fieldsSkipped: [], errors: [{ message: error.message }] }));
+      .catch((error) => sendResponse({ sectionId: null, fieldsFilled: [], fieldsSkipped: [], errors: [{ message: error.message }], actions: [], verificationFailures: [] }));
     return true;
   }
 
@@ -1505,7 +1993,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     runWorkflow(message)
       .then(sendResponse)
       .catch((error) =>
-        sendResponse({ sectionId: "workflow", fieldsFilled: [], fieldsSkipped: [], errors: [{ message: error.message }], actions: [] })
+        sendResponse({ sectionId: "workflow", fieldsFilled: [], fieldsSkipped: [], errors: [{ message: error.message }], actions: [], verificationFailures: [] })
       );
     return true;
   }
@@ -1519,6 +2007,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           fieldsFilled: [],
           fieldsSkipped: [],
           errors: [{ message: error.message }],
+          verificationFailures: [],
           actions: [],
           pages: []
         })
