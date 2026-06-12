@@ -111,6 +111,11 @@ function clickElement(element) {
   element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
 }
 
+function pressEscape() {
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", keyCode: 27, bubbles: true }));
+  document.activeElement?.dispatchEvent?.(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", keyCode: 27, bubbles: true }));
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -143,6 +148,7 @@ function ensureResultShape(result) {
   result.errors = result.errors || [];
   result.actions = result.actions || [];
   result.verificationFailures = result.verificationFailures || [];
+  result.warnings = result.warnings || [];
   return result;
 }
 
@@ -1053,36 +1059,120 @@ function existingWorkflowRowVisible(workflow, payload, index) {
   return hasLabel && (hasValue || !values.length);
 }
 
+const INFINITY_EXPENSE_TYPES = [
+  "Board",
+  "Child Care",
+  "Child Maintenance",
+  "Clothing & Personal Care",
+  "Electricity",
+  "Entertainment",
+  "Gas",
+  "Groceries",
+  "Health Care",
+  "Higher Education and Vocational Training",
+  "Holiday Home Costs",
+  "Home & Contents Insurance",
+  "Home Maintenance",
+  "Investment Property Costs",
+  "Medical and Life Insurance",
+  "Other",
+  "Other Insurances",
+  "Owner Occupied Council & Water Rates",
+  "Pet Care",
+  "Private and Non-Government Education",
+  "Public Primary and Secondary Education",
+  "Rental Expenses",
+  "Strata Fees and Land Tax",
+  "Telephone and Internet",
+  "Vehicle Insurance",
+  "Vehicle Maintenance & Transport",
+  "Water"
+];
+
+const EXPENSE_TYPE_ALIASES = {
+  "Clothing & Personal Care": ["Clothing and Personal Care", "Personal Care", "Clothing"],
+  "Other Insurances": ["Other Insurance", "Insurance", "Insurances", "Medical and Life Insurance", "Home & Contents Insurance"],
+  Groceries: ["Food and Groceries", "Food & Groceries", "Food"],
+  "Investment Property Costs": ["Investment Property Expenses", "Investment Property", "Rental Property Costs", "Strata Fees and Land Tax"],
+  "Health Care": ["Healthcare", "Medical", "Medical and Health", "Health"],
+  "Home Maintenance": ["Maintenance", "Home Repairs", "Repairs and Maintenance", "Property Maintenance"],
+  Entertainment: ["Recreation", "Entertainment and Recreation", "Lifestyle", "Leisure"],
+  "Telephone and Internet": ["Telephone & Internet", "Phone and Internet", "Phone & Internet", "Internet", "Telecommunications"],
+  "Vehicle Maintenance & Transport": ["Vehicle Maintenance and Transport", "Vehicle / Transport", "Motor Vehicle", "Transport", "Car Expenses"]
+};
+
+const HEM_EXPENSE_TEMPLATE = [
+  ["Clothing & Personal Care", 200],
+  ["Other Insurances", 200],
+  ["Groceries", 900],
+  ["Investment Property Costs", 300],
+  ["Health Care", 100],
+  ["Home Maintenance", 300],
+  ["Entertainment", 300],
+  ["Telephone and Internet", 200],
+  ["Vehicle Maintenance & Transport", 500]
+];
+
+function normalizeOptionLabel(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/\//g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function labelsMatchLoose(a, b) {
+  const left = normalizeOptionLabel(a);
+  const right = normalizeOptionLabel(b);
+  return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
+}
+
+function labelsEqual(a, b) {
+  const left = normalizeOptionLabel(a);
+  const right = normalizeOptionLabel(b);
+  return Boolean(left && right && left === right);
+}
+
+function normalizeMoneyValue(value) {
+  const number = Number(String(value ?? "").replace(/[^\d.-]/g, ""));
+  return Number.isFinite(number) ? number : 0;
+}
+
+function normalizeExpenseRow(row) {
+  return {
+    type: String(row?.expenseType || row?.type || row?.name || "").trim(),
+    amount: normalizeMoneyValue(row?.amount ?? row?.monthlyAmount ?? row?.value),
+    frequency: row?.frequency || "Monthly",
+    description: row?.description || row?.expenseType || row?.type || "Living expense",
+    continuePostSettlement: row?.continuePostSettlement || "Yes"
+  };
+}
+
+function scaleHemExpenseTemplate(total) {
+  const target = normalizeMoneyValue(total);
+  if (target <= 0) return [];
+  const baseTotal = HEM_EXPENSE_TEMPLATE.reduce((sum, [, amount]) => sum + amount, 0) || 1;
+  const rows = HEM_EXPENSE_TEMPLATE.map(([type, amount]) => ({
+    type,
+    amount: Math.round(((amount / baseTotal) * target) / 50) * 50,
+    frequency: "Monthly",
+    description: type,
+    continuePostSettlement: "Yes"
+  }));
+  const diff = target - rows.reduce((sum, row) => sum + row.amount, 0);
+  const groceries = rows.find((row) => row.type === "Groceries") || rows[0];
+  if (groceries) groceries.amount += diff;
+  return rows.filter((row) => row.amount > 0);
+}
+
 function buildHemExpenseRows(total, payload) {
   const preparedRows = collectionAt(payload, "infinity.financials.expenses")
-    .filter((row) => hasPositiveMoney(row.amount))
-    .map((row) => ({
-      type: row.type || "Other",
-      amount: row.amount,
-      frequency: row.frequency || "Monthly",
-      description: row.description || row.type || "Living expense",
-      continuePostSettlement: row.continuePostSettlement || "Yes"
-    }));
+    .map(normalizeExpenseRow)
+    .filter((row) => row.type && row.amount > 0);
   if (preparedRows.length) return preparedRows;
-  const amount = Number(String(total || getValue(payload, "serviceability.hemMonthly") || 0).replace(/[^\d.-]/g, ""));
-  if (!Number.isFinite(amount) || amount <= 0) return [];
-  const template = [
-    ["Groceries", 0.31],
-    ["Clothing & Personal Care", 0.07],
-    ["Other Insurances", 0.07],
-    ["Health Care", 0.04],
-    ["Home Maintenance", 0.1],
-    ["Entertainment", 0.1],
-    ["Telephone and Internet", 0.07],
-    ["Vehicle Maintenance & Transport", 0.16],
-    ["Investment Property Costs", 0.08]
-  ];
-  let assigned = 0;
-  return template.map(([type, ratio], index) => {
-    const rowAmount = index === template.length - 1 ? Math.max(0, amount - assigned) : Math.round(amount * ratio / 10) * 10;
-    assigned += rowAmount;
-    return { type, amount: rowAmount, frequency: "Monthly", description: type, continuePostSettlement: "Yes" };
-  }).filter((row) => row.amount > 0);
+  return scaleHemExpenseTemplate(total || getValue(payload, "serviceability.hemMonthly"));
 }
 
 async function closeActiveModalWithoutSaving() {
@@ -1096,13 +1186,126 @@ async function closeActiveModalWithoutSaving() {
   return true;
 }
 
-async function selectExpenseTypeWithFallback(preferredType, modal, result) {
-  const fallbacks = [preferredType, "Other", "Groceries"].filter(Boolean);
-  for (const type of fallbacks) {
-    const ok = await selectDropdownByText("Expense Type", type, modal, result, { section: "financialsExpense", expenseType: preferredType });
-    if (ok) return type;
+function canonicalInfinityExpenseType(type) {
+  const exact = INFINITY_EXPENSE_TYPES.find((item) => labelsEqual(item, type));
+  if (exact) return exact;
+  for (const [canonical, aliases] of Object.entries(EXPENSE_TYPE_ALIASES)) {
+    if (labelsEqual(canonical, type) || aliases.some((alias) => labelsEqual(alias, type))) return canonical;
   }
-  recordError(result, "financialsExpense", "Expense Type", `Could not select expense type ${preferredType}`);
+  for (const [canonical, aliases] of Object.entries(EXPENSE_TYPE_ALIASES)) {
+    if (labelsMatchLoose(canonical, type) || aliases.some((alias) => labelsMatchLoose(alias, type))) return canonical;
+  }
+  return type || "Other";
+}
+
+function expenseTypeCandidates(preferredType) {
+  const canonical = canonicalInfinityExpenseType(preferredType);
+  const aliases = EXPENSE_TYPE_ALIASES[canonical] || EXPENSE_TYPE_ALIASES[preferredType] || [];
+  const candidates = [canonical, preferredType, ...aliases, "Other"].filter(Boolean);
+  return [...new Set(candidates)].filter((candidate) => candidate !== "Please Select");
+}
+
+function findDropdownControlByLabels(labels, modal) {
+  for (const label of labels) {
+    const found = findExactByLabelText(label, "", modal) || findByLabelText([label], "", modal);
+    if (found?.element) return found.element;
+  }
+  return null;
+}
+
+function findVisibleOptionInDocument(optionText) {
+  const target = normalizeOptionLabel(optionText);
+  const selectors = [
+    "option",
+    "[role='option']",
+    ".ui-select-choices-row",
+    ".ui-select-choices-row-inner",
+    ".select2-results__option",
+    ".select2-result-label",
+    ".dropdown-menu li",
+    ".dropdown-menu a",
+    ".k-list .k-item",
+    "li",
+    "div",
+    "span"
+  ];
+  const seen = new Set();
+  const options = selectors.flatMap((selector) => [...document.querySelectorAll(selector)])
+    .filter((element) => {
+      if (seen.has(element)) return false;
+      seen.add(element);
+      return isVisible(element);
+    })
+    .filter((element) => {
+      const text = normalizeOptionLabel(element.textContent || element.getAttribute("value"));
+      return text && text.length <= 120;
+    });
+  return options.find((element) => normalizeOptionLabel(element.textContent || element.getAttribute("value")) === target) ||
+    options.find((element) => labelsMatchLoose(element.textContent || element.getAttribute("value"), optionText)) ||
+    null;
+}
+
+async function selectDropdownControlOption(control, optionText) {
+  if (!control) return false;
+  if (control.tagName === "SELECT") {
+    const option = [...control.options].find((item) => labelsMatchLoose(item.textContent, optionText));
+    if (!option) return false;
+    control.value = option.value;
+    control.dispatchEvent(new Event("input", { bubbles: true }));
+    control.dispatchEvent(new Event("change", { bubbles: true }));
+    control.dispatchEvent(new Event("blur", { bubbles: true }));
+    await sleep(150);
+    return labelsMatchLoose(readFieldValue(control), option.textContent);
+  }
+
+  clickElement(control);
+  await sleep(250);
+  const searchInput = [...document.querySelectorAll("input.ui-select-search, input.select2-search__field, input.select2-input, input[type='search'], input[aria-autocomplete]")]
+    .filter(isVisible)[0];
+  if (searchInput) {
+    nativeSetValue(searchInput, optionText);
+    await sleep(300);
+  }
+  const option = findVisibleOptionInDocument(optionText);
+  if (!option) {
+    pressEscape();
+    await sleep(120);
+    return false;
+  }
+  clickElement(option);
+  await sleep(250);
+  return true;
+}
+
+function readSelectedExpenseType(modal) {
+  const control = findDropdownControlByLabels(["Expense Type", "Type", "Expense"], modal);
+  if (!control) return "";
+  if (control.tagName === "SELECT") return readFieldValue(control);
+  const container = control.closest(".form-group, .row, .field, .control-group, div") || control.parentElement || modal;
+  const display = container.querySelector(".ui-select-match-text, .select2-selection__rendered, .select2-chosen, .dropdown-toggle, [role='combobox']") || control;
+  return String(readFieldValue(display) || display.textContent || "").trim();
+}
+
+async function selectExpenseTypeWithFallback(preferredType, modal, result) {
+  const control = findDropdownControlByLabels(["Expense Type", "Type", "Expense"], modal);
+  if (!control) {
+    recordError(result, "financialsExpense", "Expense Type", "Expense Type control not found", { expenseType: preferredType });
+    return "";
+  }
+  const requested = canonicalInfinityExpenseType(preferredType);
+  for (const candidate of expenseTypeCandidates(preferredType)) {
+    const ok = await selectDropdownControlOption(control, candidate);
+    if (!ok) continue;
+    const selected = await waitFor(() => readSelectedExpenseType(modal), { timeout: 900, interval: 100 });
+    if (selected && labelsMatchLoose(selected, candidate)) {
+      if (!labelsMatchLoose(candidate, preferredType)) {
+        result.warnings.push({ section: "financialsExpense", code: "EXPENSE_TYPE_ALIAS_USED", requested: preferredType, used: selected, matchedBy: candidate });
+      }
+      result.actions.push({ action: "select-expense-type", section: "financialsExpense", requested: preferredType, selected, canonical: requested });
+      return selected;
+    }
+  }
+  recordError(result, "financialsExpense", "Expense Type", `Could not select expense type ${preferredType}`, { tried: expenseTypeCandidates(preferredType) });
   return "";
 }
 
@@ -1145,10 +1348,54 @@ function verifyTableRow(section, expectedText, result) {
   return true;
 }
 
+function verifyExpenseTableRow(row, selectedType, result) {
+  const text = tableSectionText("Monthly Expenses");
+  const typeOk = labelsMatchLoose(text, selectedType) || labelsMatchLoose(text, row.type);
+  const amountOk = numericTokens(row.amount).some((token) => text.includes(normalize(token)));
+  if (!typeOk || !amountOk) {
+    recordVerificationFailure(result, "financialsExpense", row.type, "Monthly expense row not verified by type and amount after save", {
+      selectedType,
+      amount: row.amount,
+      typeOk,
+      amountOk
+    });
+    return false;
+  }
+  result.actions.push({ action: "verify-expense-row", section: "financialsExpense", label: selectedType, amount: row.amount });
+  return true;
+}
+
+function readExpenseAmount(modal) {
+  const found = findExactByLabelText("Expense Amount", "", modal) || findByLabelText(["Expense Amount", "Amount"], "", modal);
+  return normalizeMoneyValue(found?.element ? readFieldValue(found.element) : "");
+}
+
+async function verifyExpenseModalMandatoryFields(modal, row, selectedType, result) {
+  const selected = readSelectedExpenseType(modal);
+  const amount = readExpenseAmount(modal);
+  const typeOk = Boolean(selected && (labelsMatchLoose(selected, selectedType) || labelsMatchLoose(selected, row.type)));
+  const amountOk = Number(amount) === Number(normalizeMoneyValue(row.amount));
+  if (typeOk && amountOk) return true;
+  recordVerificationFailure(result, "financialsExpense", row.type, "Expense modal mandatory fields not verified before save", {
+    selectedType,
+    selected,
+    expectedAmount: row.amount,
+    actualAmount: amount,
+    typeOk,
+    amountOk
+  });
+  return false;
+}
+
 async function upsertExpenseRow(row, payload, result) {
+  row = normalizeExpenseRow(row);
+  if (!row.type || row.amount <= 0) {
+    recordError(result, "financialsExpense", "Monthly Expenses", "Invalid expense row; missing type or amount", row);
+    return false;
+  }
   await scrollToText(["Monthly Expenses", "Add Expense"]);
   const existingText = tableSectionText("Monthly Expenses");
-  if (existingText.includes(normalize(row.type)) && numericTokens(row.amount).some((token) => existingText.includes(normalize(token)))) {
+  if (labelsMatchLoose(existingText, row.type) && numericTokens(row.amount).some((token) => existingText.includes(normalize(token)))) {
     result.actions.push({ action: "skip-existing-expense", section: "financialsExpense", label: row.type, amount: row.amount });
     return true;
   }
@@ -1176,10 +1423,17 @@ async function upsertExpenseRow(row, payload, result) {
   await selectDropdownByText("Continue Post Settlement", row.continuePostSettlement || "Yes", modal, result, { section: "financialsExpense", expenseType: selectedType });
   await fillExpenseOwnership(modal, payload, result, selectedType);
 
+  const verified = await verifyExpenseModalMandatoryFields(modal, row, selectedType, result);
+  if (!verified) {
+    await closeActiveModalWithoutSaving();
+    recordError(result, "financialsExpense", row.type, "Expense modal closed without saving because type/amount verification failed", { amount: row.amount, selectedType });
+    return false;
+  }
+
   const saved = await saveModalAndVerifyClosed(result, `Expense ${selectedType}`);
   if (!saved) return false;
   await sleep(400);
-  return verifyTableRow("Monthly Expenses", selectedType, result);
+  return verifyExpenseTableRow(row, selectedType, result);
 }
 
 function fullApplicantName(applicant) {
