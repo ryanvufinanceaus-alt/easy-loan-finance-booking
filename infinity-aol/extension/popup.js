@@ -359,6 +359,34 @@ function diagnosticReportText(report) {
   return lines.join("\n");
 }
 
+function autofillReportText(report) {
+  if (!report) return "";
+  const lines = [
+    "EASYFLOW AI AUTOFILL RUN REPORT",
+    `Time: ${new Date().toISOString()}`,
+    `Status: ${report.status || ""}`,
+    `BlockedAt: ${report.blockedAt || ""}`,
+    `Message: ${report.message || ""}`,
+    `Platform: ${report.platform || ""}`,
+    "",
+    `Filled: ${report.fieldsFilled?.length || 0}`,
+    `Skipped: ${report.fieldsSkipped?.length || 0}`,
+    `Errors: ${report.errors?.length || 0}`,
+    `Verification failures: ${report.verificationFailures?.length || 0}`,
+    "",
+    "Errors:"
+  ];
+  for (const item of report.errors || []) lines.push(`- ${item.section || ""} > ${item.label || ""}: ${item.message || item.reason || ""} ${JSON.stringify(item)}`);
+  lines.push("", "Verification failures:");
+  for (const item of report.verificationFailures || []) lines.push(`- ${item.section || ""} > ${item.label || ""}: ${item.message || item.reason || ""} ${JSON.stringify(item)}`);
+  lines.push("", "Skipped:");
+  for (const item of report.fieldsSkipped || []) lines.push(`- ${item.section || ""} > ${item.label || ""}: ${item.reason || ""} ${JSON.stringify(item)}`);
+  lines.push("", "Actions:");
+  for (const item of report.actions || []) lines.push(`- ${item.section || ""} > ${item.action || ""}: ${item.label || ""} ${JSON.stringify(item)}`);
+  lines.push("", "Raw JSON:", JSON.stringify(report, null, 2));
+  return lines.join("\n");
+}
+
 async function runDiagnostics() {
   try {
     els.runDiagnostics.disabled = true;
@@ -373,6 +401,7 @@ async function runDiagnostics() {
     });
     state.lastDiagnostics = result;
     state.lastResult = result;
+    els.copyDiagnostics.disabled = false;
     els.copyDiagnostics.disabled = false;
     const summary = result.summary || {};
     setStatus(
@@ -390,13 +419,13 @@ async function runDiagnostics() {
 }
 
 async function copyDiagnostics() {
-  const text = diagnosticReportText(state.lastDiagnostics);
+  const text = state.lastDiagnostics ? diagnosticReportText(state.lastDiagnostics) : autofillReportText(state.lastResult);
   if (!text) {
-    setStatus("Run Test first, then copy the report.", "error");
+    setStatus("Run Test or Start AutoFill first, then copy the report.", "error");
     return;
   }
   await navigator.clipboard.writeText(text);
-  setStatus("Test report copied. Paste it into Codex for the next fix.", "success");
+  setStatus("Report copied. Paste it into Codex for the next fix.", "success");
 }
 
 async function fillCurrentPopup() {

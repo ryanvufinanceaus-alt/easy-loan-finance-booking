@@ -1833,6 +1833,8 @@ function applicantCriticalChecks(applicant) {
 async function verifyApplicantCriticalFields(applicant, scope, result, phase) {
   const failures = [];
   for (const check of applicantCriticalChecks(applicant)) {
+    await scrollToText([check.label], scope || document);
+    await sleep(120);
     const actualRaw = readDisplayByLabel(check.label, scope || document);
     const actual = check.type === "date" ? formatDateValue(actualRaw, "au") : actualRaw;
     const expected = check.expected;
