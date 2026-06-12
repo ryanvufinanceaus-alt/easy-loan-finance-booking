@@ -41,6 +41,15 @@ header span {
   text-transform: uppercase;
 }
 
+header small {
+  color: #c7d5cc;
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
 h1,
 h2 {
   margin: 0;

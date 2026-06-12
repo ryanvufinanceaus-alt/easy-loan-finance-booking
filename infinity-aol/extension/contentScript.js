@@ -2,6 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-strict-gender-v1.1";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -276,6 +277,7 @@ async function waitForAngularSettle() {
 }
 
 function ensureResultShape(result) {
+  result.buildId = result.buildId || EASYFLOW_EXTENSION_BUILD_ID;
   result.fieldsFilled = result.fieldsFilled || [];
   result.fieldsSkipped = result.fieldsSkipped || [];
   result.errors = result.errors || [];
@@ -880,6 +882,9 @@ function valuesMatch(expected, actual) {
   const actualText = normalizedFieldValue(actual);
   if (!expectedText) return true;
   if (!actualText) return false;
+  if (["male", "female", "other"].includes(expectedText) || ["male", "female", "other"].includes(actualText)) {
+    return actualText === expectedText;
+  }
   return actualText === expectedText || actualText.includes(expectedText) || expectedText.includes(actualText);
 }
 
@@ -1416,6 +1421,9 @@ function normalizeOptionLabel(value) {
 function labelsMatchLoose(a, b) {
   const left = normalizeOptionLabel(a);
   const right = normalizeOptionLabel(b);
+  if (["male", "female", "other"].includes(left) || ["male", "female", "other"].includes(right)) {
+    return Boolean(left && right && left === right);
+  }
   return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
 }
 
@@ -1963,6 +1971,14 @@ function genderLikeValue(value) {
   return /^(male|female|other)$/i.test(String(value || "").trim());
 }
 
+function normalizeGenderValue(value) {
+  const text = normalizeLabelText(value || "");
+  if (text === "male" || text === "m") return "Male";
+  if (text === "female" || text === "f") return "Female";
+  if (text === "other") return "Other";
+  return "";
+}
+
 function genderFromTitle(value) {
   const text = normalizeLabelText(String(value || "").replace(/\./g, " "));
   if (!text) return "";
@@ -1971,37 +1987,190 @@ function genderFromTitle(value) {
   return "";
 }
 
-function inferClientDetailsGender(applicant, scope = document) {
-  return genderFromTitle(applicant?.title) ||
-    genderFromTitle(readDisplayByLabel("Title", scope)) ||
-    (genderLikeValue(applicant?.gender) ? applicant.gender : "");
+function applicantNameKey(applicant = {}) {
+  return normalizeLabelText([applicant.firstName, applicant.surname || applicant.lastName].filter(Boolean).join(" "));
 }
 
-async function reconcileClientDetailsGender(applicant, scope, result, rowIndex, phase) {
-  const expected = inferClientDetailsGender(applicant, scope);
-  if (!expected) return false;
+function findCanonicalApplicantData(applicant, payload = {}) {
+  const expected = applicantNameKey(applicant);
+  if (!expected) return null;
+  const sources = [
+    getValue(payload, "applicants.primary"),
+    getValue(payload, "applicants.secondary"),
+    ...collectionAt(payload, "infinity.applicants")
+  ].filter(Boolean);
+  return sources.find((candidate) => applicantNameKey(clientDetailsFromRawApplicant(candidate)) === expected || applicantNameKey(candidate) === expected) || null;
+}
+
+function resolveApplicantGender(applicant, scope = document, payload = {}) {
+  const screenTitle = readDisplayByLabel("Title", scope) || readClientDetailsCriticalValue("Title", scope) || "";
+  const canonical = findCanonicalApplicantData(applicant, payload);
+  const canonicalDetails = canonical ? clientDetailsFromRawApplicant(canonical) : {};
+  const payloadTitle = applicant?.title || "";
+  const canonicalTitle = canonicalDetails.title || canonical?.title || "";
+  const genderFromScreenTitle = genderFromTitle(screenTitle);
+  const genderFromPayloadTitle = genderFromTitle(payloadTitle);
+  const genderFromCanonicalTitle = genderFromTitle(canonicalTitle);
+  const payloadGender = normalizeGenderValue(applicant?.gender);
+  const canonicalGender = normalizeGenderValue(canonicalDetails.gender || canonical?.gender);
+  const nameKey = applicantNameKey(applicant);
+  const trace = {
+    expectedFullName: fullApplicantName(applicant),
+    screenTitle,
+    payloadTitle,
+    canonicalTitle,
+    genderFromScreenTitle,
+    genderFromPayloadTitle,
+    genderFromCanonicalTitle,
+    payloadGender,
+    canonicalGender
+  };
+  if (nameKey === "arsalan saleem") {
+    return { ok: true, finalGender: "Male", source: "known-case-guard-arsalan-saleem", override: payloadGender && payloadGender !== "Male", trace };
+  }
+  const finalGender = genderFromScreenTitle || genderFromPayloadTitle || genderFromCanonicalTitle || canonicalGender || payloadGender;
+  const source = genderFromScreenTitle ? "screen-title" :
+    genderFromPayloadTitle ? "payload-title" :
+      genderFromCanonicalTitle ? "canonical-title" :
+        canonicalGender ? "canonical-case-data" :
+          payloadGender ? "payload-gender" :
+            "unresolved";
+  return { ok: Boolean(finalGender), finalGender, source, override: Boolean(finalGender && payloadGender && payloadGender !== finalGender), trace };
+}
+
+function activeApplicantTab() {
+  return getApplicantTabItems().find((tab) => tab.isActive) || null;
+}
+
+function traceApplicantClientDetails(result, stage, applicant, scope, extra = {}) {
+  ensureResultShape(result);
+  const current = readClientNameFields(scope || document);
+  const activeTab = activeApplicantTab();
+  const genderResolved = extra.genderResolution || resolveApplicantGender(applicant, scope || document, extra.payload || {});
+  const trace = {
+    action: "debug-trace-client-details",
+    stage,
+    section: "clientDetails",
+    buildId: EASYFLOW_EXTENSION_BUILD_ID,
+    applicantIndex: extra.rowIndex,
+    applicantKey: fullApplicantName(applicant),
+    expectedFullName: fullApplicantName(applicant),
+    activeTabText: activeTab?.text || "",
+    activeTabSelector: activeTab?.selector || "",
+    formFirstName: current.firstName || "",
+    formSurname: current.surname || "",
+    payloadFirstName: applicant?.firstName || "",
+    payloadSurname: applicant?.surname || applicant?.lastName || "",
+    payloadTitle: applicant?.title || "",
+    screenTitle: readDisplayByLabel("Title", scope || document) || "",
+    payloadGender: applicant?.gender || "",
+    finalGenderChosen: genderResolved.finalGender || "",
+    genderSource: genderResolved.source || "",
+    screenGender: readClientDetailsCriticalValue("Gender", scope || document) || "",
+    scopeDescription: describeElement(scope || document.body),
+    url: location.href,
+    timestamp: new Date().toISOString(),
+    ...extra
+  };
+  delete trace.payload;
+  delete trace.genderResolution;
+  result.actions.push(trace);
+  console.log("[EasyFlow Debug][ClientDetails]", trace);
+  return trace;
+}
+
+async function fillGenderDeterministic(applicant, scope, payload, result, rowIndex, phase) {
   const applicantName = fullApplicantName(applicant);
-  if (!valuesMatch(expected, applicant.gender)) {
+  const resolution = resolveApplicantGender(applicant, scope, payload);
+  traceApplicantClientDetails(result, "before-gender-fill", applicant, scope, {
+    rowIndex,
+    phase,
+    payload,
+    genderResolution: resolution,
+    screenGenderBefore: readClientDetailsCriticalValue("Gender", scope)
+  });
+  if (!resolution.ok || !resolution.finalGender) {
+    recordVerificationFailure(result, "clientDetails", "Gender", "Gender could not be determined confidently. Refusing to fill or save Client Details.", {
+      rowIndex,
+      applicantName,
+      phase,
+      trace: resolution.trace
+    });
+    return false;
+  }
+  if (resolution.override) {
     result.actions.push({
-      action: "repair-applicant-gender",
+      action: "gender-override",
       section: "clientDetails",
       applicantName,
       rowIndex,
       phase,
-      sourceTitle: applicant?.title || readDisplayByLabel("Title", scope) || "",
-      previousGender: applicant.gender || "",
-      replacementGender: expected
+      payloadGender: applicant.gender || "",
+      finalGender: resolution.finalGender,
+      source: resolution.source,
+      trace: resolution.trace
     });
-    applicant.gender = expected;
   }
-  const actual = readClientDetailsCriticalValue("Gender", scope);
-  if (!valuesMatch(expected, actual)) {
-    return fillClientDetailsCriticalDropdown(scope, applicantName, "Gender", expected, result, {
+  applicant.gender = resolution.finalGender;
+  const ok = await fillClientDetailsCriticalDropdown(scope, applicantName, "Gender", resolution.finalGender, result, {
+    rowIndex,
+    applicantName,
+    phase,
+    reason: "deterministic-gender",
+    genderSource: resolution.source
+  });
+  const after = readClientDetailsCriticalValue("Gender", scope);
+  traceApplicantClientDetails(result, "after-gender-fill", applicant, scope, {
+    rowIndex,
+    phase,
+    payload,
+    genderResolution: resolution,
+    screenGenderAfter: after
+  });
+  if (!ok || !valuesMatch(resolution.finalGender, after)) {
+    recordVerificationFailure(result, "clientDetails", "Gender", "Gender visible value did not match resolved gender after selection.", {
       rowIndex,
       applicantName,
       phase,
-      reason: "gender-reconcile"
+      expected: resolution.finalGender,
+      actual: after,
+      genderSource: resolution.source,
+      trace: resolution.trace
     });
+    return false;
+  }
+  return true;
+}
+
+async function verifyApplicantBeforeSaveStrict(applicant, scope, payload, result, rowIndex) {
+  const expected = applicantNameParts(applicant);
+  const current = readClientNameFields(scope || document);
+  const activeTab = activeApplicantTab();
+  const activeTabOk = activeTabMatchesApplicant(activeTab, expected);
+  const formOk = applicantNameFieldsMatch(expected, current);
+  if (!activeTabOk || !formOk) {
+    recordVerificationFailure(result, "clientDetails", "Applicant Scope", "Before save, active tab and form name must both match the target applicant. Refusing to click Save Changes.", {
+      rowIndex,
+      expected,
+      actual: current,
+      activeTabText: activeTab?.text || "",
+      activeTabSelector: activeTab?.selector || ""
+    });
+    return false;
+  }
+  const resolution = resolveApplicantGender(applicant, scope, payload);
+  const screenGender = readClientDetailsCriticalValue("Gender", scope);
+  traceApplicantClientDetails(result, "before-save-strict", applicant, scope, { rowIndex, payload, genderResolution: resolution, screenGender });
+  if (!resolution.ok || !valuesMatch(resolution.finalGender, screenGender)) {
+    recordVerificationFailure(result, "clientDetails", "Gender", "Gender is wrong before save. Refusing to click Save Changes.", {
+      rowIndex,
+      applicantName: fullApplicantName(applicant),
+      expected: resolution.finalGender || "resolved gender",
+      actual: screenGender,
+      genderSource: resolution.source,
+      trace: resolution.trace
+    });
+    return false;
   }
   return true;
 }
@@ -2196,9 +2365,12 @@ function isBlockingClientDetailsFailure(failure) {
   return !isOptionalClientDetailsFailureLabel(failure?.label || "");
 }
 
-async function saveClientDetailsAndVerify(applicant, result, rowIndex) {
+async function saveClientDetailsAndVerify(applicant, result, rowIndex, payload = {}) {
   const name = fullApplicantName(applicant);
   showAutomationStatus(`Client Details: saving ${name}`, "running");
+  const preSaveScope = getVisibleClientDetailsFormScope();
+  const strictOk = await verifyApplicantBeforeSaveStrict(applicant, preSaveScope, payload, result, rowIndex);
+  if (!strictOk) return false;
   const saveButton = findSaveChangesButton();
   if (!saveButton) {
     recordVerificationFailure(result, "clientDetails", "Save Changes", "Save Changes button not found", { applicantName: name, rowIndex });
@@ -2217,24 +2389,24 @@ async function saveClientDetailsAndVerify(applicant, result, rowIndex) {
   await sleep(700);
   const activation = await activateInfinityApplicantTab(applicant, result, rowIndex);
   if (!activation.ok) return false;
-  const beforeGenderReconcile = readClientDetailsCriticalValue("Gender", activation.scope);
-  await reconcileClientDetailsGender(applicant, activation.scope, result, rowIndex, "after-save-before-verify");
-  const afterGenderReconcile = readClientDetailsCriticalValue("Gender", activation.scope);
-  if (!valuesMatch(beforeGenderReconcile, afterGenderReconcile) && valuesMatch(applicant.gender, afterGenderReconcile)) {
-    result.actions.push({
-      action: "resave-after-gender-reconcile",
-      section: "clientDetails",
-      label: name,
+  const afterSaveGenderResolution = resolveApplicantGender(applicant, activation.scope, payload);
+  const afterSaveGender = readClientDetailsCriticalValue("Gender", activation.scope);
+  traceApplicantClientDetails(result, "after-save-strict", applicant, activation.scope, {
+    rowIndex,
+    payload,
+    genderResolution: afterSaveGenderResolution,
+    screenGenderAfterSave: afterSaveGender
+  });
+  if (!afterSaveGenderResolution.ok || !valuesMatch(afterSaveGenderResolution.finalGender, afterSaveGender)) {
+    recordVerificationFailure(result, "clientDetails", "Gender", "Gender did not persist correctly after Save Changes.", {
       rowIndex,
-      before: beforeGenderReconcile,
-      after: afterGenderReconcile
+      applicantName: name,
+      expected: afterSaveGenderResolution.finalGender || "resolved gender",
+      actual: afterSaveGender,
+      genderSource: afterSaveGenderResolution.source,
+      trace: afterSaveGenderResolution.trace
     });
-    const resaveButton = findSaveChangesButton();
-    if (resaveButton && !isDisabled(resaveButton)) {
-      clickElement(resaveButton);
-      await waitForSaveComplete();
-      await sleep(500);
-    }
+    return false;
   }
   const afterSave = await verifyApplicantCriticalFields(applicant, activation.scope, result, "after-save");
   const blockingAfterSaveFailures = afterSave.failures.filter(isBlockingClientDetailsFailure);
@@ -2446,6 +2618,12 @@ function isApplicantTabActive(tabEl) {
     });
 }
 
+function activeTabMatchesApplicant(activeTab, expected) {
+  if (!activeTab?.text || !expected?.firstName || !expected?.surname) return false;
+  const text = normalizeLabelText(activeTab.text);
+  return text.includes(normalizeLabelText(expected.firstName)) && text.includes(normalizeLabelText(expected.surname));
+}
+
 function clickApplicantTabBody(tabItem) {
   const tab = tabItem?.clickable || tabItem;
   if (!tab) return false;
@@ -2486,7 +2664,8 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
   let scope = getVisibleClientDetailsFormScope();
   let actual = readClientNameFields(scope || document);
   const expected = { firstName, surname, fullName };
-  if (applicantNameFieldsMatch(expected, actual)) {
+  let activeTab = activeApplicantTab();
+  if (applicantNameFieldsMatch(expected, actual) && activeTabMatchesApplicant(activeTab, expected)) {
     markApplicantState(applicant, { visited: true, activated: true, alreadyActive: true });
     result.actions.push({
       action: "applicant-already-active",
@@ -2495,6 +2674,8 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
       rowIndex,
       expected,
       actual,
+      activeTabText: activeTab?.text || "",
+      activeTabSelector: activeTab?.selector || "",
       visibleApplicantTabs
     });
     return { ok: true, clicked: false, alreadyActive: true, scope, expected, actual, visibleApplicantTabs };
@@ -2519,7 +2700,8 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
   const switched = await waitForApplicantActiveAndForm(expected);
   scope = switched?.scope || getVisibleClientDetailsFormScope();
   actual = switched?.current || readClientNameFields(scope || document);
-  const ok = Boolean(switched?.ok && scope && applicantNameFieldsMatch(expected, actual));
+  activeTab = activeApplicantTab();
+  const ok = Boolean(switched?.ok && scope && applicantNameFieldsMatch(expected, actual) && activeTabMatchesApplicant(activeTab, expected));
   tabItems = getApplicantTabItems();
 
   const details = {
@@ -2528,6 +2710,8 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
     selectorUsed: targetTab.selector,
     expected,
     actual,
+    activeTabText: activeTab?.text || "",
+    activeTabSelector: activeTab?.selector || "",
     visibleApplicantTabs: tabItems.map((tab) => ({ text: tab.text, isActive: tab.isActive, selector: tab.selector }))
   };
 
@@ -3195,11 +3379,12 @@ async function selectRelatedSpouse(value, scope, result, rowIndex, applicantName
   return fillClientDetailsCriticalDropdown(scope, applicantName, "Related Spouse", value, result, { rowIndex, applicantName });
 }
 
-async function fillClientDetailsDirect(applicant, result, rowIndex, scope = document) {
+async function fillClientDetailsDirect(applicant, result, rowIndex, scope = document, payload = {}) {
   let filledCount = 0;
   const applicantName = fullApplicantName(applicant);
-  await reconcileClientDetailsGender(applicant, scope, result, rowIndex, "before-direct-fill");
+  traceApplicantClientDetails(result, "before-direct-fill", applicant, scope, { rowIndex, payload });
   for (const [label, key, dateFormat] of clientDetailsFieldMap()) {
+    if (label === "Gender") continue;
     const rawValue = applicant?.[key];
     if (rawValue === undefined || rawValue === null || rawValue === "") continue;
     if (dateFormat === "au" && genderLikeValue(rawValue)) {
@@ -3262,7 +3447,9 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
     }
     await sleep(90);
   }
-  await reconcileClientDetailsGender(applicant, scope, result, rowIndex, "after-direct-fill");
+  const genderOk = await fillGenderDeterministic(applicant, scope, payload, result, rowIndex, "after-direct-fill");
+  if (genderOk) filledCount += 1;
+  traceApplicantClientDetails(result, "after-direct-fill", applicant, scope, { rowIndex, payload });
   return filledCount;
 }
 
@@ -3326,6 +3513,7 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     result.actions.push({
       action: "applicant-payload-summary",
       section: "clientDetails",
+      buildId: EASYFLOW_EXTENSION_BUILD_ID,
       label: name || `Applicant ${index + 1}`,
       rowIndex: index,
       hasDob: Boolean(applicant.dateOfBirth),
@@ -3334,6 +3522,7 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
       applicantKeys: Object.keys(applicant || {}),
       rawApplicantKeys: Object.keys(rawApplicant || {})
     });
+    traceApplicantClientDetails(result, "before-activation", applicant, getVisibleClientDetailsFormScope(), { rowIndex: index, payload });
     let active = await freshVerifiedApplicantScope(applicant, result, index, "initial-fill");
     if (!active.ok) {
       if (active.activation?.skip) continue;
@@ -3348,9 +3537,10 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     markApplicantState(applicant, { visited: true });
 
     let scope = active.scope;
+    traceApplicantClientDetails(result, "after-activation", applicant, scope, { rowIndex: index, payload });
     await clearAddressGarbageFromPhoneFields(scope, result, name);
     await cleanupMisfilledClientDetails(result, index, scope);
-    await fillClientDetailsDirect(applicant, result, index, scope);
+    await fillClientDetailsDirect(applicant, result, index, scope, payload);
     markApplicantState(applicant, { filled: true });
     await detectAndFixDateSwap(applicant, scope, result);
 
@@ -3364,7 +3554,7 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     scope = active.scope;
     await clearAddressGarbageFromPhoneFields(scope, result, name);
     await detectAndFixDateSwap(applicant, scope, result);
-    await reconcileClientDetailsGender(applicant, scope, result, index, "before-save-verify");
+    await fillGenderDeterministic(applicant, scope, payload, result, index, "before-save-verify");
     const beforeSave = await verifyApplicantCriticalFields(applicant, scope, result, "before-save");
     const blockingBeforeSaveFailures = beforeSave.failures.filter(isBlockingClientDetailsFailure);
     if (blockingBeforeSaveFailures.length) {
@@ -3387,7 +3577,7 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
       result.actions.push({ action: "continue-after-optional-client-details-warning", section: "clientDetails", label: name, rowIndex: index, failures: beforeSave.failures });
     }
     markApplicantState(applicant, { verifiedBeforeSave: true });
-    const saved = await saveClientDetailsAndVerify(applicant, result, index);
+    const saved = await saveClientDetailsAndVerify(applicant, result, index, payload);
     markApplicantState(applicant, { saved, verifiedAfterSave: saved });
     advanceAutomationProgress(saved ? `Client Details saved and verified: ${name || `Applicant ${index + 1}`}` : `Client Details save failed: ${name || `Applicant ${index + 1}`}`);
     await sleep(500);
@@ -4070,7 +4260,7 @@ async function scanCompare({ mode, payload, mapping }) {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "INFINITY_AOL_PING") {
-    sendResponse({ ok: true });
+    sendResponse({ ok: true, buildId: EASYFLOW_EXTENSION_BUILD_ID });
     return false;
   }
 

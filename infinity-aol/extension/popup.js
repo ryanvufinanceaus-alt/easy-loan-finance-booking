@@ -1,3 +1,5 @@
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-strict-gender-v1.1";
+
 const state = {
   prepared: null,
   mapping: null,
@@ -17,8 +19,11 @@ const els = {
   comparePage: document.querySelector("#comparePage"),
   compareCase: document.querySelector("#compareCase"),
   status: document.querySelector("#status"),
-  reviewRows: document.querySelector("#reviewRows")
+  reviewRows: document.querySelector("#reviewRows"),
+  buildId: document.querySelector("#buildId")
 };
+
+if (els.buildId) els.buildId.textContent = `Build: ${EASYFLOW_EXTENSION_BUILD_ID}`;
 
 chrome.storage.local.get(["apiBase", "caseToken"], (stored) => {
   if (stored.apiBase) {
@@ -106,6 +111,7 @@ function renderReview() {
   const rows = [
     ["Case", state.prepared.caseId],
     ["Broker", state.prepared.brokerUser],
+    ["Build", state.lastResult?.buildId || EASYFLOW_EXTENSION_BUILD_ID],
     ["Validation", state.prepared.validation.okToAutofill ? "Ready" : "Fix required fields first"]
   ];
 
@@ -321,6 +327,8 @@ async function startAutofill() {
     });
 
     state.lastResult = result;
+    state.lastDiagnostics = null;
+    els.copyDiagnostics.disabled = false;
     const issues = (result.errors?.length || 0) + (result.verificationFailures?.length || 0);
     setStatus(
       issues
