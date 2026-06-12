@@ -1950,6 +1950,10 @@ function rawApplicantForIndex(payload, index) {
   return index === 0 ? getValue(payload, "applicants.primary") : getValue(payload, "applicants.secondary");
 }
 
+function rawApplicantRows(payload) {
+  return [getValue(payload, "applicants.primary"), getValue(payload, "applicants.secondary")].filter(hasApplicantName);
+}
+
 function nonEmptyValue(...values) {
   return values.find((value) => value !== undefined && value !== null && value !== "") ?? "";
 }
@@ -1984,22 +1988,34 @@ function clientDetailsFromRawApplicant(rawApplicant = {}) {
   };
 }
 
-function mergeClientDetailsApplicant(preparedApplicant, rawApplicant, result, rowIndex) {
+function preparedApplicantForRaw(preparedRows, rawApplicant, fallbackIndex) {
+  const rawName = normalize(fullApplicantName(clientDetailsFromRawApplicant(rawApplicant || {})));
+  if (!rawName) return preparedRows[fallbackIndex] || {};
+  return preparedRows.find((applicant) => normalize(fullApplicantName(applicant)) === rawName) ||
+    preparedRows.find((applicant) => {
+      const preparedName = normalize(fullApplicantName(applicant));
+      return preparedName && (preparedName.includes(rawName) || rawName.includes(preparedName));
+    }) ||
+    preparedRows[fallbackIndex] ||
+    {};
+}
+
+function mergeClientDetailsApplicant(preparedApplicant, rawApplicant, result, rowIndex, preferRaw = false) {
   const raw = clientDetailsFromRawApplicant(rawApplicant || {});
   const merged = { ...(preparedApplicant || {}) };
   const name = fullApplicantName(merged) || fullApplicantName(raw) || `Applicant ${rowIndex + 1}`;
   for (const key of ["firstName", "middleName", "surname", "title", "gender", "maritalStatus", "mobile", "email", "currentAddress", "previousAddress", "postSettlementAddress", "mailingAddress", "permanentInAustralia", "licenceState", "licenceClass"]) {
-    merged[key] = nonEmptyValue(merged[key], raw[key]);
+    merged[key] = preferRaw ? nonEmptyValue(raw[key], merged[key]) : nonEmptyValue(merged[key], raw[key]);
   }
-  merged.address = merged.address || raw.address || null;
-  merged.numberOfDependants = merged.numberOfDependants ?? raw.numberOfDependants ?? 0;
+  merged.address = (preferRaw ? raw.address || merged.address : merged.address || raw.address) || null;
+  merged.numberOfDependants = preferRaw ? raw.numberOfDependants ?? merged.numberOfDependants ?? 0 : merged.numberOfDependants ?? raw.numberOfDependants ?? 0;
 
   const rawDob = raw.dateOfBirth;
   if (genderLikeValue(merged.dateOfBirth)) {
     result.actions.push({ action: "repair-applicant-payload", section: "clientDetails", label: "Date of Birth", applicantName: name, rowIndex, invalid: merged.dateOfBirth, replacement: rawDob || "" });
     merged.dateOfBirth = "";
   }
-  merged.dateOfBirth = nonEmptyValue(merged.dateOfBirth, rawDob);
+  merged.dateOfBirth = preferRaw ? nonEmptyValue(rawDob, merged.dateOfBirth) : nonEmptyValue(merged.dateOfBirth, rawDob);
 
   const rawLicenceNo = raw.driversLicenceNo;
   const rawExpiry = raw.licenceExpiryDate;
@@ -2008,8 +2024,8 @@ function mergeClientDetailsApplicant(preparedApplicant, rawApplicant, result, ro
     merged.licenceExpiryDate = nonEmptyValue(merged.licenceExpiryDate, merged.driversLicenceNo, rawExpiry);
     merged.driversLicenceNo = "";
   }
-  merged.driversLicenceNo = nonEmptyValue(merged.driversLicenceNo, rawLicenceNo);
-  merged.licenceExpiryDate = nonEmptyValue(merged.licenceExpiryDate, rawExpiry);
+  merged.driversLicenceNo = preferRaw ? nonEmptyValue(rawLicenceNo, merged.driversLicenceNo) : nonEmptyValue(merged.driversLicenceNo, rawLicenceNo);
+  merged.licenceExpiryDate = preferRaw ? nonEmptyValue(rawExpiry, merged.licenceExpiryDate) : nonEmptyValue(merged.licenceExpiryDate, rawExpiry);
   return merged;
 }
 
@@ -2090,6 +2106,14 @@ function applicantCriticalChecks(applicant) {
   return checks.filter((check) => check.expected !== undefined && check.expected !== null && check.expected !== "");
 }
 
+function isOptionalClientDetailsFailureLabel(label) {
+  const normalizedLabel = normalizeLabelText(label || "");
+  if (normalizedLabel.includes("date of birth")) return true;
+  if (normalizedLabel.includes("licence expiry date")) return true;
+  if (normalizedLabel.includes("driver") && normalizedLabel.includes("licence") && normalizedLabel.includes("no")) return true;
+  return false;
+}
+
 async function verifyApplicantCriticalFields(applicant, scope, result, phase) {
   const failures = [];
   for (const check of applicantCriticalChecks(applicant)) {
@@ -2103,23 +2127,29 @@ async function verifyApplicantCriticalFields(applicant, scope, result, phase) {
     const ok = valuesMatch(expected, actual);
     if (!ok) {
       failures.push({ label: check.label, expected, actual, type: check.type });
-      recordVerificationFailure(result, "clientDetails", check.label, `Applicant critical field failed verification at phase: ${phase}`, {
+      const details = {
         applicantName: fullApplicantName(applicant),
         expected,
         actual,
         phase
-      });
+      };
+      if (isOptionalClientDetailsFailureLabel(check.label)) {
+        result.warnings.push({
+          section: "clientDetails",
+          label: check.label,
+          message: `Optional applicant field did not verify at phase: ${phase}`,
+          ...details
+        });
+      } else {
+        recordVerificationFailure(result, "clientDetails", check.label, `Applicant critical field failed verification at phase: ${phase}`, details);
+      }
     }
   }
   return { ok: failures.length === 0, failures };
 }
 
 function isBlockingClientDetailsFailure(failure) {
-  const label = normalizeLabelText(failure?.label || "");
-  if (label.includes("date of birth")) return false;
-  if (label.includes("licence expiry date")) return false;
-  if (label.includes("driver") && label.includes("licence") && label.includes("no")) return false;
-  return true;
+  return !isOptionalClientDetailsFailureLabel(failure?.label || "");
 }
 
 async function saveClientDetailsAndVerify(applicant, result, rowIndex) {
@@ -3194,18 +3224,38 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
   if (!isClientDetailsPage()) return false;
   const section = mapping.sections.find((item) => item.id === "clientDetails");
   if (!section) return false;
-  const applicants = infinityApplicantRows(payload);
+  const preparedRows = infinityApplicantRows(payload);
+  const rawRows = rawApplicantRows(payload);
+  const applicants = (rawRows.length ? rawRows : preparedRows)
+    .map((sourceApplicant, index) => {
+      const rawApplicant = rawRows.length ? sourceApplicant : rawApplicantForIndex(payload, index);
+      const preparedApplicant = rawRows.length ? preparedApplicantForRaw(preparedRows, rawApplicant, index) : sourceApplicant;
+      return mergeClientDetailsApplicant(preparedApplicant, rawApplicant, result, index, Boolean(rawRows.length));
+    })
+    .filter(hasApplicantName);
   if (!applicants.length) return false;
+  result.actions.push({
+    action: "client-details-canonical-applicant-list",
+    section: "clientDetails",
+    source: rawRows.length ? "payload.applicants.primary/secondary" : "payload.infinity.applicants",
+    applicants: applicants.map((applicant, index) => ({
+      index,
+      name: fullApplicantName(applicant),
+      gender: applicant.gender || "",
+      dateOfBirth: applicant.dateOfBirth || "",
+      licenceExpiryDate: applicant.licenceExpiryDate || ""
+    }))
+  });
 
   for (let index = 0; index < applicants.length; index += 1) {
     throwIfAutomationStopped();
     const spouse = applicants.length > 1 ? applicants[index === 0 ? 1 : 0] : null;
-    const rawApplicant = rawApplicantForIndex(payload, index);
-    const applicant = mergeClientDetailsApplicant({
+    const rawApplicant = rawRows[index] || rawApplicantForIndex(payload, index);
+    const applicant = {
       ...applicants[index],
       maritalStatus: applicants.length > 1 ? "Married" : applicants[index].maritalStatus,
       relatedSpouse: spouse ? fullApplicantName(spouse) : applicants[index].relatedSpouse
-    }, rawApplicant, result, index);
+    };
     const name = fullApplicantName(applicant);
     setAutomationProgress(index, applicants.length, `Client Details: ${name || `Applicant ${index + 1}`}`);
     result.actions.push({
