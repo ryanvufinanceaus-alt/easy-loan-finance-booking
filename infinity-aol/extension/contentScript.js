@@ -1100,6 +1100,11 @@ function pageHasAnyText(labels) {
   return labels.map(normalize).some((label) => bodyText.includes(label));
 }
 
+function pageHasAllText(labels) {
+  const bodyText = normalize(document.body?.innerText || "");
+  return labels.map(normalize).every((label) => bodyText.includes(label));
+}
+
 function detectPlatform() {
   const text = normalize(document.body?.innerText || "");
   const url = normalize(location.href);
@@ -1119,7 +1124,7 @@ function isInfinitySocaPage() {
 }
 
 function isInfinityFinancialsPage() {
-  return pageHasAnyText(["Assets", "Liabilities", "Annual Incomes", "Monthly Expenses", "Add Expense"]);
+  return pageHasAllText(["Assets", "Liabilities", "Annual Incomes", "Monthly Expenses"]) && pageHasAnyText(["Add Expense", "Monthly Expenses $"]);
 }
 
 async function ensureBestInterestDutyApplication(result) {
@@ -1749,7 +1754,7 @@ function rawApplicantForIndex(payload, index) {
 }
 
 function isClientDetailsPage() {
-  return pageHasAnyText(["Client Details", "Entity Type", "Applicant Type", "Current Address"]);
+  return pageHasAllText(["Entity Type", "Applicant Type", "First Name"]) && pageHasAnyText(["Current Address", "Addresses"]);
 }
 
 function collectVisibleApplicantTabs() {
@@ -2928,14 +2933,15 @@ function findNavigationTarget(labels) {
     });
 }
 
-async function navigateToPage(step) {
+async function navigateToPage(step, isVisible = null) {
   const target = findNavigationTarget(step.labels);
   if (!target) return false;
-  const before = location.href;
   clickElement(target);
-  await sleep(1200);
-  await waitFor(() => location.href !== before || pageHasAnyText(step.labels), 6000);
-  return true;
+  await waitForAngularSettle();
+  await sleep(600);
+  if (typeof isVisible !== "function") return true;
+  const visible = await waitFor(() => isVisible(), { timeout: 8000, interval: 200 });
+  return Boolean(visible);
 }
 
 function sectionIssueCount(result, sectionPrefix) {
@@ -2957,7 +2963,7 @@ async function openInfinityStep(step, isAlreadyVisible, result, pageIndex, total
     result.pages.push({ id: step.id, labels: step.labels, navigated: true, alreadyVisible: true });
     return true;
   }
-  const navigated = await navigateToPage(step);
+  const navigated = await navigateToPage(step, isAlreadyVisible);
   result.pages.push({ id: step.id, labels: step.labels, navigated });
   if (!navigated) {
     result.fieldsSkipped.push({ section: step.id, label: step.labels[0], reason: "page navigation link not visible", visibleActions: collectVisibleButtonsAndLinks() });
