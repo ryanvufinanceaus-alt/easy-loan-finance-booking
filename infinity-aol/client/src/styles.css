@@ -1898,6 +1898,36 @@ pre {
   justify-content: center;
 }
 
+.recent-note-list.submission-list > .submission-row {
+  align-items: stretch;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr;
+  padding: 10px;
+}
+
+.recent-note-list.submission-list .submission-row-main {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  width: 100%;
+}
+
+.recent-note-list.submission-list .submission-row-actions {
+  border-top: 1px solid #e3eae5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-start;
+  padding-top: 10px;
+  width: 100%;
+}
+
+.recent-note-list.submission-list .submission-row-actions button {
+  flex: 0 1 auto;
+  white-space: nowrap;
+}
+
 .locked-data-panel {
   align-items: center;
   color: #5b675f;
