@@ -1944,6 +1944,69 @@ function rawApplicantForIndex(payload, index) {
   return index === 0 ? getValue(payload, "applicants.primary") : getValue(payload, "applicants.secondary");
 }
 
+function nonEmptyValue(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== "") ?? "";
+}
+
+function genderLikeValue(value) {
+  return /^(male|female|other)$/i.test(String(value || "").trim());
+}
+
+function clientDetailsFromRawApplicant(rawApplicant = {}) {
+  const id = rawApplicant?.id || {};
+  return {
+    firstName: rawApplicant.firstName || "",
+    middleName: rawApplicant.middleName || "",
+    surname: rawApplicant.surname || rawApplicant.lastName || "",
+    title: rawApplicant.title || "",
+    dateOfBirth: rawApplicant.dateOfBirth || "",
+    gender: rawApplicant.gender || "",
+    maritalStatus: rawApplicant.maritalStatus || "",
+    mobile: rawApplicant.mobile || "",
+    email: rawApplicant.email || "",
+    currentAddress: rawApplicant.currentAddress || "",
+    address: rawApplicant.address || null,
+    previousAddress: rawApplicant.previousAddress || rawApplicant.previousResidentialAddress || "",
+    postSettlementAddress: rawApplicant.postSettlementAddress || "",
+    mailingAddress: rawApplicant.mailingAddress || "",
+    permanentInAustralia: rawApplicant.permanentInAustralia || (rawApplicant.residencyStatus ? "Yes" : ""),
+    driversLicenceNo: rawApplicant.driversLicenceNo || id.driversLicenceNo || "",
+    licenceExpiryDate: rawApplicant.licenceExpiryDate || id.licenceExpiryDate || "",
+    licenceState: rawApplicant.licenceState || id.licenceState || "",
+    licenceClass: rawApplicant.licenceClass || id.licenceClass || "",
+    numberOfDependants: rawApplicant.numberOfDependants ?? rawApplicant.dependants
+  };
+}
+
+function mergeClientDetailsApplicant(preparedApplicant, rawApplicant, result, rowIndex) {
+  const raw = clientDetailsFromRawApplicant(rawApplicant || {});
+  const merged = { ...(preparedApplicant || {}) };
+  const name = fullApplicantName(merged) || fullApplicantName(raw) || `Applicant ${rowIndex + 1}`;
+  for (const key of ["firstName", "middleName", "surname", "title", "gender", "maritalStatus", "mobile", "email", "currentAddress", "previousAddress", "postSettlementAddress", "mailingAddress", "permanentInAustralia", "licenceState", "licenceClass"]) {
+    merged[key] = nonEmptyValue(merged[key], raw[key]);
+  }
+  merged.address = merged.address || raw.address || null;
+  merged.numberOfDependants = merged.numberOfDependants ?? raw.numberOfDependants ?? 0;
+
+  const rawDob = raw.dateOfBirth;
+  if (genderLikeValue(merged.dateOfBirth)) {
+    result.actions.push({ action: "repair-applicant-payload", section: "clientDetails", label: "Date of Birth", applicantName: name, rowIndex, invalid: merged.dateOfBirth, replacement: rawDob || "" });
+    merged.dateOfBirth = "";
+  }
+  merged.dateOfBirth = nonEmptyValue(merged.dateOfBirth, rawDob);
+
+  const rawLicenceNo = raw.driversLicenceNo;
+  const rawExpiry = raw.licenceExpiryDate;
+  if (looksLikeDateValue(merged.driversLicenceNo)) {
+    result.actions.push({ action: "repair-applicant-payload", section: "clientDetails", label: "Driver's Licence No.", applicantName: name, rowIndex, invalid: merged.driversLicenceNo, movedTo: "Licence Expiry Date" });
+    merged.licenceExpiryDate = nonEmptyValue(merged.licenceExpiryDate, merged.driversLicenceNo, rawExpiry);
+    merged.driversLicenceNo = "";
+  }
+  merged.driversLicenceNo = nonEmptyValue(merged.driversLicenceNo, rawLicenceNo);
+  merged.licenceExpiryDate = nonEmptyValue(merged.licenceExpiryDate, rawExpiry);
+  return merged;
+}
+
 function isClientDetailsPage() {
   return pageHasAllText(["Entity Type", "Applicant Type", "First Name"]) && pageHasAnyText(["Current Address", "Addresses"]);
 }
@@ -2162,9 +2225,12 @@ function getVisibleClientDetailsFormScope() {
 }
 
 function readClientNameFields(scope) {
+  const root = scope || document;
+  const firstResolved = resolveClientDetailsControlByVisualLabel(root, "First Name", "input:not([type='hidden']), textarea");
+  const surnameResolved = resolveClientDetailsControlByVisualLabel(root, "Surname", "input:not([type='hidden']), textarea");
   return {
-    firstName: readFieldByExactLabel("First Name", scope || document),
-    surname: readFieldByExactLabel("Surname", scope || document)
+    firstName: firstResolved.ok ? readFieldValue(firstResolved.control) : readFieldByExactLabel("First Name", root),
+    surname: surnameResolved.ok ? readFieldValue(surnameResolved.control) : readFieldByExactLabel("Surname", root)
   };
 }
 
@@ -2358,6 +2424,26 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
   return { ok: true, clicked: true, alreadyActive: false, scope, ...details };
 }
 
+async function freshVerifiedApplicantScope(applicant, result, rowIndex, phase) {
+  const activation = await activateInfinityApplicantTab(applicant, result, rowIndex);
+  if (!activation.ok) return { ok: false, phase, activation };
+  const scope = activation.scope || getVisibleClientDetailsFormScope();
+  const actual = readClientNameFields(scope || document);
+  const expected = applicantNameParts(applicant);
+  const ok = applicantNameFieldsMatch(expected, actual);
+  if (!ok) {
+    recordVerificationFailure(result, "clientDetails", fullApplicantName(applicant), `Applicant form changed or could not be verified before ${phase}. Stopped this applicant block.`, {
+      rowIndex,
+      phase,
+      expected,
+      actual
+    });
+    return { ok: false, phase, activation, scope, actual, expected };
+  }
+  result.actions.push({ action: "verify-active-applicant-scope", section: "clientDetails", label: fullApplicantName(applicant), rowIndex, phase, actual });
+  return { ok: true, scope, activation, actual, expected };
+}
+
 function addressPartsFromApplicant(applicant, fallbackAddressText = "") {
   const rawAddress = applicant?.address || {};
   const address = typeof rawAddress === "string" ? { line1: rawAddress } : rawAddress;
@@ -2404,9 +2490,11 @@ function addressPartsFromApplicant(applicant, fallbackAddressText = "") {
     .replace(/,/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  const unit = addressBeforeState.match(/\b(?:unit|u|apt|apartment)\s*([a-z0-9/-]+)/i)?.[1] || "";
+  const slashUnitMatch = addressBeforeState.match(/^([a-z0-9]+)\s*\/\s*(\d+[a-z]?(?:-\d+[a-z]?)?)\s+(.+)$/i);
+  const unit = addressBeforeState.match(/\b(?:unit|u|apt|apartment)\s*([a-z0-9/-]+)/i)?.[1] || slashUnitMatch?.[1] || "";
   const withoutUnit = addressBeforeState
     .replace(/\b(?:unit|u|apt|apartment)\s*[a-z0-9/-]+\s*/i, "")
+    .replace(/^([a-z0-9]+)\s*\/\s*(\d+[a-z]?(?:-\d+[a-z]?)?)\s+/i, "$2 ")
     .replace(/^[/,\s-]+/, "")
     .trim();
   const number = withoutUnit.match(/^(\d+[a-z]?(?:-\d+[a-z]?)?)/i)?.[1] || "";
@@ -2996,6 +3084,22 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
   for (const [label, key, dateFormat] of clientDetailsFieldMap()) {
     const rawValue = applicant?.[key];
     if (rawValue === undefined || rawValue === null || rawValue === "") continue;
+    if (dateFormat === "au" && genderLikeValue(rawValue)) {
+      recordVerificationFailure(result, "clientDetails", label, "Refusing to fill gender-like value into date field", {
+        rowIndex,
+        applicantName,
+        actualPayloadValue: rawValue
+      });
+      continue;
+    }
+    if (label === "Driver's Licence No." && looksLikeDateValue(rawValue)) {
+      recordVerificationFailure(result, "clientDetails", label, "Refusing to fill date-like value into licence number field", {
+        rowIndex,
+        applicantName,
+        actualPayloadValue: rawValue
+      });
+      continue;
+    }
     const value = formatDateValue(rawValue, dateFormat);
     await scrollToText([label], scope === document ? document : scope);
     if (CLIENT_DETAILS_CRITICAL_LABELS.has(normalizeLabelText(label))) {
@@ -3046,7 +3150,7 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
 async function fillApplicantAddresses(applicant, rawApplicant, result, rowIndex) {
   const rawAddress = rawApplicant?.address || {};
   const preparedAddress = applicant?.address || {};
-  const currentAddressSource = rawAddress.line1 || rawAddress.current || rawAddress.fullAddress || applicant?.currentAddress || preparedAddress.line1 || preparedAddress.current || preparedAddress.fullAddress;
+  const currentAddressSource = rawApplicant?.currentAddress || rawAddress.line1 || rawAddress.current || rawAddress.fullAddress || applicant?.currentAddress || preparedAddress.line1 || preparedAddress.current || preparedAddress.fullAddress || rawAddress;
   const postSettlementSource = rawApplicant?.postSettlementAddress || rawAddress.postSettlement || applicant?.postSettlementAddress || preparedAddress.postSettlement || currentAddressSource;
   const mailingSource = rawApplicant?.mailingAddress || rawAddress.mailing || applicant?.mailingAddress || preparedAddress.mailing || currentAddressSource;
   const addressRows = [
@@ -3072,16 +3176,28 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
   for (let index = 0; index < applicants.length; index += 1) {
     throwIfAutomationStopped();
     const spouse = applicants.length > 1 ? applicants[index === 0 ? 1 : 0] : null;
-    const applicant = {
+    const rawApplicant = rawApplicantForIndex(payload, index);
+    const applicant = mergeClientDetailsApplicant({
       ...applicants[index],
       maritalStatus: applicants.length > 1 ? "Married" : applicants[index].maritalStatus,
       relatedSpouse: spouse ? fullApplicantName(spouse) : applicants[index].relatedSpouse
-    };
+    }, rawApplicant, result, index);
     const name = fullApplicantName(applicant);
     setAutomationProgress(index, applicants.length, `Client Details: ${name || `Applicant ${index + 1}`}`);
-    const activation = await activateInfinityApplicantTab(applicant, result, index);
-    if (!activation.ok) {
-      if (activation.skip) continue;
+    result.actions.push({
+      action: "applicant-payload-summary",
+      section: "clientDetails",
+      label: name || `Applicant ${index + 1}`,
+      rowIndex: index,
+      hasDob: Boolean(applicant.dateOfBirth),
+      hasLicenceExpiry: Boolean(applicant.licenceExpiryDate),
+      hasAddress: Boolean(applicant.address || applicant.currentAddress || rawApplicant?.address || rawApplicant?.currentAddress),
+      applicantKeys: Object.keys(applicant || {}),
+      rawApplicantKeys: Object.keys(rawApplicant || {})
+    });
+    let active = await freshVerifiedApplicantScope(applicant, result, index, "initial-fill");
+    if (!active.ok) {
+      if (active.activation?.skip) continue;
       result.verificationFailures.push({
         section: "clientDetails",
         label: name || `Applicant ${index + 1}`,
@@ -3092,13 +3208,21 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     }
     markApplicantState(applicant, { visited: true });
 
-    const scope = activation.scope;
+    let scope = active.scope;
     await clearAddressGarbageFromPhoneFields(scope, result, name);
     await cleanupMisfilledClientDetails(result, index, scope);
     await fillClientDetailsDirect(applicant, result, index, scope);
     markApplicantState(applicant, { filled: true });
     await detectAndFixDateSwap(applicant, scope, result);
-    await fillApplicantAddresses(applicant, rawApplicantForIndex(payload, index), result, index);
+
+    active = await freshVerifiedApplicantScope(applicant, result, index, "address-fill");
+    if (!active.ok) continue;
+    scope = active.scope;
+    await fillApplicantAddresses(applicant, rawApplicant || applicant, result, index);
+
+    active = await freshVerifiedApplicantScope(applicant, result, index, "before-save-verify");
+    if (!active.ok) continue;
+    scope = active.scope;
     await clearAddressGarbageFromPhoneFields(scope, result, name);
     await detectAndFixDateSwap(applicant, scope, result);
     const beforeSave = await verifyApplicantCriticalFields(applicant, scope, result, "before-save");
