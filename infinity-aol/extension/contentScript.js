@@ -1263,7 +1263,9 @@ function addressPartsFromApplicant(applicant, fallbackAddressText = "") {
   ];
   const stateValue = address.state || stateMatch?.[1]?.toUpperCase() || "";
   const postcodeValue = address.postcode || postcodeMatch?.[1] || "";
-  const addressBeforeState = String(address.line1 || fullText)
+  const splitFullAddress = splitAustralianAddress(fullText);
+  const lineBeforeSuburb = splitFullAddress.line1 || address.line1 || fullText;
+  const addressBeforeState = String(lineBeforeSuburb)
     .replace(/\b\d{4}\b.*$/i, "")
     .replace(/\b(ACT|NSW|NT|QLD|SA|TAS|VIC|WA)\b.*$/i, "")
     .replace(/,/g, " ")
@@ -1279,6 +1281,7 @@ function addressPartsFromApplicant(applicant, fallbackAddressText = "") {
   const streetType = typeMatch?.[1] || "";
   const streetName = streetType ? afterNumber.slice(0, typeMatch.index).trim() : afterNumber;
   const suburbAfterStreet = streetType ? afterNumber.slice((typeMatch.index || 0) + typeMatch[0].length).trim() : "";
+  const suburb = cleanSuburbCandidate(address.suburb || splitFullAddress.suburb || suburbAfterStreet || inferSuburb(fullText, stateValue, postcodeValue));
 
   return {
     buildingName: address.buildingName || "",
@@ -1287,9 +1290,9 @@ function addressPartsFromApplicant(applicant, fallbackAddressText = "") {
     streetNumber: address.streetNumber || number,
     streetName: address.streetName || streetName,
     streetType: address.streetType || streetType,
-    suburb: address.suburb || suburbAfterStreet || inferSuburb(fullText, stateValue, postcodeValue),
-    state: stateValue,
-    postcode: postcodeValue,
+    suburb,
+    state: address.state || splitFullAddress.state || stateValue,
+    postcode: address.postcode || splitFullAddress.postcode || postcodeValue,
     country: address.country || "Australia",
     startDate: address.startDate || address.fromDate || ""
   };
@@ -1299,13 +1302,37 @@ function parseAustralianAddress(raw) {
   return addressPartsFromApplicant({ address: typeof raw === "string" ? { line1: raw } : raw }, typeof raw === "string" ? raw : "");
 }
 
+function splitAustralianAddress(text) {
+  const source = String(text || "").replace(/\s+/g, " ").trim();
+  const match = source.match(/^(.*?),?\s+([A-Za-z][A-Za-z\s.'-]*?)\s+(ACT|NSW|NT|QLD|SA|TAS|VIC|WA)\s+(\d{4})(?:\s*,?\s*Australia)?$/i);
+  if (!match) return {};
+  return {
+    line1: match[1].trim().replace(/,\s*$/, ""),
+    suburb: cleanSuburbCandidate(match[2]),
+    state: match[3].toUpperCase(),
+    postcode: match[4]
+  };
+}
+
+function cleanSuburbCandidate(value) {
+  const text = String(value || "")
+    .replace(/[,]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "";
+  const normalized = normalize(text);
+  if (/^(act|nsw|nt|qld|sa|tas|vic|wa|\d{4}|australia)$/.test(normalized)) return "";
+  if (/\b(street|st|road|rd|avenue|ave|boulevard|blvd|court|ct|drive|dr|lane|ln|unit|apartment|floor)\b/.test(normalized)) return "";
+  return text;
+}
+
 function inferSuburb(text, state, postcode) {
   const source = String(text || "");
   if (!state && !postcode) return "";
   const beforeState = state ? source.split(new RegExp(`\\b${state}\\b`, "i"))[0] : source.split(postcode)[0];
   const words = beforeState.replace(/[,]/g, " ").trim().split(/\s+/).filter(Boolean);
   if (words.length < 2) return "";
-  return words.slice(-2).join(" ");
+  return cleanSuburbCandidate(words.slice(-2).join(" "));
 }
 
 function rowForAddressLabel(addressLabel) {
@@ -1370,6 +1397,73 @@ async function clickAddressEdit(addressLabel, result, meta = {}) {
   return modal;
 }
 
+function exactLabelNode(label, root) {
+  const wanted = normalize(label);
+  return [...root.querySelectorAll("label, span, div, p, strong")]
+    .filter(isVisible)
+    .find((node) => {
+      const text = normalize(node.textContent).replace(/\s*\*\s*$/, "");
+      return text === wanted;
+    }) || null;
+}
+
+function controlByExactModalLabel(label, modal, value = "") {
+  const node = exactLabelNode(label, modal);
+  if (!node) return null;
+  const direct = directControlForLabel(node, value);
+  if (direct) return { element: direct, selector: `address modal exact label: ${label}` };
+
+  const labelRect = node.getBoundingClientRect();
+  const labelCenterX = labelRect.left + labelRect.width / 2;
+  const candidates = [...modal.querySelectorAll(controlSelector)]
+    .filter(isVisible)
+    .map((control) => ({ control, rect: control.getBoundingClientRect() }))
+    .filter(({ rect }) => rect.width > 10 && rect.height > 10)
+    .filter(({ rect }) => rect.top >= labelRect.top - 4 && rect.top - labelRect.bottom < 95)
+    .filter(({ rect }) => {
+      const centerX = rect.left + rect.width / 2;
+      const sameColumn = centerX >= labelRect.left - 35 && centerX <= labelRect.right + 45;
+      const labelInsideControl = labelCenterX >= rect.left - 8 && labelCenterX <= rect.right + 8;
+      return sameColumn || labelInsideControl;
+    })
+    .sort((a, b) => {
+      const aCenterX = a.rect.left + a.rect.width / 2;
+      const bCenterX = b.rect.left + b.rect.width / 2;
+      const aVertical = Math.max(0, a.rect.top - labelRect.bottom);
+      const bVertical = Math.max(0, b.rect.top - labelRect.bottom);
+      const aScore = Math.abs(aCenterX - labelCenterX) * 3 + aVertical;
+      const bScore = Math.abs(bCenterX - labelCenterX) * 3 + bVertical;
+      return aScore - bScore;
+    });
+  return candidates[0] ? { element: candidates[0].control, selector: `address modal geometry: ${label}` } : null;
+}
+
+async function setAddressModalField(label, value, modal, result, meta = {}) {
+  if (value === undefined || value === null || value === "") return false;
+  const found = controlByExactModalLabel(label, modal, value);
+  if (!found) {
+    recordFieldSkipped(result, "clientDetails", label, "address modal field not found", meta);
+    return false;
+  }
+  const ok = await setFieldValue(found.element, value);
+  if (ok) recordFieldFilled(result, "clientDetails", label, value, found, meta);
+  else recordFieldSkipped(result, "clientDetails", label, `address modal control refused value: ${value}`, meta);
+  await sleep(90);
+  return ok;
+}
+
+function hasCompleteStreetAddress(parsed) {
+  return Boolean(
+    parsed &&
+    parsed.streetNumber &&
+    parsed.streetName &&
+    parsed.streetType &&
+    parsed.suburb &&
+    parsed.state &&
+    parsed.postcode
+  );
+}
+
 async function fillAddressModal(parsed, modal, result, meta = {}) {
   const addressFields = [
     ["Building Name", parsed.buildingName],
@@ -1387,9 +1481,7 @@ async function fillAddressModal(parsed, modal, result, meta = {}) {
 
   for (const [label, value] of addressFields) {
     if (value === undefined || value === null || value === "") continue;
-    const isDropdown = ["Street Type", "State", "Country"].includes(label);
-    if (isDropdown) await selectDropdownByText(label, value, modal, result, { section: "clientDetails", ...meta });
-    else await fillInputByLabel(label, value, modal, result, { section: "clientDetails", ...meta });
+    await setAddressModalField(label, value, modal, result, meta);
   }
   return true;
 }
@@ -1411,6 +1503,17 @@ async function verifyAddressRowNotPlaceholder(addressLabel, parsed, result, appl
     recordVerificationFailure(result, "clientDetails", addressLabel, "Address row still shows placeholder after save", { applicantName, expected: parsed });
     return false;
   }
+  const requiredParts = [parsed.streetNumber, parsed.streetName, parsed.state, parsed.postcode].filter(Boolean).map(normalize);
+  const missingParts = requiredParts.filter((part) => !text.includes(part));
+  if (missingParts.length) {
+    recordVerificationFailure(result, "clientDetails", addressLabel, "Address row saved but does not match expected parsed address", {
+      applicantName,
+      expected: parsed,
+      actual: row?.textContent?.trim() || "",
+      missingParts
+    });
+    return false;
+  }
   result.actions.push({ action: "verify-address-row", section: "clientDetails", label: addressLabel, applicantName });
   return true;
 }
@@ -1420,9 +1523,13 @@ async function fillAddressForApplicant(addressLabel, applicant, rawAddress, resu
     recordFieldSkipped(result, "clientDetails", addressLabel, "address data missing; skipped by rule", meta);
     return false;
   }
+  const parsed = addressPartsFromApplicant({ ...applicant, address: rawAddress }, typeof rawAddress === "string" ? rawAddress : "");
+  if (!hasCompleteStreetAddress(parsed)) {
+    recordFieldSkipped(result, "clientDetails", addressLabel, "address incomplete; skipped to avoid half-saved CRM row", { ...meta, parsed });
+    return false;
+  }
   const modal = await clickAddressEdit(addressLabel, result, meta);
   if (!modal) return false;
-  const parsed = addressPartsFromApplicant({ ...applicant, address: rawAddress }, typeof rawAddress === "string" ? rawAddress : "");
   await fillAddressModal(parsed, modal, result, meta);
   const saved = await saveModalAndVerifyClosed(result, `Address ${addressLabel}`);
   if (saved) await verifyAddressRowNotPlaceholder(addressLabel, parsed, result, meta.applicantName);
