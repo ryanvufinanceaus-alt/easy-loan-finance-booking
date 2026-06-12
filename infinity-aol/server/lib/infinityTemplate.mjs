@@ -279,20 +279,18 @@ export function buildInfinityTemplate(caseData) {
     financials: {
       assets: caseData.assets || [],
       liabilities: caseData.liabilities || [],
-      expenses: (caseData.expenses?.breakdown?.length ? caseData.expenses.breakdown : [
-        {
-          type: caseData.expenses?.type || "Groceries",
-          amount: currency(caseData.documentIntake?.assumptions?.hemMonthly || caseData.expenses?.livingMonthly),
-          frequency: "Monthly",
-          description: "Living expenses / HEM",
-          continuePostSettlement: "Yes"
-        }
-      ]).map((expense) => ({
-        type: expense.type || "Groceries",
+      expenses: (caseData.expenses?.breakdown?.length ? caseData.expenses.breakdown : []).map((expense) => ({
+        templateKey: expense.templateKey || "",
+        type: expense.expenseType || expense.type || "Groceries",
+        expenseType: expense.expenseType || expense.type || "Groceries",
+        infinityTypeCandidates: Array.isArray(expense.infinityTypeCandidates) ? expense.infinityTypeCandidates : [expense.expenseType || expense.type || "Groceries"],
         amount: currency(expense.amount || expense.value),
         frequency: expense.frequency || "Monthly",
-        description: expense.description || expense.type || "Living expenses / HEM",
-        continuePostSettlement: expense.continuePostSettlement || "Yes"
+        description: expense.description || expense.expenseType || expense.type || "Living expenses / HEM",
+        continuePostSettlement: expense.continuePostSettlement || "Yes",
+        ownership: expense.ownership || "100%",
+        applicantScope: expense.applicantScope || "household",
+        source: expense.source || caseData.expenseSource || caseData.expenses?.source || ""
       })).filter((expense) => expense.amount > 0),
       incomes: applicants.flatMap((applicant) => {
         const rows = [];

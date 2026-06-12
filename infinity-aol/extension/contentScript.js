@@ -48,7 +48,51 @@ function activeSurfaceRoot() {
   return activeModal() || document;
 }
 
-function showAutomationStatus(message, type = "running") {
+const automationRunState = {
+  stopped: false,
+  current: 0,
+  total: 1,
+  message: ""
+};
+
+function automationProgressPercent() {
+  const total = Math.max(1, Number(automationRunState.total || 1));
+  const current = Math.max(0, Math.min(total, Number(automationRunState.current || 0)));
+  return Math.max(0, Math.min(100, Math.round((current / total) * 100)));
+}
+
+function requestAutomationStop() {
+  automationRunState.stopped = true;
+  showAutomationStatus("EasyFlow AI stopping after current action...", "error", { keepProgress: true });
+}
+
+function resetAutomationRun(total = 1) {
+  automationRunState.stopped = false;
+  automationRunState.current = 0;
+  automationRunState.total = Math.max(1, Number(total || 1));
+  automationRunState.message = "";
+}
+
+function setAutomationProgress(current, total, message) {
+  if (Number.isFinite(Number(total))) automationRunState.total = Math.max(1, Number(total));
+  if (Number.isFinite(Number(current))) automationRunState.current = Math.max(0, Number(current));
+  if (message) automationRunState.message = message;
+  showAutomationStatus(message || automationRunState.message || "EasyFlow AI running...", "running");
+}
+
+function advanceAutomationProgress(message, increment = 1) {
+  automationRunState.current = Math.min(Math.max(1, automationRunState.total), automationRunState.current + increment);
+  if (message) automationRunState.message = message;
+  showAutomationStatus(message || automationRunState.message || "EasyFlow AI running...", "running");
+}
+
+function throwIfAutomationStopped() {
+  if (automationRunState.stopped) {
+    throw new Error("EasyFlow AI run stopped by user.");
+  }
+}
+
+function showAutomationStatus(message, type = "running", options = {}) {
   let status = document.querySelector("#easyflow-ai-extension-status");
   if (!status) {
     status = document.createElement("div");
@@ -66,15 +110,58 @@ function showAutomationStatus(message, type = "running") {
     top: "14px",
     right: "14px",
     zIndex: "2147483647",
-    maxWidth: "360px",
-    padding: "12px 14px",
-    borderRadius: "10px",
+    width: "360px",
+    maxWidth: "calc(100vw - 28px)",
+    padding: "12px",
+    borderRadius: "8px",
     boxShadow: "0 14px 40px rgba(0,0,0,.22)",
-    font: "700 14px/1.35 Arial, sans-serif",
+    font: "700 13px/1.35 Arial, sans-serif",
     background,
     color
   });
-  status.textContent = message;
+  const percent = options.progress ?? (options.keepProgress ? automationProgressPercent() : automationProgressPercent());
+  status.innerHTML = "";
+  const header = document.createElement("div");
+  Object.assign(header.style, { display: "flex", alignItems: "center", gap: "10px" });
+  const text = document.createElement("div");
+  Object.assign(text.style, { flex: "1", minWidth: "0" });
+  text.textContent = message;
+  const stop = document.createElement("button");
+  stop.type = "button";
+  stop.textContent = automationRunState.stopped ? "Stopping" : "Stop";
+  stop.disabled = automationRunState.stopped || type === "success";
+  Object.assign(stop.style, {
+    border: "1px solid rgba(255,255,255,.55)",
+    background: "rgba(255,255,255,.14)",
+    color: "#fff",
+    borderRadius: "6px",
+    padding: "5px 9px",
+    font: "700 12px Arial, sans-serif",
+    cursor: stop.disabled ? "default" : "pointer"
+  });
+  stop.addEventListener("click", requestAutomationStop);
+  header.append(text, stop);
+  const progressOuter = document.createElement("div");
+  Object.assign(progressOuter.style, {
+    marginTop: "9px",
+    height: "8px",
+    borderRadius: "999px",
+    background: "rgba(255,255,255,.28)",
+    overflow: "hidden"
+  });
+  const progressInner = document.createElement("div");
+  Object.assign(progressInner.style, {
+    height: "100%",
+    width: `${percent}%`,
+    borderRadius: "999px",
+    background: "#ffffff",
+    transition: "width .18s ease"
+  });
+  progressOuter.append(progressInner);
+  const footer = document.createElement("div");
+  Object.assign(footer.style, { marginTop: "6px", opacity: ".9", font: "700 11px Arial, sans-serif" });
+  footer.textContent = `${percent}% complete`;
+  status.append(header, progressOuter, footer);
 }
 
 function cleanupStuckModalState() {
@@ -678,7 +765,25 @@ async function fillInputByLabel(label, value, scope = activeSurfaceRoot(), resul
 }
 
 async function fillDateByLabel(label, value, scope = activeSurfaceRoot(), result, meta = {}) {
-  return fillInputByLabel(label, formatDateValue(value, "au"), scope, result, meta);
+  const formatted = formatDateValue(value, "au");
+  const ok = await fillInputByLabel(label, formatted, scope, result, meta);
+  const found = findExactByLabelText(label, formatted, scope) || findByLabelText([label], formatted, scope);
+  const actual = found?.element ? readFieldValue(found.element) : "";
+  if (ok && found?.element && !valuesMatch(formatted, actual)) {
+    found.element.focus?.();
+    nativeSetValue(found.element, formatted);
+    await sleep(120);
+    found.element.blur?.();
+    const retryActual = readFieldValue(found.element);
+    if (!valuesMatch(formatted, retryActual)) {
+      recordVerificationFailure(result, meta.section || "workflow", label, "Date value did not verify after retry", {
+        ...meta,
+        expected: formatted,
+        actual: retryActual
+      });
+    }
+  }
+  return ok;
 }
 
 function findDropdownOption(value, root = document) {
@@ -1141,12 +1246,23 @@ function normalizeMoneyValue(value) {
 }
 
 function normalizeExpenseRow(row) {
+  const candidates = [
+    ...(Array.isArray(row?.infinityTypeCandidates) ? row.infinityTypeCandidates : []),
+    row?.expenseType,
+    row?.type,
+    row?.name
+  ].filter(Boolean);
   return {
     type: String(row?.expenseType || row?.type || row?.name || "").trim(),
     amount: normalizeMoneyValue(row?.amount ?? row?.monthlyAmount ?? row?.value),
     frequency: row?.frequency || "Monthly",
     description: row?.description || row?.expenseType || row?.type || "Living expense",
-    continuePostSettlement: row?.continuePostSettlement || "Yes"
+    continuePostSettlement: row?.continuePostSettlement || "Yes",
+    infinityTypeCandidates: [...new Set(candidates.map(String).map((item) => item.trim()).filter(Boolean))],
+    ownership: row?.ownership,
+    applicantScope: row?.applicantScope,
+    source: row?.source,
+    templateKey: row?.templateKey
   };
 }
 
@@ -1171,8 +1287,7 @@ function buildHemExpenseRows(total, payload) {
   const preparedRows = collectionAt(payload, "infinity.financials.expenses")
     .map(normalizeExpenseRow)
     .filter((row) => row.type && row.amount > 0);
-  if (preparedRows.length) return preparedRows;
-  return scaleHemExpenseTemplate(total || getValue(payload, "serviceability.hemMonthly"));
+  return preparedRows;
 }
 
 function hemMonthlyAmount(payload) {
@@ -1208,10 +1323,10 @@ function canonicalInfinityExpenseType(type) {
   return type || "Other";
 }
 
-function expenseTypeCandidates(preferredType) {
+function expenseTypeCandidates(preferredType, preparedCandidates = []) {
   const canonical = canonicalInfinityExpenseType(preferredType);
   const aliases = EXPENSE_TYPE_ALIASES[canonical] || EXPENSE_TYPE_ALIASES[preferredType] || [];
-  const candidates = [canonical, preferredType, ...aliases, "Other"].filter(Boolean);
+  const candidates = [...preparedCandidates, canonical, preferredType, ...aliases, "Other"].filter(Boolean);
   return [...new Set(candidates)].filter((candidate) => candidate !== "Please Select");
 }
 
@@ -1296,14 +1411,15 @@ function readSelectedExpenseType(modal) {
   return String(readFieldValue(display) || display.textContent || "").trim();
 }
 
-async function selectExpenseTypeWithFallback(preferredType, modal, result) {
+async function selectExpenseTypeWithFallback(preferredType, modal, result, preparedCandidates = []) {
   const control = findDropdownControlByLabels(["Expense Type", "Type", "Expense"], modal);
   if (!control) {
     recordError(result, "financialsExpense", "Expense Type", "Expense Type control not found", { expenseType: preferredType });
     return "";
   }
   const requested = canonicalInfinityExpenseType(preferredType);
-  for (const candidate of expenseTypeCandidates(preferredType)) {
+  const candidates = expenseTypeCandidates(preferredType, preparedCandidates);
+  for (const candidate of candidates) {
     const ok = await selectDropdownControlOption(control, candidate);
     if (!ok) continue;
     const selected = await waitFor(() => readSelectedExpenseType(modal), { timeout: 900, interval: 100 });
@@ -1315,11 +1431,23 @@ async function selectExpenseTypeWithFallback(preferredType, modal, result) {
       return selected;
     }
   }
-  recordError(result, "financialsExpense", "Expense Type", `Could not select expense type ${preferredType}`, { tried: expenseTypeCandidates(preferredType) });
+  recordError(result, "financialsExpense", "Expense Type", `Could not select expense type ${preferredType}`, { tried: candidates });
   return "";
 }
 
-async function fillExpenseOwnership(modal, payload, result, expenseType) {
+async function fillExpenseOwnership(modal, payload, result, expenseType, row = {}) {
+  if (row.ownership && typeof row.ownership === "object") {
+    const inputs = [...modal.querySelectorAll("input:not([type='hidden'])")].filter(isVisible);
+    const percentInputs = inputs.filter((input) => normalize(input.value).includes("%") || input.value === "" || /^\d+%?$/.test(String(input.value || "")));
+    const values = Object.values(row.ownership).filter((value) => value !== undefined && value !== null && value !== "");
+    if (values.length && percentInputs.length >= values.length) {
+      for (let index = 0; index < values.length; index += 1) {
+        await setFieldValue(percentInputs[index], String(values[index]).includes("%") ? values[index] : `${values[index]}%`);
+      }
+      result.actions.push({ action: "set-expense-ownership", section: "financialsExpense", label: expenseType, split: values.join("/") });
+      return true;
+    }
+  }
   const applicants = infinityApplicantRows(payload);
   if (applicants.length > 1) {
     const inputs = [...modal.querySelectorAll("input:not([type='hidden'])")].filter(isVisible);
@@ -1422,7 +1550,7 @@ async function upsertExpenseRow(row, payload, result) {
   }
   result.actions.push({ action: "open-expense-modal", section: "financialsExpense", label: row.type });
 
-  const selectedType = await selectExpenseTypeWithFallback(row.type, modal, result);
+  const selectedType = await selectExpenseTypeWithFallback(row.type, modal, result, row.infinityTypeCandidates);
   if (!selectedType) {
     await closeActiveModalWithoutSaving();
     return false;
@@ -1431,7 +1559,7 @@ async function upsertExpenseRow(row, payload, result) {
   await selectDropdownByText("Expense Frequency", row.frequency || "Monthly", modal, result, { section: "financialsExpense", expenseType: selectedType });
   await fillInputByLabel("Description", row.description || selectedType, modal, result, { section: "financialsExpense", expenseType: selectedType });
   await selectDropdownByText("Continue Post Settlement", row.continuePostSettlement || "Yes", modal, result, { section: "financialsExpense", expenseType: selectedType });
-  await fillExpenseOwnership(modal, payload, result, selectedType);
+  await fillExpenseOwnership(modal, payload, result, selectedType, row);
 
   const verified = await verifyExpenseModalMandatoryFields(modal, row, selectedType, result);
   if (!verified) {
@@ -1582,7 +1710,10 @@ function addressPartsFromApplicant(applicant, fallbackAddressText = "") {
     .replace(/\s+/g, " ")
     .trim();
   const unit = addressBeforeState.match(/\b(?:unit|u|apt|apartment)\s*([a-z0-9/-]+)/i)?.[1] || "";
-  const withoutUnit = addressBeforeState.replace(/\b(?:unit|u|apt|apartment)\s*[a-z0-9/-]+\s*/i, "").trim();
+  const withoutUnit = addressBeforeState
+    .replace(/\b(?:unit|u|apt|apartment)\s*[a-z0-9/-]+\s*/i, "")
+    .replace(/^[/,\s-]+/, "")
+    .trim();
   const number = withoutUnit.match(/^(\d+[a-z]?(?:-\d+[a-z]?)?)/i)?.[1] || "";
   const afterNumber = withoutUnit.replace(/^(\d+[a-z]?(?:-\d+[a-z]?)?)\s*/i, "").trim();
   const typePattern = new RegExp(`\\b(${streetTypes.join("|")})\\b\\.?$`, "i");
@@ -1976,25 +2107,28 @@ async function selectRelatedSpouse(value, scope, result, rowIndex, applicantName
     recordFieldSkipped(result, "clientDetails", "Related Spouse", "field not found after scroll", { rowIndex, applicantName });
     return false;
   }
-  clickElement(found.element);
-  await sleep(250);
-  const searchInput = [...document.querySelectorAll("input.ui-select-search, input[type='search'], input[aria-autocomplete]")]
-    .filter(isVisible)[0];
-  if (searchInput) {
-    nativeSetValue(searchInput, value);
+  let ok = await selectDropdownControlOption(found.element, value);
+  if (!ok) {
+    clickElement(found.element);
     await sleep(250);
+    const searchInput = [...document.querySelectorAll("input.ui-select-search, input[type='search'], input[aria-autocomplete]")]
+      .filter(isVisible)[0];
+    if (searchInput) {
+      nativeSetValue(searchInput, value);
+      await sleep(250);
+    }
+    const option = findVisibleOptionInDocument(value);
+    if (option) {
+      clickElement(option);
+      ok = true;
+    }
   }
-  const option = findVisibleOptionInDocument(value);
-  if (!option) {
-    pressEscape();
-    recordError(result, "clientDetails", "Related Spouse", `Could not find spouse option ${value}`, { rowIndex, applicantName });
-    return false;
-  }
-  clickElement(option);
   await sleep(350);
   const actual = readFieldValue(found.element) || found.element.textContent || "";
   result.fieldsFilled.push({ section: "clientDetails", label: "Related Spouse", selector: found.selector, expected: value, actual, rowIndex });
-  if (!valuesMatch(value, actual) && !pageHasAnyText([value])) {
+  const verified = valuesMatch(value, actual) || pageHasAnyText([value]);
+  if (!ok || !verified) {
+    pressEscape();
     recordVerificationFailure(result, "clientDetails", "Related Spouse", "Related spouse option was clicked but selected value could not be verified", {
       expected: value,
       actual,
@@ -2002,7 +2136,7 @@ async function selectRelatedSpouse(value, scope, result, rowIndex, applicantName
       applicantName
     });
   }
-  return true;
+  return ok;
 }
 
 async function fillClientDetailsDirect(applicant, result, rowIndex, scope = document) {
@@ -2014,6 +2148,18 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
     await scrollToText([label], scope === document ? document : scope);
     if (label === "Related Spouse") {
       const ok = await selectRelatedSpouse(value, scope, result, rowIndex, fullApplicantName(applicant));
+      if (ok) filledCount += 1;
+      await sleep(90);
+      continue;
+    }
+    if (dateFormat === "au") {
+      const ok = await fillDateByLabel(label, rawValue, scope, result, { section: "clientDetails", rowIndex, applicantName: fullApplicantName(applicant) });
+      if (ok) filledCount += 1;
+      await sleep(90);
+      continue;
+    }
+    if (["Gender", "Licence State"].includes(label)) {
+      const ok = await selectDropdownByText(label, value, scope, result, { section: "clientDetails", rowIndex, applicantName: fullApplicantName(applicant) });
       if (ok) filledCount += 1;
       await sleep(90);
       continue;
@@ -2076,9 +2222,10 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
   if (!applicants.length) return false;
 
   for (let index = 0; index < applicants.length; index += 1) {
+    throwIfAutomationStopped();
     const applicant = applicants[index];
     const name = fullApplicantName(applicant);
-    showAutomationStatus(`EasyFlow AI: filling Client Details ${index + 1}/${applicants.length}...`);
+    setAutomationProgress(index, applicants.length, `Client Details: ${name || `Applicant ${index + 1}`}`);
     const clicked = clickApplicantTabByName(name);
     result.actions.push({ action: clicked ? "open-applicant-tab" : "review-applicant-tab", section: "clientDetails", label: name, rowIndex: index });
     if (clicked) {
@@ -2096,6 +2243,7 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     await detectAndFixDateSwap(applicant, scope, result);
     const saved = await clickPageSaveIfVisible();
     result.actions.push({ action: saved ? "save-client-details" : "review-client-details", section: "clientDetails", rowIndex: index });
+    advanceAutomationProgress(`Client Details saved: ${name || `Applicant ${index + 1}`}`);
     await sleep(500);
   }
 
@@ -2110,8 +2258,9 @@ async function runPopupWorkflow(workflow, payload, mapping, apiBase, result) {
   }
 
   for (let index = 0; index < workflow.rowCount; index += 1) {
+    throwIfAutomationStopped();
     const sourceIndex = workflow.rowIndexes?.[index] ?? index;
-    showAutomationStatus(`EasyFlow AI: filling ${workflow.sectionId} ${index + 1}/${workflow.rowCount}...`);
+    setAutomationProgress(index, workflow.rowCount, `${workflow.sectionId}: row ${index + 1}/${workflow.rowCount}`);
     if (existingWorkflowRowVisible(workflow, payload, sourceIndex)) {
       result.actions.push({ action: "skip-existing-row", section: workflow.sectionId, rowIndex: sourceIndex });
       continue;
@@ -2159,6 +2308,7 @@ async function runPopupWorkflow(workflow, payload, mapping, apiBase, result) {
       });
       return;
     }
+    advanceAutomationProgress(`${workflow.sectionId}: saved row ${index + 1}/${workflow.rowCount}`);
     await sleep(350);
   }
 }
@@ -2168,23 +2318,19 @@ async function runFinancialsWorkflow(payload, mapping, apiBase, result) {
   if (!isInfinityFinancialsPage()) return false;
   const rows = buildHemExpenseRows(hemMonthlyAmount(payload), payload);
   if (!isHemConfirmed(payload)) {
-    if (!rows.length) {
-      recordFieldSkipped(result, "financialsExpense", "Monthly Expenses", "HEM / living expense breakdown is not confirmed and no expense rows/amount were found.");
-      return true;
-    }
-    result.warnings.push({
-      section: "financialsExpense",
-      code: "HEM_CONFIRM_FLAG_MISSING",
-      message: "HEM confirmation flag was missing, but expense rows/amount exist. Filling Monthly Expenses from prepared template."
-    });
-  }
-  if (!rows.length) {
-    recordFieldSkipped(result, "financialsExpense", "Monthly Expenses", "No HEM expense rows found in prepared payload");
+    recordError(result, "financialsExpense", "Monthly Expenses", "HEM / living expense breakdown is not confirmed. Confirm HEM in EasyFlow AI, prepare again, then run Financials.");
     return true;
   }
-  showAutomationStatus(`EasyFlow AI: filling ${rows.length} monthly expense row(s)...`);
-  for (const row of rows) {
+  if (!rows.length) {
+    recordError(result, "financialsExpense", "Monthly Expenses", "No prepared expense rows found at payload.infinity.financials.expenses. Financials stopped to avoid creating wrong HEM rows.");
+    return true;
+  }
+  setAutomationProgress(0, rows.length, `Financials: ${rows.length} monthly expense rows`);
+  for (const [index, row] of rows.entries()) {
+    throwIfAutomationStopped();
+    setAutomationProgress(index, rows.length, `Financials: ${row.type} ${index + 1}/${rows.length}`);
     await upsertExpenseRow(row, payload, result);
+    advanceAutomationProgress(`Financials saved/reviewed: ${row.type}`);
   }
   return true;
 }
@@ -2263,7 +2409,9 @@ async function fillNeedsAnalysis(payload, mapping, result) {
     return false;
   }
   let filledCount = 0;
-  for (const field of section.fields) {
+  for (const [index, field] of section.fields.entries()) {
+    throwIfAutomationStopped();
+    setAutomationProgress(index, section.fields.length, `Needs Analysis: ${field.label}`);
     await scrollToText(fieldLabels(field));
     const ok = await fillNeedsAnalysisField(field, payload, result);
     if (ok) filledCount += 1;
@@ -2276,14 +2424,16 @@ async function fillNeedsAnalysis(payload, mapping, result) {
 async function runLoansProductsWorkflow(payload, mapping, apiBase, result) {
   ensureResultShape(result);
   if (!isLoansProductsArea()) return false;
-  showAutomationStatus("EasyFlow AI: filling Loans & Products / Needs Analysis...");
+  setAutomationProgress(0, 5, "Loans & Products: opening Needs Analysis");
 
   if (isInfinityLoansSummaryPage() || pageHasAnyText(["Create Application"])) {
+    throwIfAutomationStopped();
     await ensureBestInterestDutyApplication(result);
     await waitForAngularSettle();
   }
 
   if (!isNeedsAnalysisVisible()) {
+    throwIfAutomationStopped();
     const opened = await clickSubTab("Needs Analysis", result);
     if (opened) await waitFor(() => isNeedsAnalysisVisible(), { timeout: 5000, interval: 150 });
   }
@@ -2311,28 +2461,38 @@ async function runLoansProductsWorkflow(payload, mapping, apiBase, result) {
 }
 
 async function runWorkflow({ payload, mapping, apiBase }) {
+  resetAutomationRun(1);
   const result = ensureResultShape({ sectionId: "workflow", fieldsFilled: [], fieldsSkipped: [], errors: [], actions: [], verificationFailures: [] });
 
-  const clientDetailsHandled = await runClientDetailsWorkflow(payload, mapping, apiBase, result);
-  const financialsHandled = clientDetailsHandled ? false : await runFinancialsWorkflow(payload, mapping, apiBase, result);
-  const loansProductsHandled = clientDetailsHandled || financialsHandled ? false : await runLoansProductsWorkflow(payload, mapping, apiBase, result);
+  try {
+    const clientDetailsHandled = await runClientDetailsWorkflow(payload, mapping, apiBase, result);
+    const financialsHandled = clientDetailsHandled ? false : await runFinancialsWorkflow(payload, mapping, apiBase, result);
+    const loansProductsHandled = clientDetailsHandled || financialsHandled ? false : await runLoansProductsWorkflow(payload, mapping, apiBase, result);
 
-  if (!clientDetailsHandled && !financialsHandled && !loansProductsHandled) {
-    const visibleResult = await autofill({ mode: "visible", payload, mapping, apiBase });
-    mergeAutofillResult(result, visibleResult);
-    result.actions.push({ action: "fill-visible-fields", section: "visible", filled: visibleResult.fieldsFilled.length });
-    if (visibleResult.fieldsFilled.length) {
-      const saved = await clickPageSaveIfVisible();
-      result.actions.push({ action: saved ? "save-page" : "review-page", section: "visible", label: saved ? "Save" : "No page save button visible" });
-      if (normalize(location.href).includes("/loans/soca/")) {
-        const advanced = await clickPageNextIfVisible();
-        result.actions.push({ action: advanced ? "next-page" : "review-page", section: "visible", label: advanced ? "Next" : "No next button visible" });
+    if (!clientDetailsHandled && !financialsHandled && !loansProductsHandled) {
+      const visibleResult = await autofill({ mode: "visible", payload, mapping, apiBase });
+      mergeAutofillResult(result, visibleResult);
+      result.actions.push({ action: "fill-visible-fields", section: "visible", filled: visibleResult.fieldsFilled.length });
+      if (visibleResult.fieldsFilled.length) {
+        const saved = await clickPageSaveIfVisible();
+        result.actions.push({ action: saved ? "save-page" : "review-page", section: "visible", label: saved ? "Save" : "No page save button visible" });
+        if (normalize(location.href).includes("/loans/soca/")) {
+          const advanced = await clickPageNextIfVisible();
+          result.actions.push({ action: advanced ? "next-page" : "review-page", section: "visible", label: advanced ? "Next" : "No next button visible" });
+        }
       }
     }
-  }
 
-  for (const workflow of clientDetailsHandled || financialsHandled || loansProductsHandled ? [] : supportedPopupWorkflows(payload)) {
-    await runPopupWorkflow(workflow, payload, mapping, apiBase, result);
+    for (const workflow of clientDetailsHandled || financialsHandled || loansProductsHandled ? [] : supportedPopupWorkflows(payload)) {
+      await runPopupWorkflow(workflow, payload, mapping, apiBase, result);
+    }
+  } catch (error) {
+    if (/stopped by user/i.test(error.message || "")) {
+      result.actions.push({ action: "stop-run", section: "workflow", message: error.message });
+      showAutomationStatus("EasyFlow AI stopped.", "error", { keepProgress: true });
+    } else {
+      throw error;
+    }
   }
 
   await logAutofill(apiBase, payload, result);
@@ -2385,35 +2545,47 @@ async function runAllPages({ payload, mapping, apiBase }) {
   const platform = detectPlatform();
   const plan = navigationPlans[platform] || [];
   const result = ensureResultShape({ sectionId: "all-pages", fieldsFilled: [], fieldsSkipped: [], errors: [], actions: [], verificationFailures: [], pages: [], platform });
+  resetAutomationRun(Math.max(1, plan.length * 10));
 
   if (!plan.length) {
     result.errors.push({ message: "Could not detect Infinity or AOL page. Open a case page first." });
     return result;
   }
 
-  for (const step of plan) {
-    showAutomationStatus(`EasyFlow AI: opening ${step.labels[0]}...`);
-    const navigated = await navigateToPage(step);
-    result.pages.push({ id: step.id, labels: step.labels, navigated });
-    if (!navigated) {
-      result.fieldsSkipped.push({ section: step.id, label: step.labels[0], reason: "page navigation link not visible" });
-      continue;
+  try {
+    for (const [pageIndex, step] of plan.entries()) {
+      throwIfAutomationStopped();
+      setAutomationProgress(pageIndex * 10, plan.length * 10, `Opening ${step.labels[0]}...`);
+      const navigated = await navigateToPage(step);
+      result.pages.push({ id: step.id, labels: step.labels, navigated });
+      if (!navigated) {
+        result.fieldsSkipped.push({ section: step.id, label: step.labels[0], reason: "page navigation link not visible" });
+        continue;
+      }
+
+      const pageResult = await runWorkflow({ payload, mapping, apiBase });
+      mergeAutofillResult(result, pageResult);
+
+      const compareResult = await scanCompare({ mode: "visible", payload, mapping });
+      await logComparisonSnapshot(apiBase, payload, compareResult);
+      result.actions.push({
+        action: "snapshot-page",
+        section: step.id,
+        matched: compareResult.matched.length,
+        mismatched: compareResult.mismatched.length,
+        missing: compareResult.missing.length
+      });
+      await sleep(500);
+      cleanupStuckModalState();
+      setAutomationProgress((pageIndex + 1) * 10, plan.length * 10, `Completed ${step.labels[0]}`);
     }
-
-    const pageResult = await runWorkflow({ payload, mapping, apiBase });
-    mergeAutofillResult(result, pageResult);
-
-    const compareResult = await scanCompare({ mode: "visible", payload, mapping });
-    await logComparisonSnapshot(apiBase, payload, compareResult);
-    result.actions.push({
-      action: "snapshot-page",
-      section: step.id,
-      matched: compareResult.matched.length,
-      mismatched: compareResult.mismatched.length,
-      missing: compareResult.missing.length
-    });
-    await sleep(500);
-    cleanupStuckModalState();
+  } catch (error) {
+    if (/stopped by user/i.test(error.message || "")) {
+      result.actions.push({ action: "stop-run", section: "all-pages", message: error.message });
+      showAutomationStatus("EasyFlow AI stopped.", "error", { keepProgress: true });
+    } else {
+      throw error;
+    }
   }
 
   await logAutofill(apiBase, payload, result);

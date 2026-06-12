@@ -296,29 +296,32 @@ function manualMoneySuggestion(path, value, reason) {
 }
 
 const hemTemplateRows = [
-  ["Clothing & Personal Care", 200],
-  ["Other Insurances", 200],
-  ["Groceries", 900],
-  ["Investment Property Costs", 300],
-  ["Health Care", 100],
-  ["Home Maintenance", 300],
-  ["Entertainment", 300],
-  ["Telephone and Internet", 200],
-  ["Vehicle Maintenance & Transport", 500]
+  { templateKey: "clothingPersonalCare", expenseType: "Clothing & Personal Care", amount: 200, infinityTypeCandidates: ["Clothing & Personal Care"] },
+  { templateKey: "otherInsurances", expenseType: "Other Insurances", amount: 200, infinityTypeCandidates: ["Other Insurances", "Medical and Life Insurance", "Home & Contents Insurance"] },
+  { templateKey: "groceries", expenseType: "Groceries", amount: 900, infinityTypeCandidates: ["Groceries"] },
+  { templateKey: "investmentPropertyCosts", expenseType: "Investment Property Costs", amount: 300, infinityTypeCandidates: ["Investment Property Costs", "Strata Fees and Land Tax"] },
+  { templateKey: "healthCare", expenseType: "Health Care", amount: 100, infinityTypeCandidates: ["Health Care", "Medical and Life Insurance"] },
+  { templateKey: "homeMaintenance", expenseType: "Home Maintenance", amount: 300, infinityTypeCandidates: ["Home Maintenance"] },
+  { templateKey: "entertainment", expenseType: "Entertainment", amount: 300, infinityTypeCandidates: ["Entertainment"] },
+  { templateKey: "telephoneInternet", expenseType: "Telephone and Internet", amount: 200, infinityTypeCandidates: ["Telephone and Internet"] },
+  { templateKey: "vehicleMaintenanceTransport", expenseType: "Vehicle Maintenance & Transport", amount: 500, infinityTypeCandidates: ["Vehicle Maintenance & Transport", "Vehicle Insurance"] }
 ];
 
 function scaleTemplateRows(rows, total, adjustLabel = "Groceries") {
+  const normalizedRows = rows.map((row) => Array.isArray(row) ? { type: row[0], expenseType: row[0], amount: row[1] } : row);
   const target = Number(total || 0);
-  if (!target) return rows.map(([type]) => ({ type, amount: 0, frequency: "Monthly", ownership: "100%" }));
-  const baseTotal = rows.reduce((sum, [, amount]) => sum + amount, 0) || 1;
-  const scaled = rows.map(([type, amount]) => ({
-    type,
-    amount: Math.round(((amount / baseTotal) * target) / 50) * 50,
+  if (!target) return normalizedRows.map((row) => ({ ...row, type: row.expenseType || row.type, amount: 0, frequency: "Monthly", ownership: "100%" }));
+  const baseTotal = normalizedRows.reduce((sum, row) => sum + Number(row.amount || 0), 0) || 1;
+  const scaled = normalizedRows.map((row) => ({
+    ...row,
+    type: row.expenseType || row.type,
+    amount: Math.round(((Number(row.amount || 0) / baseTotal) * target) / 50) * 50,
     frequency: "Monthly",
-    ownership: "100%"
+    ownership: row.ownership || "100%",
+    continuePostSettlement: row.continuePostSettlement || "Yes"
   }));
-  const diff = target - scaled.reduce((sum, row) => sum + row.amount, 0);
-  const adjustRow = scaled.find((row) => row.type === adjustLabel) || scaled[0];
+  const diff = target - scaled.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const adjustRow = scaled.find((row) => row.type === adjustLabel || row.expenseType === adjustLabel) || scaled[0];
   if (adjustRow) adjustRow.amount += diff;
   return scaled;
 }
@@ -358,7 +361,16 @@ function aggregateAssetValue(assets = []) {
 }
 
 function sourceTaggedExpenses(total, source) {
-  return hemBreakdown(total).map((row) => ({ ...row, source }));
+  return hemBreakdown(total).map((row) => ({
+    ...row,
+    expenseType: row.expenseType || row.type,
+    description: row.description || row.expenseType || row.type,
+    frequency: row.frequency || "Monthly",
+    continuePostSettlement: row.continuePostSettlement || "Yes",
+    ownership: row.ownership || "100%",
+    applicantScope: row.applicantScope || "household",
+    source
+  }));
 }
 
 function splitManualName(fullName = "") {
