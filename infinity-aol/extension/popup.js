@@ -330,7 +330,27 @@ async function startAutofill() {
     );
     renderReview();
   } catch (error) {
+    state.lastDiagnostics = null;
+    state.lastResult = {
+      status: "failed",
+      blockedAt: "popup",
+      message: error.message || String(error),
+      platform: "extension-popup",
+      fieldsFilled: [],
+      fieldsSkipped: [],
+      errors: [{
+        section: "popup",
+        label: "Start AutoFill",
+        message: error.message || String(error),
+        stack: error.stack || ""
+      }],
+      verificationFailures: [],
+      actions: [],
+      createdAt: new Date().toISOString()
+    };
+    els.copyDiagnostics.disabled = false;
     setStatus(error.message, "error");
+    renderReview();
   } finally {
     els.startAutofill.disabled = false;
   }
@@ -412,7 +432,27 @@ async function runDiagnostics() {
     );
     renderReview();
   } catch (error) {
+    state.lastDiagnostics = null;
+    state.lastResult = {
+      status: "failed",
+      blockedAt: "popup",
+      message: error.message || String(error),
+      platform: "extension-popup",
+      fieldsFilled: [],
+      fieldsSkipped: [],
+      errors: [{
+        section: "popup",
+        label: "Run Test",
+        message: error.message || String(error),
+        stack: error.stack || ""
+      }],
+      verificationFailures: [],
+      actions: [],
+      createdAt: new Date().toISOString()
+    };
+    els.copyDiagnostics.disabled = false;
     setStatus(error.message, "error");
+    renderReview();
   } finally {
     els.runDiagnostics.disabled = false;
   }

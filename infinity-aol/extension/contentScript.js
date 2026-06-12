@@ -325,6 +325,11 @@ function clickableElements(root = document) {
   ].filter(isVisible);
 }
 
+function closestClickable(element) {
+  if (!element) return null;
+  return element.closest("a, button, li, [role='button'], [role='tab'], [ng-click], [data-ng-click], [onclick], .nav-tabs li, .nav-tabs a, .tab, .btn") || element;
+}
+
 function isUnsafeFinalAction(element) {
   const text = visibleText(element);
   return /\b(push aol|submit|lodge|send|settle|finalise|finalize|confirm submission)\b/.test(text);
@@ -1630,27 +1635,128 @@ async function verifyExpenseModalMandatoryFields(modal, row, selectedType, resul
   return false;
 }
 
+function findSectionByHeading(headingText) {
+  const wanted = normalize(headingText);
+  const headings = [...document.querySelectorAll("h1,h2,h3,h4,h5,legend,div,span")]
+    .filter(isVisible)
+    .filter((element) => normalize(element.innerText || element.textContent || "").includes(wanted));
+  for (const heading of headings) {
+    let container = heading;
+    for (let depth = 0; depth < 7 && container; depth += 1) {
+      const text = normalize(container.innerText || container.textContent || "");
+      if (
+        text.includes(wanted) &&
+        (text.includes("add expense") || text.includes("nothing to show") || (text.includes("type") && text.includes("amount")))
+      ) {
+        return container;
+      }
+      container = container.parentElement;
+    }
+  }
+  return null;
+}
+
+async function scrollToMonthlyExpensesSection() {
+  const section = findSectionByHeading("Monthly Expenses");
+  if (!section) return false;
+  await scrollElementIntoView(section);
+  return true;
+}
+
+function findMonthlyExpensesTable() {
+  const section = findSectionByHeading("Monthly Expenses");
+  const localTable = section?.querySelector("table, [role='grid'], .k-grid");
+  if (localTable && isVisible(localTable)) return localTable;
+  return [...document.querySelectorAll("table, [role='grid'], .k-grid")]
+    .filter(isVisible)
+    .find((table) => {
+      const text = normalize(table.innerText || table.textContent || "");
+      return text.includes("type") && text.includes("frequency") && text.includes("amount");
+    }) || null;
+}
+
+function getMonthlyExpensesTableText() {
+  const table = findMonthlyExpensesTable();
+  if (table) return normalize(table.innerText || table.textContent || "");
+  return tableSectionText("Monthly Expenses");
+}
+
+function findAddExpenseButton() {
+  const roots = [findSectionByHeading("Monthly Expenses"), document].filter(Boolean);
+  for (const root of roots) {
+    const candidates = [
+      ...root.querySelectorAll("button, a, [role='button'], [ng-click], [data-ng-click], span, div")
+    ].filter(isVisible);
+    const found = candidates.find((element) => normalize(element.innerText || element.textContent || "").includes("add expense"));
+    if (found) return closestClickable(found);
+  }
+  return null;
+}
+
+async function waitForExpenseModal() {
+  return waitFor(() => {
+    const modal = activeModal();
+    if (!modal) return null;
+    const text = normalize(modal.innerText || modal.textContent || "");
+    return text.includes("expense") || text.includes("expense type") || text.includes("frequency") ? modal : null;
+  }, { timeout: 7000, interval: 150 });
+}
+
+async function selectExpenseFrequency(modal, row, result, selectedType) {
+  const value = row.frequency || "Monthly";
+  const labels = ["Expense Frequency", "Frequency"];
+  for (const label of labels) {
+    const control = findDropdownControlByLabels([label], modal);
+    if (!control) continue;
+    const ok = await selectDropdownControlOption(control, value);
+    if (ok) {
+      result.actions.push({ action: "select-expense-frequency", section: "financialsExpense", label: selectedType, value });
+      return true;
+    }
+  }
+  recordFieldSkipped(result, "financialsExpense", "Expense Frequency", "frequency dropdown not found or option not selected", { expenseType: selectedType, expected: value });
+  return false;
+}
+
 async function upsertExpenseRow(row, payload, result) {
   row = normalizeExpenseRow(row);
   if (!row.type || row.amount <= 0) {
     recordError(result, "financialsExpense", "Monthly Expenses", "Invalid expense row; missing type or amount", row);
     return false;
   }
-  await scrollToText(["Monthly Expenses", "Add Expense"]);
-  const existingText = tableSectionText("Monthly Expenses");
+  showAutomationStatus(`Financials: adding ${row.type}`, "running");
+  const sectionFound = await scrollToMonthlyExpensesSection();
+  if (!sectionFound) {
+    recordVerificationFailure(result, "financialsExpense", "Monthly Expenses", "Monthly Expenses section not found on Financials page", {
+      expected: "Monthly Expenses heading and Add Expense button",
+      actual: normalize(document.body?.innerText || "").slice(0, 1200)
+    });
+    return false;
+  }
+  const existingText = getMonthlyExpensesTableText();
   if (labelsMatchLoose(existingText, row.type) && numericTokens(row.amount).some((token) => existingText.includes(normalize(token)))) {
     result.actions.push({ action: "skip-existing-expense", section: "financialsExpense", label: row.type, amount: row.amount });
     return true;
   }
 
-  const addButton = findClickableByText(["Add Expense", "+ Add Expense"]);
+  const addButton = findAddExpenseButton();
   if (!addButton) {
-    recordFieldSkipped(result, "financialsExpense", "Add Expense", "Add Expense button not visible", { expenseType: row.type, visibleActions: collectVisibleButtonsAndLinks() });
+    recordVerificationFailure(result, "financialsExpense", "Add Expense", "Add Expense button not visible in Monthly Expenses section", {
+      expenseType: row.type,
+      sectionText: getMonthlyExpensesTableText().slice(0, 1200),
+      visibleActions: collectVisibleButtonsAndLinks()
+    });
     return false;
   }
-  const modal = await clickAndWaitForModal(addButton);
+  const beforeModal = activeModal();
+  clickElement(addButton);
+  const modal = await waitForExpenseModal();
   if (!modal) {
-    recordError(result, "financialsExpense", "Add Expense", "Expense modal did not open", { expenseType: row.type });
+    recordError(result, "financialsExpense", "Add Expense", "Expense modal did not open", {
+      expenseType: row.type,
+      beforeModal: Boolean(beforeModal),
+      visibleActions: collectVisibleButtonsAndLinks()
+    });
     return false;
   }
   result.actions.push({ action: "open-expense-modal", section: "financialsExpense", label: row.type });
@@ -1661,7 +1767,7 @@ async function upsertExpenseRow(row, payload, result) {
     return false;
   }
   await fillInputByLabel("Expense Amount", row.amount, modal, result, { section: "financialsExpense", expenseType: selectedType });
-  await selectDropdownByText("Expense Frequency", row.frequency || "Monthly", modal, result, { section: "financialsExpense", expenseType: selectedType });
+  await selectExpenseFrequency(modal, row, result, selectedType);
   await fillInputByLabel("Description", row.description || selectedType, modal, result, { section: "financialsExpense", expenseType: selectedType });
   await selectDropdownByText("Continue Post Settlement", row.continuePostSettlement || "Yes", modal, result, { section: "financialsExpense", expenseType: selectedType });
   await fillExpenseOwnership(modal, payload, result, selectedType, row);
@@ -1675,7 +1781,8 @@ async function upsertExpenseRow(row, payload, result) {
 
   const saved = await saveModalAndVerifyClosed(result, `Expense ${selectedType}`);
   if (!saved) return false;
-  await sleep(400);
+  await waitForAngularSettle();
+  await sleep(800);
   return verifyExpenseTableRow(row, selectedType, result);
 }
 
@@ -1953,11 +2060,47 @@ function getActiveApplicantScope(applicantName) {
   return visibleForms[0] || null;
 }
 
+function getVisibleClientDetailsFormScope() {
+  const candidates = [
+    ...document.querySelectorAll("form, .tab-pane.active, .tab-content .active, [ng-show]:not(.ng-hide), [data-ng-show]:not(.ng-hide), .panel, .card, .container, .row")
+  ]
+    .filter(isVisible)
+    .filter((element) => element.querySelector(controlSelector))
+    .filter((element) => {
+      const text = normalize(element.innerText || element.textContent || "");
+      return text.includes("first name") && text.includes("surname");
+    })
+    .map((element) => ({ element, rect: element.getBoundingClientRect() }))
+    .sort((a, b) => (b.rect.width * b.rect.height) - (a.rect.width * a.rect.height));
+  return candidates[0]?.element || document;
+}
+
 function readClientNameFields(scope) {
   return {
     firstName: readFieldByExactLabel("First Name", scope || document),
     surname: readFieldByExactLabel("Surname", scope || document)
   };
+}
+
+function applicantNameFieldsMatch(expected, actual) {
+  return Boolean(
+    expected?.firstName &&
+    expected?.surname &&
+    valuesMatch(expected.firstName, actual?.firstName) &&
+    valuesMatch(expected.surname, actual?.surname)
+  );
+}
+
+function findVisibleApplicantTabElement(fullName) {
+  const wanted = normalize(fullName);
+  const tabs = collectVisibleApplicantTabs();
+  const exact = tabs.find((item) => item.text === wanted);
+  if (exact) return exact.element;
+  const loose = tabs.find((item) => {
+    const text = item.text;
+    return text && (text.includes(wanted) || wanted.includes(text));
+  });
+  return loose?.element || null;
 }
 
 async function activateInfinityApplicantTab(applicant, result, rowIndex) {
@@ -1972,39 +2115,61 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
     return { ok: false, skip: true, visibleApplicantTabs };
   }
 
-  const clicked = clickApplicantTabByName(fullName);
-  if (!clicked) {
-    recordError(result, "clientDetails", fullName, `Applicant tab not found for ${fullName}`, { rowIndex, visibleApplicantTabs });
-    return { ok: false, clicked: false, visibleApplicantTabs };
+  let scope = getVisibleClientDetailsFormScope();
+  let actual = readClientNameFields(scope || document);
+  const expected = { firstName, surname, fullName };
+  if (applicantNameFieldsMatch(expected, actual)) {
+    markApplicantState(applicant, { visited: true, activated: true, alreadyActive: true });
+    result.actions.push({
+      action: "applicant-already-active",
+      section: "clientDetails",
+      label: fullName,
+      rowIndex,
+      expected,
+      actual,
+      visibleApplicantTabs
+    });
+    return { ok: true, clicked: false, alreadyActive: true, scope, expected, actual, visibleApplicantTabs };
   }
 
+  const tabElement = findVisibleApplicantTabElement(fullName);
+  const clickTarget = closestClickable(tabElement);
+  if (!clickTarget) {
+    recordError(result, "clientDetails", fullName, `Applicant tab not found for ${fullName}`, {
+      rowIndex,
+      expected,
+      actual,
+      visibleApplicantTabs,
+      reason: "Current visible form does not match payload and no applicant tab text was found."
+    });
+    return { ok: false, clicked: false, scope: null, expected, actual, visibleApplicantTabs };
+  }
+
+  clickElement(clickTarget);
   await waitForAngularSettle();
-  await sleep(500);
+  await sleep(700);
   const active = await waitForActiveApplicant(fullName);
-  const scope = getActiveApplicantScope(fullName);
-  const actual = readClientNameFields(scope || document);
-  const ok = Boolean(
-    scope &&
-    valuesMatch(firstName, actual.firstName) &&
-    valuesMatch(surname, actual.surname)
-  );
+  scope = getVisibleClientDetailsFormScope() || getActiveApplicantScope(fullName);
+  actual = readClientNameFields(scope || document);
+  const ok = Boolean(scope && applicantNameFieldsMatch(expected, actual));
 
   const details = {
     rowIndex,
-    clicked,
+    clicked: true,
     selectorUsed: active ? visibleText(active) : "",
-    expected: { firstName, surname, fullName },
+    expected,
     actual,
     visibleApplicantTabs
   };
 
   if (!ok) {
     recordError(result, "clientDetails", fullName, "Applicant tab did not activate or visible form does not match payload. Stopped this applicant before filling.", details);
-    return { ok: false, clicked, scope: null, ...details };
+    return { ok: false, clicked: true, scope: null, ...details };
   }
 
+  markApplicantState(applicant, { visited: true, activated: true, alreadyActive: false });
   result.actions.push({ action: "activate-applicant-tab", section: "clientDetails", label: fullName, ...details });
-  return { ok: true, clicked, scope, ...details };
+  return { ok: true, clicked: true, alreadyActive: false, scope, ...details };
 }
 
 function addressPartsFromApplicant(applicant, fallbackAddressText = "") {
@@ -2706,18 +2871,32 @@ async function runFinancialsWorkflow(payload, mapping, apiBase, result) {
   const rows = buildHemExpenseRows(hemMonthlyAmount(payload), payload);
   if (!isHemConfirmed(payload)) {
     recordError(result, "financialsExpense", "Monthly Expenses", "HEM / living expense breakdown is not confirmed. Confirm HEM in EasyFlow AI, prepare again, then run Financials.");
-    return true;
+    return false;
   }
   if (!rows.length) {
     recordError(result, "financialsExpense", "Monthly Expenses", "No prepared expense rows found at payload.infinity.financials.expenses. Financials stopped to avoid creating wrong HEM rows.");
-    return true;
+    return false;
   }
+  result.actions.push({
+    action: "prepared-expense-rows",
+    section: "financialsExpense",
+    rows: rows.map((row) => ({ type: row.type, amount: row.amount, frequency: row.frequency }))
+  });
   setAutomationProgress(0, rows.length, `Financials: ${rows.length} monthly expense rows`);
+  const failedRows = [];
   for (const [index, row] of rows.entries()) {
     throwIfAutomationStopped();
     setAutomationProgress(index, rows.length, `Financials: ${row.type} ${index + 1}/${rows.length}`);
-    await upsertExpenseRow(row, payload, result);
-    advanceAutomationProgress(`Financials saved/reviewed: ${row.type}`);
+    const ok = await upsertExpenseRow(row, payload, result);
+    if (!ok) failedRows.push(row);
+    advanceAutomationProgress(ok ? `Financials saved: ${row.type}` : `Financials failed: ${row.type}`);
+  }
+  if (failedRows.length) {
+    recordVerificationFailure(result, "financialsExpense", "Monthly Expenses", "One or more prepared Monthly Expense rows failed. Later tabs were stopped.", {
+      failedRows: failedRows.map((row) => ({ type: row.type, amount: row.amount })),
+      tableText: getMonthlyExpensesTableText().slice(0, 1200)
+    });
+    return false;
   }
   const expectedTotal = rows.reduce((sum, row) => sum + normalizeMoneyValue(row.amount), 0);
   const actualTotal = readSectionTotal("Monthly Expenses");
@@ -2730,7 +2909,17 @@ async function runFinancialsWorkflow(payload, mapping, apiBase, result) {
   } else if (expectedTotal) {
     result.actions.push({ action: "verify-expense-total", section: "financialsExpense", expected: expectedTotal, actual: actualTotal });
   }
-  return saveFinancialsPageAndVerify(rows, result);
+  const saved = await saveFinancialsPageAndVerify(rows, result);
+  if (!saved) return false;
+  const tableText = getMonthlyExpensesTableText();
+  if (!tableText || normalize(tableText).includes("nothing to show")) {
+    recordVerificationFailure(result, "financialsExpense", "Monthly Expenses", "Monthly Expenses is still empty after all rows were saved", {
+      expectedRows: rows.map((row) => ({ type: row.type, amount: row.amount })),
+      actual: tableText
+    });
+    return false;
+  }
+  return true;
 }
 
 async function selectNeedsAnalysisApplicants(payload, result) {
