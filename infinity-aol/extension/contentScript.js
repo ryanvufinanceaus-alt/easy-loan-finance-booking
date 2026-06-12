@@ -574,6 +574,35 @@ function findByLabelText(labels, value, root = activeSurfaceRoot()) {
   return null;
 }
 
+function findExactByLabelText(label, value, root = activeSurfaceRoot()) {
+  const wanted = normalize(label);
+  const nodes = [...root.querySelectorAll("label, span, div, p, strong, h1, h2, h3, h4, td, th")]
+    .filter(isVisible)
+    .filter((node) => normalize(node.textContent).replace(/\s*\*\s*$/, "") === wanted);
+
+  for (const node of nodes) {
+    const control = controlAfterLabel(node, value, root);
+    if (control) return { element: control, selector: `exact label: ${node.textContent.trim()}` };
+  }
+  return null;
+}
+
+function normalizedFieldValue(value) {
+  const text = String(value ?? "").trim();
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  return normalize(text.replace(/[$,\s]/g, ""));
+}
+
+function valuesMatch(expected, actual) {
+  if (expected === undefined || expected === null) return true;
+  const expectedText = normalizedFieldValue(expected);
+  const actualText = normalizedFieldValue(actual);
+  if (!expectedText) return true;
+  if (!actualText) return false;
+  return actualText === expectedText || actualText.includes(expectedText) || expectedText.includes(actualText);
+}
+
 function findElement(field, value) {
   const root = activeSurfaceRoot();
   for (const selector of field.selectors || []) {
@@ -1229,7 +1258,8 @@ function getActiveApplicantScope(applicantName) {
 function addressPartsFromApplicant(applicant, fallbackAddressText = "") {
   const rawAddress = applicant?.address || {};
   const address = typeof rawAddress === "string" ? { line1: rawAddress } : rawAddress;
-  const fullText = String([address.line1, address.suburb, address.state, address.postcode].filter(Boolean).join(" ") || fallbackAddressText || "")
+  const line1 = address.line1 || address.current || address.fullAddress || fallbackAddressText || "";
+  const fullText = String([line1, address.suburb, address.state, address.postcode].filter(Boolean).join(" ") || fallbackAddressText || "")
     .replace(/\s+/g, " ")
     .trim();
   const stateMatch = String(address.state || fullText || fallbackAddressText || "").match(/\b(ACT|NSW|NT|QLD|SA|TAS|VIC|WA)\b/i);
@@ -1264,7 +1294,7 @@ function addressPartsFromApplicant(applicant, fallbackAddressText = "") {
   const stateValue = address.state || stateMatch?.[1]?.toUpperCase() || "";
   const postcodeValue = address.postcode || postcodeMatch?.[1] || "";
   const splitFullAddress = splitAustralianAddress(fullText);
-  const lineBeforeSuburb = splitFullAddress.line1 || address.line1 || fullText;
+  const lineBeforeSuburb = splitFullAddress.line1 || line1 || fullText;
   const addressBeforeState = String(lineBeforeSuburb)
     .replace(/\b\d{4}\b.*$/i, "")
     .replace(/\b(ACT|NSW|NT|QLD|SA|TAS|VIC|WA)\b.*$/i, "")
@@ -1439,13 +1469,13 @@ function controlByExactModalLabel(label, modal, value = "") {
 }
 
 async function setAddressModalField(label, value, modal, result, meta = {}) {
-  if (value === undefined || value === null || value === "") return false;
+  if ((value === undefined || value === null || value === "") && !meta.allowEmpty) return false;
   const found = controlByExactModalLabel(label, modal, value);
   if (!found) {
     recordFieldSkipped(result, "clientDetails", label, "address modal field not found", meta);
     return false;
   }
-  const ok = await setFieldValue(found.element, value);
+  const ok = await setFieldValue(found.element, value ?? "");
   if (ok) recordFieldFilled(result, "clientDetails", label, value, found, meta);
   else recordFieldSkipped(result, "clientDetails", label, `address modal control refused value: ${value}`, meta);
   await sleep(90);
@@ -1480,8 +1510,9 @@ async function fillAddressModal(parsed, modal, result, meta = {}) {
   ];
 
   for (const [label, value] of addressFields) {
-    if (value === undefined || value === null || value === "") continue;
-    await setAddressModalField(label, value, modal, result, meta);
+    const canClear = ["Building Name", "Floor Number", "Unit Number", "Street Number", "Street Name", "Suburb/City", "Postcode", "Start Date"].includes(label);
+    if ((value === undefined || value === null || value === "") && !canClear) continue;
+    await setAddressModalField(label, value || "", modal, result, { ...meta, allowEmpty: canClear });
   }
   return true;
 }
@@ -1573,7 +1604,7 @@ async function clearFieldByLabels(labels, reason, result, rowIndex) {
   return true;
 }
 
-async function cleanupMisfilledClientDetails(result, rowIndex) {
+async function cleanupMisfilledClientDetails(result, rowIndex, scope = document) {
   const phoneFields = [
     ["Home Phone"],
     ["Work Phone"],
@@ -1581,7 +1612,7 @@ async function cleanupMisfilledClientDetails(result, rowIndex) {
   ];
 
   for (const labels of phoneFields) {
-    const found = findByLabelText(labels, "", document);
+    const found = findExactByLabelText(labels[0], "", scope) || findByLabelText(labels, "", scope);
     const actual = found ? readFieldValue(found.element) : "";
     if (actual && looksLikeAddressValue(actual)) {
       await setFieldValue(found.element, "");
@@ -1589,14 +1620,14 @@ async function cleanupMisfilledClientDetails(result, rowIndex) {
     }
   }
 
-  const licenceNo = findByLabelText(["Driver's Licence No.", "Licence No"], "", document);
+  const licenceNo = findExactByLabelText("Driver's Licence No.", "", scope) || findByLabelText(["Driver's Licence No.", "Licence No"], "", scope);
   const licenceNoValue = licenceNo ? readFieldValue(licenceNo.element) : "";
   if (licenceNoValue && looksLikeDateValue(licenceNoValue)) {
     await setFieldValue(licenceNo.element, "");
     result.actions.push({ action: "clear-invalid-field", section: "clientDetails", label: "Driver's Licence No.", reason: "date detected in licence number", actual: licenceNoValue, rowIndex });
   }
 
-  const licenceState = findByLabelText(["Licence State"], "", document);
+  const licenceState = findExactByLabelText("Licence State", "", scope) || findByLabelText(["Licence State"], "", scope);
   const licenceStateValue = licenceState ? readFieldValue(licenceState.element) : "";
   if (licenceStateValue && !isAustralianState(licenceStateValue)) {
     await setFieldValue(licenceState.element, "");
@@ -1665,8 +1696,8 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
     const rawValue = applicant?.[key];
     if (rawValue === undefined || rawValue === null || rawValue === "") continue;
     const value = formatDateValue(rawValue, dateFormat);
-    await scrollToText([label]);
-    const found = findByLabelText([label], value, scope);
+    await scrollToText([label], scope === document ? document : scope);
+    const found = findExactByLabelText(label, value, scope) || findByLabelText([label], value, scope);
     if (!found) {
       result.fieldsSkipped.push({ section: "clientDetails", label, reason: "field not found after scroll", rowIndex });
       continue;
@@ -1676,6 +1707,14 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
       const actual = readFieldValue(found.element);
       if (ok) {
         result.fieldsFilled.push({ section: "clientDetails", label, selector: found.selector, expected: value, actual, rowIndex });
+        if (!valuesMatch(value, actual)) {
+          recordVerificationFailure(result, "clientDetails", label, "CRM field value does not match prepared payload after fill", {
+            expected: value,
+            actual,
+            rowIndex,
+            applicantName: fullApplicantName(applicant)
+          });
+        }
         filledCount += 1;
       } else {
         result.fieldsSkipped.push({ section: "clientDetails", label, reason: "control refused value", rowIndex });
@@ -1689,11 +1728,13 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
 }
 
 async function fillApplicantAddresses(applicant, rawApplicant, result, rowIndex) {
+  const rawAddress = rawApplicant?.address || {};
+  const preparedAddress = applicant?.address || {};
   const addressRows = [
-    ["Current Address", rawApplicant?.address || applicant?.currentAddress],
-    ["Previous Address", rawApplicant?.previousAddress || rawApplicant?.previousResidentialAddress || applicant?.previousAddress],
-    ["Post Settlement Address", rawApplicant?.postSettlementAddress || applicant?.postSettlementAddress],
-    ["Mailing Address", rawApplicant?.mailingAddress || applicant?.mailingAddress]
+    ["Current Address", rawAddress.line1 || rawAddress.current || rawAddress.fullAddress || applicant?.currentAddress || preparedAddress.line1 || preparedAddress.current || preparedAddress.fullAddress],
+    ["Previous Address", rawApplicant?.previousAddress || rawApplicant?.previousResidentialAddress || rawAddress.previous || applicant?.previousAddress || preparedAddress.previous],
+    ["Post Settlement Address", rawApplicant?.postSettlementAddress || rawAddress.postSettlement || applicant?.postSettlementAddress || preparedAddress.postSettlement],
+    ["Mailing Address", rawApplicant?.mailingAddress || rawAddress.mailing || applicant?.mailingAddress || preparedAddress.mailing]
   ];
   for (const [label, addressSource] of addressRows) {
     await fillAddressForApplicant(label, applicant, addressSource, result, { rowIndex, applicantName: fullApplicantName(applicant) });
@@ -1722,7 +1763,7 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
 
     const scope = getActiveApplicantScope(name);
     await clearAddressGarbageFromPhoneFields(scope, result, name);
-    await cleanupMisfilledClientDetails(result, index);
+    await cleanupMisfilledClientDetails(result, index, scope);
     await fillClientDetailsDirect(applicant, result, index, scope);
     await detectAndFixDateSwap(applicant, scope, result);
     await fillApplicantAddresses(applicant, rawApplicantForIndex(payload, index), result, index);

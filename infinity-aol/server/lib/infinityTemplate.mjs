@@ -1,12 +1,17 @@
 const currency = (value) => Number(value || 0);
 
 function fullName(applicant) {
-  return [applicant?.firstName, applicant?.middleName, applicant?.lastName].filter(Boolean).join(" ").trim();
+  return [applicant?.firstName, applicant?.middleName, applicant?.lastName || applicant?.surname].filter(Boolean).join(" ").trim();
 }
 
 function formatClientAddress(applicant) {
-  return applicant?.address?.line1
-    ? `${applicant.address.line1}, ${applicant.address.suburb} ${applicant.address.state} ${applicant.address.postcode}, Australia`
+  const address = applicant?.address || {};
+  const line1 = address.line1 || address.current || address.fullAddress || "";
+  return line1
+    ? `${line1}, ${address.suburb || ""} ${address.state || ""} ${address.postcode || ""}, ${address.country || "Australia"}`
+        .replace(/\s+,/g, ",")
+        .replace(/\s+/g, " ")
+        .trim()
     : "";
 }
 
@@ -24,10 +29,10 @@ function clientDetailsForApplicant(applicant, options = {}) {
     title: applicant?.title || (applicant?.gender === "Female" ? "Ms." : ""),
     firstName: applicant?.firstName || "",
     middleName: applicant?.middleName || "",
-    surname: applicant?.lastName || "",
+    surname: applicant?.lastName || applicant?.surname || "",
     dateOfBirth: applicant?.dateOfBirth || "",
     gender: applicant?.gender || "",
-    maritalStatus: applicant?.maritalStatus || (options.relatedSpouse ? "Married" : ""),
+    maritalStatus: options.relatedSpouse ? "Married" : applicant?.maritalStatus || "",
     relatedSpouse: options.relatedSpouse || "",
     mobile: applicant?.mobile || "",
     email: applicant?.email || "",
@@ -257,10 +262,10 @@ export function buildInfinityTemplate(caseData) {
       ? {
           firstName: secondary.firstName || "",
           middleName: secondary.middleName || "",
-          surname: secondary.lastName || "",
+          surname: secondary.lastName || secondary.surname || "",
           dateOfBirth: secondary.dateOfBirth || "",
           gender: secondary.gender || "",
-          maritalStatus: secondary.maritalStatus || "",
+          maritalStatus: primary ? "Married" : secondary.maritalStatus || "",
           relatedSpouse: primary ? fullName(primary) : "",
           mobile: secondary.mobile || "",
           email: secondary.email || "",
