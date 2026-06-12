@@ -3678,7 +3678,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                 </div>}
                 <div className="recent-note-list submission-list">
                   {filteredIntakes.length ? filteredIntakes.map((intake) => (
-                    <div className={intake.id === selectedIntakeId ? "selected-submission" : ""} key={intake.id}>
+                    <div className={`submission-row${intake.id === selectedIntakeId ? " selected-submission" : ""}`} key={intake.id}>
                       <button className="submission-row-main" type="button" onClick={() => loadIntake(intake)}>
                         <span className="submission-client-cell">
                           <strong>{intake.clientName || "Unnamed client"}</strong>
@@ -3699,7 +3699,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                           <small>{loanFormLinkDetail(intake)}</small>
                         </span>
                       </button>
-                      <div>
+                      <div className="submission-row-actions">
                         <button type="button" onClick={() => loadIntake(intake)}>{intake.status === "submitted" ? "Open Submission Review" : "Open Record Review"}</button>
                         <button type="button" onClick={async () => {
                           await navigator.clipboard?.writeText(intake.url).catch(() => {});

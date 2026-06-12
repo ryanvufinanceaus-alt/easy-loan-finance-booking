@@ -1426,15 +1426,16 @@ pre {
   grid-template-columns: minmax(560px, 1fr) minmax(430px, 0.9fr);
 }
 
-.submission-list > div {
+.submission-list > div,
+.submission-row {
   align-items: stretch;
   background: #fff;
   border: 1px solid #dde5df;
   border-radius: 8px;
   display: grid;
-  gap: 8px;
-  grid-template-columns: minmax(0, 1fr) minmax(190px, auto);
-  padding: 8px;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, auto);
+  padding: 10px;
 }
 
 .submissions-shell .notes-sidebar {
@@ -1472,8 +1473,9 @@ pre {
   color: #102019;
   cursor: pointer;
   display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(170px, 1.1fr) minmax(150px, 0.9fr) minmax(170px, 1fr) minmax(130px, 0.75fr);
+  gap: 12px;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(160px, 1fr) minmax(180px, 1fr) minmax(150px, 0.8fr);
+  min-width: 0;
   padding: 4px;
   text-align: left;
 }
@@ -1485,16 +1487,28 @@ pre {
 }
 
 .submission-row-main strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .submission-row-main small {
   color: #66756d;
   font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.submission-row-actions {
+  align-content: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 180px;
+}
+
+.submission-row-actions button {
+  min-width: 0;
   white-space: nowrap;
 }
 
@@ -2514,8 +2528,14 @@ select {
   }
 
   .submission-list > div,
+  .submission-row,
   .submission-row-main {
     grid-template-columns: 1fr;
+  }
+
+  .submission-row-actions {
+    justify-content: flex-start;
+    min-width: 0;
   }
 
   .case-sidebar,

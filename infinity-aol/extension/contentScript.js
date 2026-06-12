@@ -59,6 +59,23 @@ const automationRunState = {
   clientDetails: { applicants: {} }
 };
 
+const filledFieldLocks = new Map();
+const CLIENT_DETAILS_CRITICAL_LABELS = new Set([
+  "date of birth",
+  "gender",
+  "related spouse",
+  "driver's licence no",
+  "drivers licence no",
+  "driver licence no",
+  "licence expiry date",
+  "licence state",
+  "licence class",
+  "marital status",
+  "current housing situation",
+  "permanent in australia",
+  "country if not aus perm"
+]);
+
 function automationProgressPercent() {
   const total = Math.max(1, Number(automationRunState.total || 1));
   const current = Math.max(0, Math.min(total, Number(automationRunState.current || 0)));
@@ -298,6 +315,56 @@ function visibleText(element) {
       .filter(Boolean)
       .join(" ")
   );
+}
+
+function describeElement(element) {
+  if (!element) return "";
+  const parts = [element.tagName?.toLowerCase()];
+  if (element.id) parts.push(`#${element.id}`);
+  const classText = String(element.className || "").trim().replace(/\s+/g, ".");
+  if (classText) parts.push(`.${classText.split(".").slice(0, 4).join(".")}`);
+  const name = element.getAttribute?.("name");
+  if (name) parts.push(`[name="${name}"]`);
+  const text = visibleText(element);
+  if (text) parts.push(`"${text.slice(0, 60)}"`);
+  return parts.filter(Boolean).join("");
+}
+
+function stripRequiredMarker(text) {
+  return String(text || "")
+    .replace(/\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeLabelText(text) {
+  return normalize(stripRequiredMarker(text).replace(/[()]/g, " "));
+}
+
+function makeFieldLockKey(section, applicantKey, label) {
+  return [section, applicantKey, label].map(normalizeLabelText).join("::");
+}
+
+function lockField(section, applicantKey, label, value, control) {
+  filledFieldLocks.set(makeFieldLockKey(section, applicantKey, label), {
+    section,
+    applicantKey,
+    label,
+    value,
+    controlDescription: describeElement(control),
+    lockedAt: new Date().toISOString()
+  });
+}
+
+function isFieldLocked(section, applicantKey, label) {
+  return filledFieldLocks.has(makeFieldLockKey(section, applicantKey, label));
+}
+
+function shouldGenericAutofillField(section, applicantKey, label) {
+  if (normalize(section) === "clientdetails" || normalize(section) === "client details") {
+    if (CLIENT_DETAILS_CRITICAL_LABELS.has(normalizeLabelText(label))) return false;
+  }
+  return !isFieldLocked(section, applicantKey, label);
 }
 
 function clickableElements(root = document) {
@@ -1066,6 +1133,15 @@ async function autofill({ mode, payload, mapping, apiBase }) {
     const filledBeforeSection = result.fieldsFilled.length;
 
     for (const field of section.fields) {
+      if (!shouldGenericAutofillField(section.id, "generic", field.label)) {
+        result.fieldsSkipped.push({
+          section: section.id,
+          label: field.label,
+          reason: "Skipped generic autofill because Client Details critical fields use dedicated resolver",
+          rowIndex
+        });
+        continue;
+      }
       const value = fieldValue(payload, field);
       if ((value === undefined || value === null || value === "") && field.optional) {
         result.fieldsSkipped.push({ section: section.id, label: field.label, reason: "optional empty value", rowIndex });
@@ -1950,7 +2026,9 @@ async function verifyApplicantCriticalFields(applicant, scope, result, phase) {
   for (const check of applicantCriticalChecks(applicant)) {
     await scrollToText([check.label], scope || document);
     await sleep(120);
-    const actualRaw = readDisplayByLabel(check.label, scope || document);
+    const actualRaw = CLIENT_DETAILS_CRITICAL_LABELS.has(normalizeLabelText(check.label))
+      ? readClientDetailsCriticalValue(check.label, scope || document)
+      : readDisplayByLabel(check.label, scope || document);
     const actual = check.type === "date" ? formatDateValue(actualRaw, "au") : actualRaw;
     const expected = check.expected;
     const ok = valuesMatch(expected, actual);
@@ -2532,6 +2610,181 @@ async function clearFieldByLabels(labels, reason, result, rowIndex) {
   return true;
 }
 
+function getHorizontalOverlap(a, b) {
+  const left = Math.max(a.left, b.left);
+  const right = Math.min(a.right, b.right);
+  return Math.max(0, right - left);
+}
+
+function labelsEquivalent(a, b) {
+  return normalizeLabelText(a) === normalizeLabelText(b);
+}
+
+function exactVisibleLabels(scope, targetLabel) {
+  const target = normalizeLabelText(targetLabel);
+  return [...(scope || document).querySelectorAll("label, span, div, td, th")]
+    .filter(isVisible)
+    .filter((element) => {
+      if (element.querySelector?.(controlSelector)) return false;
+      const text = stripRequiredMarker(element.innerText || element.textContent || "");
+      if (!text || text.length > 80) return false;
+      return normalizeLabelText(text) === target;
+    });
+}
+
+function getNearestLabelForControl(control, scope) {
+  const controlRect = control.getBoundingClientRect();
+  const labels = [...(scope || document).querySelectorAll("label, span, div, td, th")]
+    .filter(isVisible)
+    .map((label) => {
+      if (label.querySelector?.(controlSelector)) return null;
+      const text = stripRequiredMarker(label.innerText || label.textContent || "");
+      if (!text || text.length > 80) return null;
+      const labelRect = label.getBoundingClientRect();
+      const verticalDistance = controlRect.top - labelRect.bottom;
+      if (verticalDistance < -16 || verticalDistance > 130) return null;
+      const horizontalOverlap = getHorizontalOverlap(labelRect, controlRect);
+      const horizontalDistance = Math.abs(labelRect.left - controlRect.left);
+      const score = Math.max(0, verticalDistance) + horizontalDistance * 0.4 - horizontalOverlap * 0.25;
+      return { el: label, text, rect: labelRect, score, verticalDistance, horizontalOverlap };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.score - b.score);
+  return labels[0] || null;
+}
+
+function resolveClientDetailsControlByVisualLabel(scope, targetLabel, controlTypes = controlSelector) {
+  const root = scope || document;
+  const labels = exactVisibleLabels(root, targetLabel);
+  const controls = [...root.querySelectorAll(controlTypes)]
+    .filter(isVisible)
+    .filter((element) => !isDisabled(element));
+  const attempts = [];
+  for (const labelEl of labels) {
+    const labelRect = labelEl.getBoundingClientRect();
+    const candidates = controls
+      .map((control) => {
+        const controlRect = control.getBoundingClientRect();
+        const nearestLabel = getNearestLabelForControl(control, root);
+        const verticalOk = controlRect.top >= labelRect.bottom - 10 && controlRect.top - labelRect.bottom < 125;
+        const horizontalOverlap = getHorizontalOverlap(labelRect, controlRect);
+        const sameColumnOk = horizontalOverlap > Math.min(labelRect.width || 1, controlRect.width || 1) * 0.2 || Math.abs(controlRect.left - labelRect.left) < 36;
+        const nearestLabelOk = Boolean(nearestLabel && labelsEquivalent(nearestLabel.text, targetLabel));
+        const distance = Math.abs(controlRect.top - labelRect.bottom) + Math.abs(controlRect.left - labelRect.left) * 0.5;
+        attempts.push({
+          targetLabel,
+          control: describeElement(control),
+          nearestLabel: nearestLabel?.text || "",
+          verticalOk,
+          sameColumnOk,
+          nearestLabelOk,
+          distance
+        });
+        return { control, labelEl, nearestLabel, verticalOk, sameColumnOk, nearestLabelOk, distance };
+      })
+      .filter((item) => item.verticalOk && item.sameColumnOk && item.nearestLabelOk)
+      .sort((a, b) => a.distance - b.distance);
+    if (candidates.length) return { ok: true, control: candidates[0].control, label: labelEl, nearestLabel: candidates[0].nearestLabel, attempts };
+  }
+  return { ok: false, control: null, attempts, reason: "No control passed visual label and nearest-label verification" };
+}
+
+function readClientDetailsCriticalValue(label, scope) {
+  const resolved = resolveClientDetailsControlByVisualLabel(scope, label);
+  if (!resolved.ok) return "";
+  return looksLikeChoiceControl(resolved.control) ? readDropdownDisplay(resolved.control) : readFieldValue(resolved.control);
+}
+
+async function fillClientDetailsCriticalText(scope, applicantKey, label, value, result, meta = {}) {
+  if (value === undefined || value === null || value === "") return false;
+  const expected = String(value);
+  const resolved = resolveClientDetailsControlByVisualLabel(scope, label, "input:not([type='hidden']), textarea");
+  if (!resolved.ok) {
+    recordVerificationFailure(result, "clientDetails", label, "Could not resolve correct control for critical Client Details text field", {
+      ...meta,
+      expected,
+      attempts: resolved.attempts
+    });
+    return false;
+  }
+  await clearAndType(resolved.control, expected);
+  await sleep(180);
+  const actual = readFieldValue(resolved.control);
+  result.fieldsFilled.push({ section: "clientDetails", label, selector: describeElement(resolved.control), expected, actual, nearestLabel: resolved.nearestLabel?.text || "", ...meta });
+  if (!valuesMatch(expected, actual)) {
+    recordVerificationFailure(result, "clientDetails", label, "Critical text field did not verify after fill", {
+      ...meta,
+      expected,
+      actual,
+      selector: describeElement(resolved.control),
+      nearestLabel: resolved.nearestLabel?.text || ""
+    });
+    return false;
+  }
+  lockField("clientDetails", applicantKey, label, expected, resolved.control);
+  return true;
+}
+
+async function fillClientDetailsCriticalDate(scope, applicantKey, label, value, result, meta = {}) {
+  if (value === undefined || value === null || value === "") return false;
+  const expected = formatDateValue(value, "au");
+  const resolved = resolveClientDetailsControlByVisualLabel(scope, label, "input:not([type='hidden'])");
+  if (!resolved.ok) {
+    recordVerificationFailure(result, "clientDetails", label, "Could not resolve correct control for critical Client Details date field", {
+      ...meta,
+      expected,
+      attempts: resolved.attempts
+    });
+    return false;
+  }
+  await clearAndType(resolved.control, expected);
+  await sleep(220);
+  const actual = formatDateValue(readFieldValue(resolved.control), "au");
+  result.fieldsFilled.push({ section: "clientDetails", label, selector: describeElement(resolved.control), expected, actual, nearestLabel: resolved.nearestLabel?.text || "", ...meta });
+  if (!valuesMatch(expected, actual)) {
+    recordVerificationFailure(result, "clientDetails", label, "Critical date field did not verify after fill", {
+      ...meta,
+      expected,
+      actual,
+      selector: describeElement(resolved.control),
+      nearestLabel: resolved.nearestLabel?.text || ""
+    });
+    return false;
+  }
+  lockField("clientDetails", applicantKey, label, expected, resolved.control);
+  return true;
+}
+
+async function fillClientDetailsCriticalDropdown(scope, applicantKey, label, value, result, meta = {}) {
+  if (value === undefined || value === null || value === "") return false;
+  const expected = String(value);
+  const resolved = resolveClientDetailsControlByVisualLabel(scope, label, "select, [role='combobox'], [aria-haspopup='listbox'], .ui-select-container, .select2-container, input:not([type='hidden'])");
+  if (!resolved.ok) {
+    recordVerificationFailure(result, "clientDetails", label, "Could not resolve correct control for critical Client Details dropdown", {
+      ...meta,
+      expected,
+      attempts: resolved.attempts
+    });
+    return false;
+  }
+  const ok = await selectDropdownControlOption(resolved.control, expected);
+  await sleep(280);
+  const actual = readDropdownDisplay(resolved.control);
+  result.fieldsFilled.push({ section: "clientDetails", label, selector: describeElement(resolved.control), expected, actual, nearestLabel: resolved.nearestLabel?.text || "", ...meta });
+  if (!ok || !valuesMatch(expected, actual)) {
+    recordVerificationFailure(result, "clientDetails", label, "Critical dropdown did not verify after fill", {
+      ...meta,
+      expected,
+      actual,
+      selector: describeElement(resolved.control),
+      nearestLabel: resolved.nearestLabel?.text || ""
+    });
+    return false;
+  }
+  lockField("clientDetails", applicantKey, label, expected, resolved.control);
+  return true;
+}
+
 async function cleanupMisfilledClientDetails(result, rowIndex, scope = document) {
   const phoneFields = [
     ["Home Phone"],
@@ -2548,24 +2801,24 @@ async function cleanupMisfilledClientDetails(result, rowIndex, scope = document)
     }
   }
 
-  const licenceNo = findExactByLabelText("Driver's Licence No.", "", scope) || findByLabelText(["Driver's Licence No.", "Licence No"], "", scope);
-  const licenceNoValue = licenceNo ? readFieldValue(licenceNo.element) : "";
+  const licenceNo = resolveClientDetailsControlByVisualLabel(scope, "Driver's Licence No.", "input:not([type='hidden']), textarea");
+  const licenceNoValue = licenceNo.ok ? readFieldValue(licenceNo.control) : "";
   if (licenceNoValue && looksLikeDateValue(licenceNoValue)) {
-    await setFieldValue(licenceNo.element, "");
+    await setFieldValue(licenceNo.control, "");
     result.actions.push({ action: "clear-invalid-field", section: "clientDetails", label: "Driver's Licence No.", reason: "date detected in licence number", actual: licenceNoValue, rowIndex });
   }
 
-  const licenceState = findExactByLabelText("Licence State", "", scope) || findByLabelText(["Licence State"], "", scope);
-  const licenceStateValue = licenceState ? readFieldValue(licenceState.element) : "";
+  const licenceState = resolveClientDetailsControlByVisualLabel(scope, "Licence State");
+  const licenceStateValue = licenceState.ok ? readDropdownDisplay(licenceState.control) || readFieldValue(licenceState.control) : "";
   if (licenceStateValue && !isAustralianState(licenceStateValue)) {
-    await setFieldValue(licenceState.element, "");
+    await setFieldValue(licenceState.control, "");
     result.actions.push({ action: "clear-invalid-field", section: "clientDetails", label: "Licence State", reason: "invalid Australian state", actual: licenceStateValue, rowIndex });
   }
 
-  const dob = findExactByLabelText("Date of Birth", "", scope) || findByLabelText(["Date of Birth"], "", scope);
-  const dobValue = dob ? readFieldValue(dob.element) : "";
+  const dob = resolveClientDetailsControlByVisualLabel(scope, "Date of Birth", "input:not([type='hidden'])");
+  const dobValue = dob.ok ? readFieldValue(dob.control) : "";
   if (dobValue && /^(male|female|other)$/i.test(String(dobValue).trim())) {
-    await setFieldValue(dob.element, "");
+    await setFieldValue(dob.control, "");
     result.actions.push({ action: "clear-invalid-field", section: "clientDetails", label: "Date of Birth", reason: "gender detected in date field", actual: dobValue, rowIndex });
   }
 }
@@ -2585,16 +2838,16 @@ async function clearAddressGarbageFromPhoneFields(scope, result, applicantName) 
 async function detectAndFixDateSwap(applicant, scope, result) {
   const dob = formatDateValue(applicant?.dateOfBirth, "au");
   const expiry = formatDateValue(applicant?.licenceExpiryDate, "au");
-  const dobField = findByLabelText(["Date of Birth"], dob, scope || document);
-  const expiryField = findByLabelText(["Licence Expiry Date"], expiry, scope || document);
-  const dobActual = dobField ? readFieldValue(dobField.element) : "";
-  const expiryActual = expiryField ? readFieldValue(expiryField.element) : "";
+  const dobField = resolveClientDetailsControlByVisualLabel(scope || document, "Date of Birth", "input:not([type='hidden'])");
+  const expiryField = resolveClientDetailsControlByVisualLabel(scope || document, "Licence Expiry Date", "input:not([type='hidden'])");
+  const dobActual = dobField.ok ? readFieldValue(dobField.control) : "";
+  const expiryActual = expiryField.ok ? readFieldValue(expiryField.control) : "";
   if (dob && expiry && normalize(dobActual) === normalize(expiry)) {
-    await setFieldValue(dobField.element, dob);
+    await setFieldValue(dobField.control, dob);
     result.actions.push({ action: "fix-date-swap", section: "clientDetails", label: "Date of Birth", expected: dob, actual: dobActual });
   }
   if (dob && expiry && normalize(expiryActual) === normalize(dob)) {
-    await setFieldValue(expiryField.element, expiry);
+    await setFieldValue(expiryField.control, expiry);
     result.actions.push({ action: "fix-date-swap", section: "clientDetails", label: "Licence Expiry Date", expected: expiry, actual: expiryActual });
   }
 }
@@ -2626,70 +2879,27 @@ function clientDetailsFieldMap() {
 }
 
 async function selectRelatedSpouse(value, scope, result, rowIndex, applicantName) {
-  const found = findExactByLabelText("Related Spouse", value, scope) || findByLabelText(["Related Spouse"], value, scope);
-  if (!found?.element) {
-    recordFieldSkipped(result, "clientDetails", "Related Spouse", "field not found after scroll", { rowIndex, applicantName });
-    return false;
-  }
-  let ok = await selectDropdownControlOption(found.element, value);
-  let visibleOptions = [];
-  if (!ok) {
-    clickElement(found.element);
-    await sleep(250);
-    visibleOptions = [...document.querySelectorAll("option, [role='option'], li, .option, .dropdown-item, .select-item, .ui-select-choices-row, .ui-select-choices-row-inner, .select2-results__option, a, span")]
-      .filter(isVisible)
-      .map((element) => ({ element, text: String(element.textContent || element.getAttribute("value") || "").trim() }))
-      .filter((item) => item.text && item.text.length <= 120);
-    const searchInput = [...document.querySelectorAll("input.ui-select-search, input[type='search'], input[aria-autocomplete]")]
-      .filter(isVisible)[0];
-    if (searchInput) {
-      nativeSetValue(searchInput, value);
-      await sleep(250);
-    }
-    const option = findVisibleOptionInDocument(value);
-    if (option) {
-      clickElement(option);
-      ok = true;
-    }
-  }
-  await sleep(350);
-  const actual = readDropdownDisplay(found.element);
-  result.fieldsFilled.push({ section: "clientDetails", label: "Related Spouse", selector: found.selector, expected: value, actual, rowIndex });
-  const verified = valuesMatch(value, actual);
-  if (!ok || !verified) {
-    pressEscape();
-    recordVerificationFailure(result, "clientDetails", "Related Spouse", "Related spouse option was clicked but selected value could not be verified", {
-      expected: value,
-      actual,
-      rowIndex,
-      applicantName,
-      visibleOptions: visibleOptions.map((option) => option.text)
-    });
-  }
-  return ok && verified;
+  return fillClientDetailsCriticalDropdown(scope, applicantName, "Related Spouse", value, result, { rowIndex, applicantName });
 }
 
 async function fillClientDetailsDirect(applicant, result, rowIndex, scope = document) {
   let filledCount = 0;
+  const applicantName = fullApplicantName(applicant);
   for (const [label, key, dateFormat] of clientDetailsFieldMap()) {
     const rawValue = applicant?.[key];
     if (rawValue === undefined || rawValue === null || rawValue === "") continue;
     const value = formatDateValue(rawValue, dateFormat);
     await scrollToText([label], scope === document ? document : scope);
-    if (label === "Related Spouse") {
-      const ok = await selectRelatedSpouse(value, scope, result, rowIndex, fullApplicantName(applicant));
-      if (ok) filledCount += 1;
-      await sleep(90);
-      continue;
-    }
-    if (dateFormat === "au") {
-      const ok = await fillDateByLabel(label, rawValue, scope, result, { section: "clientDetails", rowIndex, applicantName: fullApplicantName(applicant) });
-      if (ok) filledCount += 1;
-      await sleep(90);
-      continue;
-    }
-    if (["Gender", "Licence State"].includes(label)) {
-      const ok = await selectDropdownByText(label, value, scope, result, { section: "clientDetails", rowIndex, applicantName: fullApplicantName(applicant) });
+    if (CLIENT_DETAILS_CRITICAL_LABELS.has(normalizeLabelText(label))) {
+      let ok = false;
+      const meta = { rowIndex, applicantName };
+      if (dateFormat === "au") {
+        ok = await fillClientDetailsCriticalDate(scope, applicantName, label, rawValue, result, meta);
+      } else if (["Related Spouse", "Gender", "Licence State", "Marital Status", "Current Housing Situation", "Permanent in Australia"].includes(label)) {
+        ok = await fillClientDetailsCriticalDropdown(scope, applicantName, label, value, result, meta);
+      } else {
+        ok = await fillClientDetailsCriticalText(scope, applicantName, label, value, result, meta);
+      }
       if (ok) filledCount += 1;
       await sleep(90);
       continue;
@@ -2778,9 +2988,6 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     await clearAddressGarbageFromPhoneFields(scope, result, name);
     await cleanupMisfilledClientDetails(result, index, scope);
     await fillClientDetailsDirect(applicant, result, index, scope);
-    if (applicant.relatedSpouse) {
-      await selectRelatedSpouse(applicant.relatedSpouse, scope, result, index, name);
-    }
     markApplicantState(applicant, { filled: true });
     await detectAndFixDateSwap(applicant, scope, result);
     await fillApplicantAddresses(applicant, rawApplicantForIndex(payload, index), result, index);
