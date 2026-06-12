@@ -2431,7 +2431,7 @@ function rDashActionRequired(urgent24h, urgentTasks){
     rows.push({
       type:'task', task:t, case:c, label:t.title||t.text||'(task)',
       iconName:'list', color:'#FBBF24',
-      click:c?`openCase('${esc(c.id)}');setTimeout(()=>{S.caseTab='tasks';renderModal();},150)`:''
+      click:c?`openCase('${esc(c.id)}','tasks')`:''
     });
   });
 
@@ -2523,7 +2523,7 @@ function rDashNextActions(nextActions){
         const ownerInitials = ownerName ? ownerName.split(' ').filter(Boolean).slice(0,2).map(s=>s[0]).join('').toUpperCase() : '';
         return`<div class="lux-row" style="align-items:flex-start;">
           <input type="checkbox" onclick="event.stopPropagation();toggleChecklistItemFromDash('${esc(c.id)}','${esc(c.stage)}','${esc(item.id)}',this.checked)" style="margin-top:2px;width:16px;height:16px;cursor:pointer;accent-color:${stageObj.color};flex-shrink:0;">
-          <div class="lux-row-main" onclick="openCase('${esc(c.id)}');setTimeout(()=>{S.caseTab='checklist';renderModal();},150);">
+          <div class="lux-row-main" onclick="openCase('${esc(c.id)}','checklist');">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               <div class="lux-row-title" style="white-space:normal;">${esc(item.text)}</div>
               ${isMandatory?`<span class="lux-row-tag" style="background:rgba(212,168,67,.18);color:#D4A843;">Required</span>`:''}
@@ -2638,7 +2638,7 @@ function rDash24hResponse(tasks, filterId, myCaseIdsForFilter){
       ${visible.map(({t, c, bucket, bucketColor, bucketLabel, dueMs})=>{
         const ownerName = t.assignedToName || '';
         const ownerInitials = ownerName ? ownerName.split(' ').filter(Boolean).slice(0,2).map(s=>s[0]).join('').toUpperCase() : '';
-        const click = c ? `openCase('${esc(c.id)}');setTimeout(()=>{S.caseTab='tasks';renderModal();},150)` : `setView('tasks');S.taskFilter='response_24h';render()`;
+        const click = c ? `openCase('${esc(c.id)}','tasks')` : `setView('tasks');S.taskFilter='response_24h';render()`;
         const dueLabel = dueMs ? new Date(dueMs).toLocaleDateString('en-AU', {weekday:'short', day:'numeric', month:'short'}) : '';
         return `<div class="lux-row" onclick="${click}">
           <div class="lux-row-icon" style="background:${bucketColor}1c;border:1px solid ${bucketColor}55;">
@@ -3014,7 +3014,7 @@ function rDashTimeline(filterId){
           const showLine = events.length >= 2 && minIdx !== maxIdx;
           // Click handler \u2014 orphan tasks open the parent case if any, otherwise no-op
           const clickHandler = c._isOrphanTask
-            ? (events[0].task && events[0].task.caseId ? `openCase('${esc(events[0].task.caseId)}');setTimeout(()=>{S.caseTab='tasks';renderModal();},150)` : `setView('tasks')`)
+            ? (events[0].task && events[0].task.caseId ? `openCase('${esc(events[0].task.caseId)}','tasks')` : `setView('tasks')`)
             : `openCase('${esc(c.id)}')`;
 
           return`<div style="display:grid;grid-template-columns:220px repeat(14, ${colW});border-bottom:1px solid #1e2430;cursor:pointer;position:relative;transition:background .15s;" onclick="${clickHandler}" onmouseover="this.style.background='rgba(212,168,67,.04)'" onmouseout="this.style.background=''">
@@ -3424,7 +3424,7 @@ function rReminders(){
           </div>
         </div>
         <div style="display:flex;gap:5px;flex-shrink:0;">
-          ${!done&&c?.email?`<button class="btn-sec" style="font-size:10px;padding:4px 8px;" onclick="openCase('${esc(c.id)}');setTimeout(()=>{S.caseTab='emails'},100)" title="Send a follow-up email">\u2709</button>`:''}
+          ${!done&&c?.email?`<button class="btn-sec" style="font-size:10px;padding:4px 8px;" onclick="openCase('${esc(c.id)}','emails')" title="Send a follow-up email">\u2709</button>`:''}
           ${!done&&c?.phone?`<a href="tel:${esc(fmtPhone(c.phone))}" class="btn-sec" style="font-size:10px;padding:4px 8px;text-decoration:none;display:inline-flex;align-items:center;" title="Call ${esc(fmtPhone(c.phone))}" onclick="event.stopPropagation()">\uD83D\uDCDE</a>`:''}
           ${role!=='support'?`<button class="btn-sec" style="font-size:10px;padding:4px 8px;" onclick="reassignReminder_('${esc(t.id)}')" title="Reassign">\u21BB</button>`:''}
         </div>
@@ -3833,7 +3833,7 @@ function rWorkflow(){
             ${stageCases.slice(0,8).map(c=>{
               const stats = getChecklistStats(c, st.id);
               const statusColor = stats.allMandatoryDone ? '#34D399' : stats.pct > 50 ? '#FBBF24' : '#FB923C';
-              return`<div style="background:#0A0D14;border:1px solid ${st.color}33;border-radius:8px;padding:7px 11px;cursor:pointer;display:flex;align-items:center;gap:8px;" onclick="openCase('${esc(c.id)}');setTimeout(()=>{S.caseTab='checklist';renderModal();},150)">
+              return`<div style="background:#0A0D14;border:1px solid ${st.color}33;border-radius:8px;padding:7px 11px;cursor:pointer;display:flex;align-items:center;gap:8px;" onclick="openCase('${esc(c.id)}','checklist')">
                 ${av(c.assignedToName,18,ucolor(c.assignedTo))}
                 <div style="min-width:0;">
                   <div style="font-size:12px;font-weight:600;color:#c9d1d9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;">${esc(c.clientName)}</div>
@@ -9708,9 +9708,9 @@ function rBulkEmail(){
 // \u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557
 // \u2551  ACTIONS                                        \u2551
 // \u255A\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255D
-async function openCase(id){
-  S.selId=id;S.modal='case';S.caseTab='overview';S.editMode=false;S.editForm={};
-  renderModal();  // show modal IMMEDIATELY with whatever cached notes/email log exists
+async function openCase(id,tab){
+  S.selId=id;S.modal='case';S.caseTab=tab||'overview';S.editMode=false;S.editForm={};
+  renderModal();  // show modal IMMEDIATELY on the right tab with whatever cached data exists
   // Stale-while-revalidate: only fetch what we don't already have, in parallel
   const needsNotes = !S.notes[id];
   const needsEmail = !S.emailLog[id];
@@ -9719,7 +9719,10 @@ async function openCase(id){
   if (needsNotes) promises.push(gs_('getNotes',S.tok,id).then(r=>{ if(r&&r.ok) S.notes[id]=r.data||[]; }));
   if (needsEmail) promises.push(gs_('getEmailLog',S.tok,id).then(r=>{ if(r&&r.ok) S.emailLog[id]=r.data||[]; }));
   await Promise.all(promises);
-  if(S.modal==='case' && S.selId===id) pr();
+  // Only repaint after the fetch if the visible tab actually shows notes/email,
+  // so opening straight to Tasks/Checklist doesn't flash a second time.
+  var needsRepaint = (S.caseTab==='overview'||S.caseTab==='email'||S.caseTab==='emails');
+  if(S.modal==='case' && S.selId===id && needsRepaint) pr();
 }
 async function moveCase(id,stage){
   const r=await gs_('updateCase',S.tok,id,{stage});
