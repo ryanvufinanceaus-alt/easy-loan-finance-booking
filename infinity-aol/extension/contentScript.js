@@ -1175,6 +1175,16 @@ function buildHemExpenseRows(total, payload) {
   return scaleHemExpenseTemplate(total || getValue(payload, "serviceability.hemMonthly"));
 }
 
+function hemMonthlyAmount(payload) {
+  return normalizeMoneyValue(
+    getValue(payload, "serviceability.hemMonthly") ||
+    getValue(payload, "expenses.livingMonthly") ||
+    getValue(payload, "expenses.hemMonthly") ||
+    getValue(payload, "documentIntake.assumptions.hemMonthly") ||
+    getValue(payload, "infinity.serviceability.hemMonthly")
+  );
+}
+
 async function closeActiveModalWithoutSaving() {
   const modal = activeModal();
   if (!modal) return false;
@@ -1960,6 +1970,41 @@ function clientDetailsFieldMap() {
   ];
 }
 
+async function selectRelatedSpouse(value, scope, result, rowIndex, applicantName) {
+  const found = findExactByLabelText("Related Spouse", value, scope) || findByLabelText(["Related Spouse"], value, scope);
+  if (!found?.element) {
+    recordFieldSkipped(result, "clientDetails", "Related Spouse", "field not found after scroll", { rowIndex, applicantName });
+    return false;
+  }
+  clickElement(found.element);
+  await sleep(250);
+  const searchInput = [...document.querySelectorAll("input.ui-select-search, input[type='search'], input[aria-autocomplete]")]
+    .filter(isVisible)[0];
+  if (searchInput) {
+    nativeSetValue(searchInput, value);
+    await sleep(250);
+  }
+  const option = findVisibleOptionInDocument(value);
+  if (!option) {
+    pressEscape();
+    recordError(result, "clientDetails", "Related Spouse", `Could not find spouse option ${value}`, { rowIndex, applicantName });
+    return false;
+  }
+  clickElement(option);
+  await sleep(350);
+  const actual = readFieldValue(found.element) || found.element.textContent || "";
+  result.fieldsFilled.push({ section: "clientDetails", label: "Related Spouse", selector: found.selector, expected: value, actual, rowIndex });
+  if (!valuesMatch(value, actual) && !pageHasAnyText([value])) {
+    recordVerificationFailure(result, "clientDetails", "Related Spouse", "Related spouse option was clicked but selected value could not be verified", {
+      expected: value,
+      actual,
+      rowIndex,
+      applicantName
+    });
+  }
+  return true;
+}
+
 async function fillClientDetailsDirect(applicant, result, rowIndex, scope = document) {
   let filledCount = 0;
   for (const [label, key, dateFormat] of clientDetailsFieldMap()) {
@@ -1967,6 +2012,12 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
     if (rawValue === undefined || rawValue === null || rawValue === "") continue;
     const value = formatDateValue(rawValue, dateFormat);
     await scrollToText([label], scope === document ? document : scope);
+    if (label === "Related Spouse") {
+      const ok = await selectRelatedSpouse(value, scope, result, rowIndex, fullApplicantName(applicant));
+      if (ok) filledCount += 1;
+      await sleep(90);
+      continue;
+    }
     const found = findExactByLabelText(label, value, scope) || findByLabelText([label], value, scope);
     if (!found) {
       result.fieldsSkipped.push({ section: "clientDetails", label, reason: "field not found after scroll", rowIndex });
@@ -2115,11 +2166,18 @@ async function runPopupWorkflow(workflow, payload, mapping, apiBase, result) {
 async function runFinancialsWorkflow(payload, mapping, apiBase, result) {
   ensureResultShape(result);
   if (!isInfinityFinancialsPage()) return false;
+  const rows = buildHemExpenseRows(hemMonthlyAmount(payload), payload);
   if (!isHemConfirmed(payload)) {
-    recordFieldSkipped(result, "financialsExpense", "Monthly Expenses", "HEM / living expense breakdown is not confirmed. Confirm it in EasyFlow AI and prepare again before Financials autofill.");
-    return true;
+    if (!rows.length) {
+      recordFieldSkipped(result, "financialsExpense", "Monthly Expenses", "HEM / living expense breakdown is not confirmed and no expense rows/amount were found.");
+      return true;
+    }
+    result.warnings.push({
+      section: "financialsExpense",
+      code: "HEM_CONFIRM_FLAG_MISSING",
+      message: "HEM confirmation flag was missing, but expense rows/amount exist. Filling Monthly Expenses from prepared template."
+    });
   }
-  const rows = buildHemExpenseRows(getValue(payload, "serviceability.hemMonthly"), payload);
   if (!rows.length) {
     recordFieldSkipped(result, "financialsExpense", "Monthly Expenses", "No HEM expense rows found in prepared payload");
     return true;
