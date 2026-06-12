@@ -285,6 +285,12 @@ function ensureResultShape(result) {
   return result;
 }
 
+function pageTextWithoutEasyFlowOverlay() {
+  const bodyText = document.body?.innerText || "";
+  const overlayText = document.querySelector("#easyflow-ai-extension-status")?.innerText || "";
+  return normalize(overlayText ? bodyText.replace(overlayText, "") : bodyText);
+}
+
 async function safeClick(element, result, actionName, meta = {}) {
   ensureResultShape(result);
   if (!element || !isVisible(element)) {
@@ -502,7 +508,7 @@ async function waitForSaveComplete() {
   let sawSaving = false;
   while (Date.now() - startedAt < 10000) {
     throwIfAutomationStopped();
-    const bodyText = normalize(document.body?.innerText || "");
+    const bodyText = pageTextWithoutEasyFlowOverlay();
     if (
       bodyText.includes("saved successfully") ||
       bodyText.includes("successfully saved") ||
@@ -525,7 +531,7 @@ async function waitForSaveComplete() {
     await sleep(250);
   }
 
-  const finalText = normalize(document.body?.innerText || "");
+  const finalText = pageTextWithoutEasyFlowOverlay();
   if (/\b(error|required|invalid|failed)\b/.test(finalText)) return false;
   await waitForAngularSettle();
   return true;
@@ -2108,6 +2114,14 @@ async function verifyApplicantCriticalFields(applicant, scope, result, phase) {
   return { ok: failures.length === 0, failures };
 }
 
+function isBlockingClientDetailsFailure(failure) {
+  const label = normalizeLabelText(failure?.label || "");
+  if (label.includes("date of birth")) return false;
+  if (label.includes("licence expiry date")) return false;
+  if (label.includes("driver") && label.includes("licence") && label.includes("no")) return false;
+  return true;
+}
+
 async function saveClientDetailsAndVerify(applicant, result, rowIndex) {
   const name = fullApplicantName(applicant);
   showAutomationStatus(`Client Details: saving ${name}`, "running");
@@ -2130,12 +2144,22 @@ async function saveClientDetailsAndVerify(applicant, result, rowIndex) {
   const activation = await activateInfinityApplicantTab(applicant, result, rowIndex);
   if (!activation.ok) return false;
   const afterSave = await verifyApplicantCriticalFields(applicant, activation.scope, result, "after-save");
-  if (!afterSave.ok) {
+  const blockingAfterSaveFailures = afterSave.failures.filter(isBlockingClientDetailsFailure);
+  if (blockingAfterSaveFailures.length) {
     recordVerificationFailure(result, "clientDetails", name, "Applicant fields were filled but did not persist after Save Changes", {
+      rowIndex,
+      failures: blockingAfterSaveFailures
+    });
+    return false;
+  }
+  if (afterSave.failures.length) {
+    result.warnings.push({
+      section: "clientDetails",
+      label: name,
+      message: "Applicant saved, but optional broker-review fields did not verify after save.",
       rowIndex,
       failures: afterSave.failures
     });
-    return false;
   }
   result.actions.push({ action: "save-client-details-verified", section: "clientDetails", label: name, rowIndex });
   return true;
@@ -3226,14 +3250,25 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     await clearAddressGarbageFromPhoneFields(scope, result, name);
     await detectAndFixDateSwap(applicant, scope, result);
     const beforeSave = await verifyApplicantCriticalFields(applicant, scope, result, "before-save");
-    if (!beforeSave.ok) {
+    const blockingBeforeSaveFailures = beforeSave.failures.filter(isBlockingClientDetailsFailure);
+    if (blockingBeforeSaveFailures.length) {
       markApplicantState(applicant, { verifiedBeforeSave: false });
       recordVerificationFailure(result, "clientDetails", name, "Applicant failed before-save verification; not moving to next applicant as saved", {
         rowIndex: index,
-        failures: beforeSave.failures
+        failures: blockingBeforeSaveFailures
       });
       advanceAutomationProgress(`Client Details failed before save: ${name || `Applicant ${index + 1}`}`);
       continue;
+    }
+    if (beforeSave.failures.length) {
+      result.warnings.push({
+        section: "clientDetails",
+        label: name,
+        message: "Optional broker-review fields did not verify before save; continuing so the next applicant and later tabs can run.",
+        rowIndex: index,
+        failures: beforeSave.failures
+      });
+      result.actions.push({ action: "continue-after-optional-client-details-warning", section: "clientDetails", label: name, rowIndex: index, failures: beforeSave.failures });
     }
     markApplicantState(applicant, { verifiedBeforeSave: true });
     const saved = await saveClientDetailsAndVerify(applicant, result, index);
