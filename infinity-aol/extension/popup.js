@@ -1,7 +1,8 @@
 const state = {
   prepared: null,
   mapping: null,
-  lastResult: null
+  lastResult: null,
+  lastDiagnostics: null
 };
 
 const els = {
@@ -10,6 +11,8 @@ const els = {
   casePicker: document.querySelector("#casePicker"),
   refreshCases: document.querySelector("#refreshCases"),
   startAutofill: document.querySelector("#startAutofill"),
+  runDiagnostics: document.querySelector("#runDiagnostics"),
+  copyDiagnostics: document.querySelector("#copyDiagnostics"),
   fillSection: document.querySelector("#fillSection"),
   comparePage: document.querySelector("#comparePage"),
   compareCase: document.querySelector("#compareCase"),
@@ -113,6 +116,11 @@ function renderReview() {
     rows.push(["Verify", String(state.lastResult.verificationFailures?.length || 0)]);
   }
 
+  if (state.lastDiagnostics?.summary) {
+    rows.push(["Test status", state.lastDiagnostics.summary.ok ? "Pass" : "Fail"]);
+    rows.push(["Test checks", `${state.lastDiagnostics.summary.pass || 0} pass / ${state.lastDiagnostics.summary.fail || 0} fail / ${state.lastDiagnostics.summary.warn || 0} warn`]);
+  }
+
   if (state.lastResult?.crossPlatformMismatches) {
     rows.push(["Snapshots", String(state.lastResult.snapshotCount)]);
     rows.push(["Page issues", String(state.lastResult.pageIssues.length)]);
@@ -167,7 +175,15 @@ function renderReview() {
       value: `${shortValue(issue.infinityValue ?? "blank")} <> ${shortValue(issue.aolValue ?? "blank")}`,
       path: issue.fieldPath || issue.path,
       section: "comparison"
-    }))
+    })),
+    ...(state.lastDiagnostics?.checks || [])
+      .filter((check) => check.status !== "pass")
+      .map((check) => ({
+        label: `Test: ${check.label}`,
+        value: check.message || JSON.stringify(check.details || {}),
+        section: check.section,
+        severity: check.status === "fail" ? "error" : ""
+      }))
   ].slice(0, 8);
 
   for (const issue of issues) {
@@ -321,6 +337,69 @@ async function startAutofill() {
   }
 }
 
+function diagnosticReportText(report) {
+  if (!report) return "";
+  const lines = [
+    "EASYFLOW AI DIAGNOSTIC REPORT",
+    `Time: ${new Date().toISOString()}`,
+    `URL: ${report.url || ""}`,
+    `Platform: ${report.platform || ""}`,
+    `Summary: ${report.summary?.ok ? "PASS" : "FAIL"} (${report.summary?.pass || 0} pass, ${report.summary?.warn || 0} warn, ${report.summary?.fail || 0} fail)`,
+    "",
+    "Checks:"
+  ];
+  for (const check of report.checks || []) {
+    lines.push(`- [${String(check.status || "").toUpperCase()}] ${check.section || "general"} > ${check.label}: ${check.message || ""}`);
+    if (check.details && Object.keys(check.details).length) lines.push(`  details: ${JSON.stringify(check.details)}`);
+  }
+  if (report.errors?.length) {
+    lines.push("", "Errors:");
+    for (const error of report.errors) lines.push(`- ${error.message || JSON.stringify(error)}`);
+  }
+  lines.push("", "Raw JSON:", JSON.stringify(report, null, 2));
+  return lines.join("\n");
+}
+
+async function runDiagnostics() {
+  try {
+    els.runDiagnostics.disabled = true;
+    els.copyDiagnostics.disabled = true;
+    setStatus("Running page test. No fields will be saved.", "muted");
+    await loadPayload();
+    const result = await sendToContent({
+      type: "INFINITY_AOL_RUN_DIAGNOSTICS",
+      payload: state.prepared.payload,
+      mapping: state.mapping,
+      apiBase: els.apiBase.value.replace(/\/$/, "")
+    });
+    state.lastDiagnostics = result;
+    state.lastResult = result;
+    els.copyDiagnostics.disabled = false;
+    const summary = result.summary || {};
+    setStatus(
+      summary.ok
+        ? `Test passed: ${summary.pass || 0} checks OK.`
+        : `Test found ${summary.fail || 0} fail and ${summary.warn || 0} warning check(s). Copy report for Codex.`,
+      summary.ok ? "success" : "error"
+    );
+    renderReview();
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    els.runDiagnostics.disabled = false;
+  }
+}
+
+async function copyDiagnostics() {
+  const text = diagnosticReportText(state.lastDiagnostics);
+  if (!text) {
+    setStatus("Run Test first, then copy the report.", "error");
+    return;
+  }
+  await navigator.clipboard.writeText(text);
+  setStatus("Test report copied. Paste it into Codex for the next fix.", "success");
+}
+
 async function fillCurrentPopup() {
   await loadPayload();
   const result = await sendToContent({
@@ -369,6 +448,8 @@ async function compareCase() {
 }
 
 els.startAutofill.addEventListener("click", startAutofill);
+els.runDiagnostics.addEventListener("click", runDiagnostics);
+els.copyDiagnostics.addEventListener("click", () => copyDiagnostics().catch((error) => setStatus(error.message, "error")));
 els.refreshCases.addEventListener("click", () => loadPreparedCases().catch((error) => setStatus(error.message, "error")));
 els.casePicker.addEventListener("change", () => {
   els.caseToken.value = els.casePicker.value;

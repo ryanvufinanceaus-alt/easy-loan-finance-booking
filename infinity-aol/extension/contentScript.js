@@ -2599,6 +2599,177 @@ async function runAllPages({ payload, mapping, apiBase }) {
   return result;
 }
 
+function diagnosticSummary(checks = []) {
+  const summary = checks.reduce(
+    (acc, check) => {
+      acc[check.status] = (acc[check.status] || 0) + 1;
+      return acc;
+    },
+    { pass: 0, warn: 0, fail: 0 }
+  );
+  summary.ok = !summary.fail;
+  return summary;
+}
+
+function addDiagnosticCheck(result, status, section, label, message, details = {}) {
+  result.checks.push({ status, section, label, message, details });
+}
+
+function readFieldByExactLabel(label, scope = document) {
+  const found = findExactByLabelText(label, "", scope) || findByLabelText([label], "", scope);
+  return found?.element ? readFieldValue(found.element) : "";
+}
+
+async function diagnoseClientDetails(payload, result) {
+  const applicants = infinityApplicantRows(payload);
+  addDiagnosticCheck(
+    result,
+    applicants.length ? "pass" : "fail",
+    "payload",
+    "Infinity applicants",
+    applicants.length ? `${applicants.length} applicant(s) in payload.infinity.applicants` : "No applicants found in payload.infinity.applicants",
+    { applicants: applicants.map(fullApplicantName) }
+  );
+
+  if (!isClientDetailsPage()) return;
+  addDiagnosticCheck(result, "pass", "clientDetails", "Page detected", "Client Details page is visible");
+
+  for (const [index, applicant] of applicants.entries()) {
+    const name = fullApplicantName(applicant);
+    const clicked = clickApplicantTabByName(name);
+    await waitForAngularSettle();
+    const active = await waitForActiveApplicant(name);
+    const scope = getActiveApplicantScope(name);
+    const firstName = readFieldByExactLabel("First Name", scope);
+    const surname = readFieldByExactLabel("Surname", scope);
+    const formMatches =
+      (!applicant.firstName || valuesMatch(applicant.firstName, firstName)) &&
+      (!(applicant.surname || applicant.lastName) || valuesMatch(applicant.surname || applicant.lastName, surname));
+    addDiagnosticCheck(
+      result,
+      clicked && active && scope && formMatches ? "pass" : "fail",
+      "clientDetails",
+      `Applicant tab ${index + 1}: ${name}`,
+      clicked && active && scope && formMatches
+        ? "Applicant tab activates and visible form matches payload name"
+        : "Applicant tab did not activate or visible form does not match payload. Autofill must stop before filling this applicant.",
+      { clicked, active: Boolean(active), hasScope: Boolean(scope), expectedFirstName: applicant.firstName, actualFirstName: firstName, expectedSurname: applicant.surname || applicant.lastName, actualSurname: surname }
+    );
+
+    for (const label of ["Current Address", "Previous Address", "Post Settlement Address", "Mailing Address"]) {
+      const edit = findEditButtonForAddress(label);
+      addDiagnosticCheck(
+        result,
+        edit ? "pass" : label === "Current Address" ? "fail" : "warn",
+        "clientDetails",
+        `${name} ${label} Edit`,
+        edit ? "Edit button found for this address row" : "Address Edit button not found/visible",
+        { applicant: name, addressLabel: label }
+      );
+    }
+  }
+}
+
+async function diagnoseFinancials(payload, result) {
+  const rows = buildHemExpenseRows(hemMonthlyAmount(payload), payload);
+  const hemConfirmed = isHemConfirmed(payload);
+  addDiagnosticCheck(
+    result,
+    hemConfirmed ? "pass" : "fail",
+    "financials",
+    "HEM confirmed",
+    hemConfirmed ? "HEM is confirmed in prepared payload" : "HEM is not confirmed; Financials autofill will stop",
+    { hemMonthly: hemMonthlyAmount(payload) }
+  );
+  addDiagnosticCheck(
+    result,
+    rows.length ? "pass" : "fail",
+    "financials",
+    "Prepared monthly expense rows",
+    rows.length ? `${rows.length} rows found at payload.infinity.financials.expenses` : "No rows found at payload.infinity.financials.expenses",
+    { rows: rows.map((row) => ({ type: row.type, amount: row.amount, candidates: row.infinityTypeCandidates })) }
+  );
+
+  if (!isInfinityFinancialsPage()) return;
+  addDiagnosticCheck(result, "pass", "financials", "Page detected", "Financials page is visible");
+  await scrollToText(["Monthly Expenses", "Add Expense"]);
+  const addButton = findClickableByText(["Add Expense", "+ Add Expense"]);
+  addDiagnosticCheck(
+    result,
+    addButton ? "pass" : "fail",
+    "financials",
+    "Add Expense button",
+    addButton ? "Add Expense button found" : "Add Expense button not visible on Financials page"
+  );
+
+  if (!addButton) return;
+  const modal = await clickAndWaitForModal(addButton);
+  addDiagnosticCheck(
+    result,
+    modal ? "pass" : "fail",
+    "financials",
+    "Expense modal",
+    modal ? "Expense modal opens" : "Expense modal did not open after clicking Add Expense"
+  );
+  if (!modal) return;
+
+  const typeControl = findDropdownControlByLabels(["Expense Type", "Type", "Expense"], modal);
+  const amountField = findExactByLabelText("Expense Amount", "", modal) || findByLabelText(["Expense Amount", "Amount"], "", modal);
+  const frequencyControl = findDropdownControlByLabels(["Expense Frequency", "Frequency"], modal);
+  addDiagnosticCheck(result, typeControl ? "pass" : "fail", "financials", "Expense Type control", typeControl ? "Expense Type dropdown found in modal" : "Expense Type dropdown not found in modal");
+  addDiagnosticCheck(result, amountField ? "pass" : "fail", "financials", "Expense Amount field", amountField ? "Expense Amount field found in modal" : "Expense Amount field not found in modal");
+  addDiagnosticCheck(result, frequencyControl ? "pass" : "warn", "financials", "Expense Frequency control", frequencyControl ? "Expense Frequency dropdown found in modal" : "Expense Frequency dropdown not found in modal");
+
+  await closeActiveModalWithoutSaving();
+}
+
+async function diagnoseLoansProducts(payload, result) {
+  if (!isLoansProductsArea()) return;
+  addDiagnosticCheck(result, "pass", "loansProducts", "Page detected", "Loans & Products area is visible");
+  addDiagnosticCheck(
+    result,
+    findClickableByText(["Create Application"]) || pageHasAnyText(["Needs Analysis", "Best Interest Duty"]) ? "pass" : "warn",
+    "loansProducts",
+    "Create/Needs Analysis",
+    "Checked for Create Application or Needs Analysis entry points",
+    { hasNeedsAnalysis: isNeedsAnalysisVisible(), hasCreateApplication: Boolean(findClickableByText(["Create Application"])) }
+  );
+}
+
+async function runDiagnostics({ payload }) {
+  const result = {
+    sectionId: "diagnostics",
+    url: location.href,
+    platform: detectPlatform(),
+    checks: [],
+    errors: [],
+    actions: [],
+    fieldsFilled: [],
+    fieldsSkipped: [],
+    verificationFailures: []
+  };
+  try {
+    showAutomationStatus("EasyFlow AI test running. No fields will be saved.", "running", { progress: 5 });
+    addDiagnosticCheck(result, detectPlatform() !== "unknown" ? "pass" : "fail", "page", "Platform", `Detected platform: ${detectPlatform()}`, { url: location.href });
+    await diagnoseClientDetails(payload, result);
+    await diagnoseFinancials(payload, result);
+    await diagnoseLoansProducts(payload, result);
+  } catch (error) {
+    result.errors.push({ message: error.message, stack: error.stack });
+    addDiagnosticCheck(result, "fail", "diagnostics", "Runtime error", error.message);
+  } finally {
+    result.summary = diagnosticSummary(result.checks);
+    showAutomationStatus(
+      result.summary.ok
+        ? `EasyFlow AI test passed: ${result.summary.pass} checks.`
+        : `EasyFlow AI test found ${result.summary.fail} fail / ${result.summary.warn} warn.`,
+      result.summary.ok ? "success" : "error",
+      { progress: 100 }
+    );
+  }
+  return result;
+}
+
 function comparable(value) {
   if (typeof value === "boolean") return value ? "true" : "false";
   return normalize(String(value ?? "").replace(/[$,]/g, ""));
@@ -2671,6 +2842,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     scanCompare(message)
       .then(sendResponse)
       .catch((error) => sendResponse({ sectionId: null, matched: [], mismatched: [], missing: [{ message: error.message }] }));
+    return true;
+  }
+
+  if (message.type === "INFINITY_AOL_RUN_DIAGNOSTICS") {
+    runDiagnostics(message)
+      .then(sendResponse)
+      .catch((error) =>
+        sendResponse({
+          sectionId: "diagnostics",
+          url: location.href,
+          platform: detectPlatform(),
+          checks: [{ status: "fail", section: "diagnostics", label: "Runtime error", message: error.message }],
+          summary: { ok: false, pass: 0, warn: 0, fail: 1 },
+          errors: [{ message: error.message, stack: error.stack }]
+        })
+      );
     return true;
   }
 

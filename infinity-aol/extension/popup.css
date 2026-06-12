@@ -100,6 +100,16 @@ button:disabled {
   opacity: 0.45;
 }
 
+#runDiagnostics {
+  border-color: #8fbca1;
+  color: #166a42;
+}
+
+#copyDiagnostics {
+  border-color: #d5b77a;
+  color: #6f5014;
+}
+
 .advanced {
   background: #fff;
   border: 1px solid #dfe5e0;
