@@ -1757,7 +1757,7 @@ function collectVisibleApplicantTabs() {
     ...document.querySelectorAll("a, button, li, div, span")
   ]
     .filter(isVisible)
-    .map((element) => ({ element, text: visibleText(element) }))
+    .map((element) => ({ element, text: applicantTabText(element) }))
     .filter((item) => item.text && item.text.length <= 80)
     .filter((item) => /^[a-z]+(?:\s+[a-z]+)+$/.test(item.text))
     .filter((item) => !/(client details|add applicants|primary applicant|applicant type|entity type|related spouse|home phone|work phone)/i.test(item.text));
@@ -1767,6 +1767,14 @@ function collectVisibleApplicantTabs() {
     seen.add(item.text);
     return true;
   });
+}
+
+function applicantTabText(element) {
+  return visibleText(element)
+    .replace(/\s*[×x]\s*$/i, "")
+    .replace(/\s+close\s*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function applicantNameParts(applicant) {
@@ -1874,11 +1882,11 @@ function clickApplicantTabByName(name) {
   if (!name) return false;
   const wanted = normalize(name);
   const candidates = collectVisibleApplicantTabs().map((item) => item.element);
-  const tab = candidates.find((element) => {
-    const text = visibleText(element);
-    if (!text || text.length > 120) return false;
-    return text === wanted;
-  });
+  const tab = candidates.find((element) => applicantTabText(element) === wanted) ||
+    candidates.find((element) => {
+      const text = applicantTabText(element);
+      return text && text.includes(wanted) && text.split(/\s+/).length <= wanted.split(/\s+/).length + 1;
+    });
   if (!tab) return false;
   clickElement(tab);
   return true;

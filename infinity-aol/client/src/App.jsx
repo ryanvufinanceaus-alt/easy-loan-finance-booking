@@ -4920,10 +4920,13 @@ export default function App() {
     templateAutoSaveRef.current.canonical = JSON.stringify(selectedTemplate);
     if (!switchedTemplate) return;
     setTemplateJson(JSON.stringify(selectedTemplate, null, 2));
-    if (selectedTemplate.defaults?.hemMonthly) updateHemMonthly(selectedTemplate.defaults.hemMonthly);
-    if (selectedTemplate.defaults?.financialAssetBuffer) updateFinancialAssetBuffer(selectedTemplate.defaults.financialAssetBuffer);
+    const saved = selectedCaseId ? storageGet(caseStorageKey(selectedCaseId), {}) : {};
+    const hasSavedHem = saved.hemMonthly !== undefined && saved.hemMonthly !== null && saved.hemMonthly !== "";
+    const hasSavedAssetBuffer = saved.financialAssetBuffer !== undefined && saved.financialAssetBuffer !== null && saved.financialAssetBuffer !== "";
+    if (!hasSavedHem && selectedTemplate.defaults?.hemMonthly) updateHemMonthly(selectedTemplate.defaults.hemMonthly);
+    if (!hasSavedAssetBuffer && selectedTemplate.defaults?.financialAssetBuffer) updateFinancialAssetBuffer(selectedTemplate.defaults.financialAssetBuffer);
     setTemplateMessage("");
-  }, [selectedTemplate]);
+  }, [selectedTemplate, selectedCaseId]);
 
   useEffect(() => {
     if (!selectedTemplateId || !templateJson.trim()) return;
@@ -5077,8 +5080,11 @@ export default function App() {
   function applyHemProfile(profileKey) {
     const profile = hemProfiles[profileKey];
     if (!profile) return;
+    const amount = Number(profile.amount || 0);
     setHemProfileKey(profileKey);
-    updateHemMonthly(profile.amount);
+    setHemMonthly(amount);
+    setHemConfirmed(false);
+    persistCaseInputs({ hemProfileKey: profileKey, hemMonthly: amount, hemConfirmed: false });
   }
 
   function fixSectionForTarget(target = {}) {
