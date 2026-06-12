@@ -510,6 +510,7 @@ async function waitForSaveComplete() {
     throwIfAutomationStopped();
     const bodyText = pageTextWithoutEasyFlowOverlay();
     if (
+      bodyText.includes("account info saved successfully") ||
       bodyText.includes("saved successfully") ||
       bodyText.includes("successfully saved") ||
       bodyText.includes("changes saved") ||
@@ -1962,6 +1963,49 @@ function genderLikeValue(value) {
   return /^(male|female|other)$/i.test(String(value || "").trim());
 }
 
+function genderFromTitle(value) {
+  const text = normalizeLabelText(String(value || "").replace(/\./g, " "));
+  if (!text) return "";
+  if (text === "mr" || text.startsWith("mr ")) return "Male";
+  if (text === "ms" || text === "mrs" || text === "miss" || text.startsWith("ms ") || text.startsWith("mrs ") || text.startsWith("miss ")) return "Female";
+  return "";
+}
+
+function inferClientDetailsGender(applicant, scope = document) {
+  return genderFromTitle(applicant?.title) ||
+    genderFromTitle(readDisplayByLabel("Title", scope)) ||
+    (genderLikeValue(applicant?.gender) ? applicant.gender : "");
+}
+
+async function reconcileClientDetailsGender(applicant, scope, result, rowIndex, phase) {
+  const expected = inferClientDetailsGender(applicant, scope);
+  if (!expected) return false;
+  const applicantName = fullApplicantName(applicant);
+  if (!valuesMatch(expected, applicant.gender)) {
+    result.actions.push({
+      action: "repair-applicant-gender",
+      section: "clientDetails",
+      applicantName,
+      rowIndex,
+      phase,
+      sourceTitle: applicant?.title || readDisplayByLabel("Title", scope) || "",
+      previousGender: applicant.gender || "",
+      replacementGender: expected
+    });
+    applicant.gender = expected;
+  }
+  const actual = readClientDetailsCriticalValue("Gender", scope);
+  if (!valuesMatch(expected, actual)) {
+    return fillClientDetailsCriticalDropdown(scope, applicantName, "Gender", expected, result, {
+      rowIndex,
+      applicantName,
+      phase,
+      reason: "gender-reconcile"
+    });
+  }
+  return true;
+}
+
 function clientDetailsFromRawApplicant(rawApplicant = {}) {
   const id = rawApplicant?.id || {};
   return {
@@ -2173,6 +2217,25 @@ async function saveClientDetailsAndVerify(applicant, result, rowIndex) {
   await sleep(700);
   const activation = await activateInfinityApplicantTab(applicant, result, rowIndex);
   if (!activation.ok) return false;
+  const beforeGenderReconcile = readClientDetailsCriticalValue("Gender", activation.scope);
+  await reconcileClientDetailsGender(applicant, activation.scope, result, rowIndex, "after-save-before-verify");
+  const afterGenderReconcile = readClientDetailsCriticalValue("Gender", activation.scope);
+  if (!valuesMatch(beforeGenderReconcile, afterGenderReconcile) && valuesMatch(applicant.gender, afterGenderReconcile)) {
+    result.actions.push({
+      action: "resave-after-gender-reconcile",
+      section: "clientDetails",
+      label: name,
+      rowIndex,
+      before: beforeGenderReconcile,
+      after: afterGenderReconcile
+    });
+    const resaveButton = findSaveChangesButton();
+    if (resaveButton && !isDisabled(resaveButton)) {
+      clickElement(resaveButton);
+      await waitForSaveComplete();
+      await sleep(500);
+    }
+  }
   const afterSave = await verifyApplicantCriticalFields(applicant, activation.scope, result, "after-save");
   const blockingAfterSaveFailures = afterSave.failures.filter(isBlockingClientDetailsFailure);
   if (blockingAfterSaveFailures.length) {
@@ -3135,6 +3198,7 @@ async function selectRelatedSpouse(value, scope, result, rowIndex, applicantName
 async function fillClientDetailsDirect(applicant, result, rowIndex, scope = document) {
   let filledCount = 0;
   const applicantName = fullApplicantName(applicant);
+  await reconcileClientDetailsGender(applicant, scope, result, rowIndex, "before-direct-fill");
   for (const [label, key, dateFormat] of clientDetailsFieldMap()) {
     const rawValue = applicant?.[key];
     if (rawValue === undefined || rawValue === null || rawValue === "") continue;
@@ -3198,6 +3262,7 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
     }
     await sleep(90);
   }
+  await reconcileClientDetailsGender(applicant, scope, result, rowIndex, "after-direct-fill");
   return filledCount;
 }
 
@@ -3299,6 +3364,7 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     scope = active.scope;
     await clearAddressGarbageFromPhoneFields(scope, result, name);
     await detectAndFixDateSwap(applicant, scope, result);
+    await reconcileClientDetailsGender(applicant, scope, result, index, "before-save-verify");
     const beforeSave = await verifyApplicantCriticalFields(applicant, scope, result, "before-save");
     const blockingBeforeSaveFailures = beforeSave.failures.filter(isBlockingClientDetailsFailure);
     if (blockingBeforeSaveFailures.length) {
