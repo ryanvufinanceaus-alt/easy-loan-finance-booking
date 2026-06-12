@@ -55,7 +55,8 @@ const automationRunState = {
   message: "",
   hideTimer: null,
   segmentBase: 0,
-  segmentSpan: 1
+  segmentSpan: 1,
+  clientDetails: { applicants: {} }
 };
 
 function automationProgressPercent() {
@@ -82,6 +83,7 @@ function resetAutomationRun(total = 1) {
   automationRunState.message = "";
   automationRunState.segmentBase = 0;
   automationRunState.segmentSpan = automationRunState.total;
+  automationRunState.clientDetails = { applicants: {} };
 }
 
 function configureAutomationSegment(base, span) {
@@ -399,6 +401,61 @@ async function clickPageSaveIfVisible() {
   if (!save || isUnsafeFinalAction(save)) return false;
   clickElement(save);
   await sleep(900);
+  return true;
+}
+
+function findSaveChangesButton(root = document) {
+  const candidates = [...root.querySelectorAll("button, input[type='submit'], input[type='button'], a, [role='button']")]
+    .filter(isVisible)
+    .filter((element) => !isUnsafeFinalAction(element));
+  return candidates.find((element) => normalize(element.innerText || element.value || element.textContent) === "save changes") ||
+    candidates.find((element) => normalize(element.innerText || element.value || element.textContent).includes("save changes")) ||
+    candidates.find((element) => normalize(element.innerText || element.value || element.textContent) === "save") ||
+    candidates.find((element) => normalize(element.innerText || element.value || element.textContent).includes("save")) ||
+    null;
+}
+
+function isDisabled(element) {
+  return Boolean(
+    !element ||
+    element.disabled ||
+    element.getAttribute("disabled") !== null ||
+    element.getAttribute("aria-disabled") === "true" ||
+    normalize(element.className || "").includes("disabled")
+  );
+}
+
+async function waitForSaveComplete() {
+  const startedAt = Date.now();
+  let sawSaving = false;
+  while (Date.now() - startedAt < 10000) {
+    throwIfAutomationStopped();
+    const bodyText = normalize(document.body?.innerText || "");
+    if (
+      bodyText.includes("saved successfully") ||
+      bodyText.includes("successfully saved") ||
+      bodyText.includes("changes saved") ||
+      bodyText.includes("client account updated") ||
+      bodyText.includes("updated successfully")
+    ) {
+      await waitForAngularSettle();
+      return true;
+    }
+    if (bodyText.includes("saving") || document.querySelector(".loading, .spinner, .fa-spinner, [aria-busy='true']")) {
+      sawSaving = true;
+    }
+    const saveButton = findSaveChangesButton();
+    if (sawSaving && saveButton && !isDisabled(saveButton)) {
+      await sleep(500);
+      await waitForAngularSettle();
+      return true;
+    }
+    await sleep(250);
+  }
+
+  const finalText = normalize(document.body?.innerText || "");
+  if (/\b(error|required|invalid|failed)\b/.test(finalText)) return false;
+  await waitForAngularSettle();
   return true;
 }
 
@@ -1641,6 +1698,42 @@ function readSectionTotal(sectionLabel) {
   return 0;
 }
 
+async function saveFinancialsPageAndVerify(rows, result) {
+  showAutomationStatus("Financials: saving page and rechecking Monthly Expenses", "running");
+  const saveButton = findSaveChangesButton();
+  if (saveButton && !isDisabled(saveButton)) {
+    clickElement(saveButton);
+    const saved = await waitForSaveComplete();
+    if (!saved) {
+      recordVerificationFailure(result, "financialsExpense", "Save Changes", "Financials Save Changes was clicked but completion was not confirmed");
+      return false;
+    }
+  } else {
+    result.actions.push({ action: "financials-save-not-visible", section: "financialsExpense", reason: saveButton ? "save disabled" : "save button not visible" });
+  }
+  await sleep(800);
+  const tableText = tableSectionText("Monthly Expenses");
+  const expectedTotal = rows.reduce((sum, row) => sum + normalizeMoneyValue(row.amount), 0);
+  const actualTotal = readSectionTotal("Monthly Expenses");
+  const missingRows = rows.filter((row) => {
+    const typeOk = labelsMatchLoose(tableText, row.type);
+    const amountOk = numericTokens(row.amount).some((token) => tableText.includes(normalize(token)));
+    return !typeOk || !amountOk;
+  });
+  if (missingRows.length || Number(expectedTotal) !== Number(actualTotal)) {
+    recordVerificationFailure(result, "financialsExpense", "Monthly Expenses", "Monthly Expenses did not persist after Financials save/recheck", {
+      expectedRows: rows.map((row) => ({ type: row.type, amount: row.amount })),
+      missingRows: missingRows.map((row) => ({ type: row.type, amount: row.amount })),
+      expectedTotal,
+      actualTotal,
+      tableText: tableText.slice(0, 1000)
+    });
+    return false;
+  }
+  result.actions.push({ action: "save-financials-verified", section: "financialsExpense", expectedTotal, actualTotal, rows: rows.length });
+  return true;
+}
+
 function hasApplicantName(applicant) {
   return Boolean(fullApplicantName(applicant) || applicant?.firstName || applicant?.lastName || applicant?.surname);
 }
@@ -1682,6 +1775,99 @@ function applicantNameParts(applicant) {
     firstName: applicant?.firstName || "",
     surname: applicant?.surname || applicant?.lastName || ""
   };
+}
+
+function markApplicantState(applicant, patch) {
+  const key = fullApplicantName(applicant) || `Applicant ${Object.keys(automationRunState.clientDetails.applicants).length + 1}`;
+  automationRunState.clientDetails.applicants[key] = {
+    name: key,
+    visited: false,
+    filled: false,
+    verifiedBeforeSave: false,
+    saved: false,
+    verifiedAfterSave: false,
+    ...(automationRunState.clientDetails.applicants[key] || {}),
+    ...patch
+  };
+}
+
+function applicantRunSummary() {
+  return JSON.stringify(automationRunState.clientDetails.applicants || {}, null, 2);
+}
+
+function readDisplayByLabel(label, scope = document) {
+  const found = findExactByLabelText(label, "", scope) || findByLabelText([label], "", scope);
+  if (!found?.element) return "";
+  if (looksLikeChoiceControl(found.element)) return readDropdownDisplay(found.element);
+  return readFieldValue(found.element);
+}
+
+function applicantCriticalChecks(applicant) {
+  const checks = [
+    { label: "First Name", expected: applicant.firstName, type: "text" },
+    { label: "Surname", expected: applicant.surname || applicant.lastName, type: "text" }
+  ];
+  if (applicant.dateOfBirth) checks.push({ label: "Date of Birth", expected: formatDateValue(applicant.dateOfBirth, "au"), type: "date" });
+  if (applicant.gender) checks.push({ label: "Gender", expected: applicant.gender, type: "dropdown" });
+  if (applicant.relatedSpouse) checks.push({ label: "Related Spouse", expected: applicant.relatedSpouse, type: "dropdown" });
+  if (applicant.driversLicenceNo) checks.push({ label: "Driver's Licence No.", expected: applicant.driversLicenceNo, type: "text" });
+  if (applicant.licenceExpiryDate) checks.push({ label: "Licence Expiry Date", expected: formatDateValue(applicant.licenceExpiryDate, "au"), type: "date" });
+  if (applicant.licenceState) checks.push({ label: "Licence State", expected: applicant.licenceState, type: "dropdown" });
+  if (applicant.licenceClass) checks.push({ label: "Licence Class", expected: applicant.licenceClass, type: "text" });
+  return checks.filter((check) => check.expected !== undefined && check.expected !== null && check.expected !== "");
+}
+
+async function verifyApplicantCriticalFields(applicant, scope, result, phase) {
+  const failures = [];
+  for (const check of applicantCriticalChecks(applicant)) {
+    const actualRaw = readDisplayByLabel(check.label, scope || document);
+    const actual = check.type === "date" ? formatDateValue(actualRaw, "au") : actualRaw;
+    const expected = check.expected;
+    const ok = valuesMatch(expected, actual);
+    if (!ok) {
+      failures.push({ label: check.label, expected, actual, type: check.type });
+      recordVerificationFailure(result, "clientDetails", check.label, `Applicant critical field failed verification at phase: ${phase}`, {
+        applicantName: fullApplicantName(applicant),
+        expected,
+        actual,
+        phase
+      });
+    }
+  }
+  return { ok: failures.length === 0, failures };
+}
+
+async function saveClientDetailsAndVerify(applicant, result, rowIndex) {
+  const name = fullApplicantName(applicant);
+  showAutomationStatus(`Client Details: saving ${name}`, "running");
+  const saveButton = findSaveChangesButton();
+  if (!saveButton) {
+    recordVerificationFailure(result, "clientDetails", "Save Changes", "Save Changes button not found", { applicantName: name, rowIndex });
+    return false;
+  }
+  if (isDisabled(saveButton)) {
+    recordVerificationFailure(result, "clientDetails", "Save Changes", "Save Changes button is disabled", { applicantName: name, rowIndex });
+    return false;
+  }
+  clickElement(saveButton);
+  const saved = await waitForSaveComplete();
+  if (!saved) {
+    recordVerificationFailure(result, "clientDetails", "Save Changes", "Save was clicked but completion was not confirmed", { applicantName: name, rowIndex });
+    return false;
+  }
+  await sleep(700);
+  const activation = await activateInfinityApplicantTab(applicant, result, rowIndex);
+  if (!activation.ok) return false;
+  const afterSave = await verifyApplicantCriticalFields(applicant, activation.scope, result, "after-save");
+  if (!afterSave.ok) {
+    recordVerificationFailure(result, "clientDetails", name, "Applicant fields were filled but did not persist after Save Changes", {
+      rowIndex,
+      failures: afterSave.failures
+    });
+    return false;
+  }
+  result.actions.push({ action: "save-client-details-verified", section: "clientDetails", label: name, rowIndex });
+  return true;
 }
 
 function clickApplicantTabByName(name) {
@@ -2391,6 +2577,7 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
       });
       continue;
     }
+    markApplicantState(applicant, { visited: true });
 
     const scope = activation.scope;
     await clearAddressGarbageFromPhoneFields(scope, result, name);
@@ -2399,16 +2586,39 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     if (applicant.relatedSpouse) {
       await selectRelatedSpouse(applicant.relatedSpouse, scope, result, index, name);
     }
+    markApplicantState(applicant, { filled: true });
     await detectAndFixDateSwap(applicant, scope, result);
     await fillApplicantAddresses(applicant, rawApplicantForIndex(payload, index), result, index);
     await clearAddressGarbageFromPhoneFields(scope, result, name);
     await detectAndFixDateSwap(applicant, scope, result);
-    const saved = await clickPageSaveIfVisible();
-    result.actions.push({ action: saved ? "save-client-details" : "review-client-details", section: "clientDetails", rowIndex: index });
-    advanceAutomationProgress(`Client Details saved: ${name || `Applicant ${index + 1}`}`);
+    const beforeSave = await verifyApplicantCriticalFields(applicant, scope, result, "before-save");
+    if (!beforeSave.ok) {
+      markApplicantState(applicant, { verifiedBeforeSave: false });
+      recordVerificationFailure(result, "clientDetails", name, "Applicant failed before-save verification; not moving to next applicant as saved", {
+        rowIndex: index,
+        failures: beforeSave.failures
+      });
+      advanceAutomationProgress(`Client Details failed before save: ${name || `Applicant ${index + 1}`}`);
+      continue;
+    }
+    markApplicantState(applicant, { verifiedBeforeSave: true });
+    const saved = await saveClientDetailsAndVerify(applicant, result, index);
+    markApplicantState(applicant, { saved, verifiedAfterSave: saved });
+    advanceAutomationProgress(saved ? `Client Details saved and verified: ${name || `Applicant ${index + 1}`}` : `Client Details save failed: ${name || `Applicant ${index + 1}`}`);
     await sleep(500);
   }
 
+  const incomplete = applicants
+    .filter(hasApplicantName)
+    .map((applicant) => automationRunState.clientDetails.applicants[fullApplicantName(applicant)])
+    .filter((state) => !state?.visited || !state?.filled || !state?.verifiedBeforeSave || !state?.saved || !state?.verifiedAfterSave);
+  if (incomplete.length) {
+    recordVerificationFailure(result, "clientDetails", "All Applicants", "Not all applicants were visited, saved, and verified. Financials will not start.", {
+      expected: applicants.map(fullApplicantName).join(", "),
+      actual: applicantRunSummary()
+    });
+    return false;
+  }
   return true;
 }
 
@@ -2501,10 +2711,11 @@ async function runFinancialsWorkflow(payload, mapping, apiBase, result) {
       expected: expectedTotal,
       actual: actualTotal
     });
+    return false;
   } else if (expectedTotal) {
     result.actions.push({ action: "verify-expense-total", section: "financialsExpense", expected: expectedTotal, actual: actualTotal });
   }
-  return true;
+  return saveFinancialsPageAndVerify(rows, result);
 }
 
 async function selectNeedsAnalysisApplicants(payload, result) {
@@ -2640,11 +2851,14 @@ async function runWorkflow({ payload, mapping, apiBase, preserveProgress = false
   const result = ensureResultShape({ sectionId: "workflow", fieldsFilled: [], fieldsSkipped: [], errors: [], actions: [], verificationFailures: [] });
 
   try {
-    const clientDetailsHandled = await runClientDetailsWorkflow(payload, mapping, apiBase, result);
-    const financialsHandled = clientDetailsHandled ? false : await runFinancialsWorkflow(payload, mapping, apiBase, result);
-    const loansProductsHandled = clientDetailsHandled || financialsHandled ? false : await runLoansProductsWorkflow(payload, mapping, apiBase, result);
+    const onClientDetails = isClientDetailsPage();
+    const onFinancials = isInfinityFinancialsPage();
+    const onLoansProducts = isLoansProductsArea();
+    const clientDetailsHandled = onClientDetails ? await runClientDetailsWorkflow(payload, mapping, apiBase, result) : false;
+    const financialsHandled = !onClientDetails && onFinancials ? await runFinancialsWorkflow(payload, mapping, apiBase, result) : false;
+    const loansProductsHandled = !onClientDetails && !onFinancials && onLoansProducts ? await runLoansProductsWorkflow(payload, mapping, apiBase, result) : false;
 
-    if (!clientDetailsHandled && !financialsHandled && !loansProductsHandled) {
+    if (!onClientDetails && !onFinancials && !onLoansProducts && !clientDetailsHandled && !financialsHandled && !loansProductsHandled) {
       const visibleResult = await autofill({ mode: "visible", payload, mapping, apiBase });
       mergeAutofillResult(result, visibleResult);
       result.actions.push({ action: "fill-visible-fields", section: "visible", filled: visibleResult.fieldsFilled.length });
@@ -2658,7 +2872,7 @@ async function runWorkflow({ payload, mapping, apiBase, preserveProgress = false
       }
     }
 
-    for (const workflow of clientDetailsHandled || financialsHandled || loansProductsHandled ? [] : supportedPopupWorkflows(payload)) {
+    for (const workflow of onClientDetails || onFinancials || onLoansProducts || clientDetailsHandled || financialsHandled || loansProductsHandled ? [] : supportedPopupWorkflows(payload)) {
       await runPopupWorkflow(workflow, payload, mapping, apiBase, result);
     }
   } catch (error) {
@@ -2716,6 +2930,66 @@ async function navigateToPage(step) {
   return true;
 }
 
+function sectionIssueCount(result, sectionPrefix) {
+  const starts = (value) => normalize(value || "").startsWith(normalize(sectionPrefix));
+  return [
+    ...(result.errors || []),
+    ...(result.verificationFailures || [])
+  ].filter((item) => starts(item.section)).length;
+}
+
+function seriousIssueCount(result) {
+  return (result.errors || []).length + (result.verificationFailures || []).length;
+}
+
+async function openInfinityStep(step, isAlreadyVisible, result, pageIndex, totalSteps) {
+  configureAutomationSegment((pageIndex / totalSteps) * 100, 100 / totalSteps);
+  setAutomationProgress(0, 1, `Opening ${step.labels[0]}...`);
+  if (isAlreadyVisible()) {
+    result.pages.push({ id: step.id, labels: step.labels, navigated: true, alreadyVisible: true });
+    return true;
+  }
+  const navigated = await navigateToPage(step);
+  result.pages.push({ id: step.id, labels: step.labels, navigated });
+  if (!navigated) {
+    result.fieldsSkipped.push({ section: step.id, label: step.labels[0], reason: "page navigation link not visible", visibleActions: collectVisibleButtonsAndLinks() });
+  }
+  return navigated;
+}
+
+async function runInfinityTransactionPages({ payload, mapping, apiBase, result }) {
+  const steps = [
+    { id: "clientDetails", labels: ["Client Details"], isVisible: isClientDetailsPage, run: runClientDetailsWorkflow, blockedAt: "Client Details" },
+    { id: "financials", labels: ["Financials"], isVisible: isInfinityFinancialsPage, run: runFinancialsWorkflow, blockedAt: "Financials" },
+    { id: "loansProducts", labels: ["Loans & Products", "Loans and Products"], isVisible: isLoansProductsArea, run: runLoansProductsWorkflow, blockedAt: "Loans & Products" }
+  ];
+
+  for (const [index, step] of steps.entries()) {
+    throwIfAutomationStopped();
+    const opened = await openInfinityStep(step, step.isVisible, result, index, steps.length);
+    if (!opened) {
+      result.status = "partial_failed";
+      result.blockedAt = step.blockedAt;
+      result.message = `${step.blockedAt} was not opened; later tabs were not started.`;
+      return result;
+    }
+    const beforeIssues = seriousIssueCount(result);
+    const ok = await step.run(payload, mapping, apiBase, result);
+    const afterIssues = seriousIssueCount(result);
+    if (!ok || afterIssues > beforeIssues) {
+      result.status = "partial_failed";
+      result.blockedAt = step.blockedAt;
+      result.message = `${step.blockedAt} failed save/verification gate. Later tabs were not started.`;
+      showAutomationStatus(`${result.message}`, "error", { final: true, autoHideMs: 10000 });
+      return result;
+    }
+    setAutomationProgress(1, 1, `Completed ${step.labels[0]}`);
+  }
+
+  result.status = "success";
+  return result;
+}
+
 async function runAllPages({ payload, mapping, apiBase }) {
   const platform = detectPlatform();
   const plan = navigationPlans[platform] || [];
@@ -2724,6 +2998,20 @@ async function runAllPages({ payload, mapping, apiBase }) {
 
   if (!plan.length) {
     result.errors.push({ message: "Could not detect Infinity or AOL page. Open a case page first." });
+    return result;
+  }
+
+  if (platform === "infinity") {
+    await runInfinityTransactionPages({ payload, mapping, apiBase, result });
+    await logAutofill(apiBase, payload, result);
+    const issueCount = result.errors.length + result.fieldsSkipped.length + result.verificationFailures.length;
+    showAutomationStatus(
+      issueCount
+        ? `${result.message || `EasyFlow AI stopped with ${issueCount} item(s) to review.`}`
+        : "EasyFlow AI finished. Review before Push AOL or Submit.",
+      issueCount ? "error" : "success",
+      { final: true, progress: issueCount ? undefined : 100, autoHideMs: 10000 }
+    );
     return result;
   }
 
