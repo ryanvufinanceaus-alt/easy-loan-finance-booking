@@ -10,8 +10,11 @@ function applicantByRole(caseData, role) {
 
 function compactApplicant(applicant) {
   if (!applicant) return null;
+  const fullName = [applicant.firstName, applicant.middleName, applicant.lastName || applicant.surname].filter(Boolean).join(" ").trim();
+  if (!fullName) return null;
 
   return {
+    fullName,
     firstName: applicant.firstName || "",
     middleName: applicant.middleName || "",
     lastName: applicant.lastName || "",

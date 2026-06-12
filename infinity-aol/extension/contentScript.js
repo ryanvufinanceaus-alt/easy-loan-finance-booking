@@ -52,7 +52,10 @@ const automationRunState = {
   stopped: false,
   current: 0,
   total: 1,
-  message: ""
+  message: "",
+  hideTimer: null,
+  segmentBase: 0,
+  segmentSpan: 1
 };
 
 function automationProgressPercent() {
@@ -66,16 +69,32 @@ function requestAutomationStop() {
   showAutomationStatus("EasyFlow AI stopping after current action...", "error", { keepProgress: true });
 }
 
+function hideAutomationStatus() {
+  if (automationRunState.hideTimer) clearTimeout(automationRunState.hideTimer);
+  automationRunState.hideTimer = null;
+  document.querySelector("#easyflow-ai-extension-status")?.remove();
+}
+
 function resetAutomationRun(total = 1) {
   automationRunState.stopped = false;
   automationRunState.current = 0;
   automationRunState.total = Math.max(1, Number(total || 1));
   automationRunState.message = "";
+  automationRunState.segmentBase = 0;
+  automationRunState.segmentSpan = automationRunState.total;
+}
+
+function configureAutomationSegment(base, span) {
+  automationRunState.segmentBase = Math.max(0, Number(base || 0));
+  automationRunState.segmentSpan = Math.max(1, Number(span || 1));
 }
 
 function setAutomationProgress(current, total, message) {
-  if (Number.isFinite(Number(total))) automationRunState.total = Math.max(1, Number(total));
-  if (Number.isFinite(Number(current))) automationRunState.current = Math.max(0, Number(current));
+  if (Number.isFinite(Number(current))) {
+    const localTotal = Math.max(1, Number(total || 1));
+    const localCurrent = Math.max(0, Math.min(localTotal, Number(current)));
+    automationRunState.current = automationRunState.segmentBase + (localCurrent / localTotal) * automationRunState.segmentSpan;
+  }
   if (message) automationRunState.message = message;
   showAutomationStatus(message || automationRunState.message || "EasyFlow AI running...", "running");
 }
@@ -93,6 +112,10 @@ function throwIfAutomationStopped() {
 }
 
 function showAutomationStatus(message, type = "running", options = {}) {
+  if (automationRunState.hideTimer) {
+    clearTimeout(automationRunState.hideTimer);
+    automationRunState.hideTimer = null;
+  }
   let status = document.querySelector("#easyflow-ai-extension-status");
   if (!status) {
     status = document.createElement("div");
@@ -128,8 +151,9 @@ function showAutomationStatus(message, type = "running", options = {}) {
   text.textContent = message;
   const stop = document.createElement("button");
   stop.type = "button";
-  stop.textContent = automationRunState.stopped ? "Stopping" : "Stop";
-  stop.disabled = automationRunState.stopped || type === "success";
+  const finalState = type === "success" || options.final === true;
+  stop.textContent = finalState ? "Hide" : automationRunState.stopped ? "Stopping" : "Stop";
+  stop.disabled = automationRunState.stopped && !finalState;
   Object.assign(stop.style, {
     border: "1px solid rgba(255,255,255,.55)",
     background: "rgba(255,255,255,.14)",
@@ -139,7 +163,7 @@ function showAutomationStatus(message, type = "running", options = {}) {
     font: "700 12px Arial, sans-serif",
     cursor: stop.disabled ? "default" : "pointer"
   });
-  stop.addEventListener("click", requestAutomationStop);
+  stop.addEventListener("click", finalState ? hideAutomationStatus : requestAutomationStop);
   header.append(text, stop);
   const progressOuter = document.createElement("div");
   Object.assign(progressOuter.style, {
@@ -162,6 +186,9 @@ function showAutomationStatus(message, type = "running", options = {}) {
   Object.assign(footer.style, { marginTop: "6px", opacity: ".9", font: "700 11px Arial, sans-serif" });
   footer.textContent = `${percent}% complete`;
   status.append(header, progressOuter, footer);
+  if (options.autoHideMs) {
+    automationRunState.hideTimer = setTimeout(hideAutomationStatus, options.autoHideMs);
+  }
 }
 
 function cleanupStuckModalState() {
@@ -1411,6 +1438,22 @@ function readSelectedExpenseType(modal) {
   return String(readFieldValue(display) || display.textContent || "").trim();
 }
 
+function collectVisibleButtonsAndLinks(root = document) {
+  return clickableElements(root)
+    .map((element) => visibleText(element))
+    .filter((text) => text && text.length <= 120)
+    .filter((text, index, items) => items.indexOf(text) === index)
+    .slice(0, 80);
+}
+
+function readDropdownDisplay(control) {
+  if (!control) return "";
+  if (control.tagName === "SELECT") return readFieldValue(control);
+  const container = control.closest(".form-group, .row, .field, .control-group, div") || control.parentElement || document;
+  const display = container.querySelector(".ui-select-match-text, .select2-selection__rendered, .select2-chosen, .dropdown-toggle, [role='combobox']") || control;
+  return String(readFieldValue(display) || display.textContent || "").trim();
+}
+
 async function selectExpenseTypeWithFallback(preferredType, modal, result, preparedCandidates = []) {
   const control = findDropdownControlByLabels(["Expense Type", "Type", "Expense"], modal);
   if (!control) {
@@ -1540,7 +1583,7 @@ async function upsertExpenseRow(row, payload, result) {
 
   const addButton = findClickableByText(["Add Expense", "+ Add Expense"]);
   if (!addButton) {
-    recordFieldSkipped(result, "financialsExpense", "Add Expense", "Add Expense button not visible", { expenseType: row.type });
+    recordFieldSkipped(result, "financialsExpense", "Add Expense", "Add Expense button not visible", { expenseType: row.type, visibleActions: collectVisibleButtonsAndLinks() });
     return false;
   }
   const modal = await clickAndWaitForModal(addButton);
@@ -1575,13 +1618,37 @@ async function upsertExpenseRow(row, payload, result) {
 }
 
 function fullApplicantName(applicant) {
-  return [applicant?.firstName, applicant?.middleName, applicant?.lastName || applicant?.surname].filter(Boolean).join(" ").trim();
+  return (applicant?.fullName || [applicant?.firstName, applicant?.middleName, applicant?.lastName || applicant?.surname].filter(Boolean).join(" ")).trim();
+}
+
+function readSectionTotal(sectionLabel) {
+  const node = findTextNode([sectionLabel]);
+  const candidates = [];
+  if (node) {
+    let container = node.parentElement;
+    for (let depth = 0; depth < 5 && container; depth += 1) {
+      candidates.push(container.textContent || "");
+      container = container.parentElement;
+    }
+  }
+  candidates.push(document.body?.innerText || "");
+  for (const text of candidates) {
+    const exactLine = String(text || "").split(/\n+/).find((line) => normalize(line).includes(normalize(sectionLabel)) && /\$[\d,]+/.test(line));
+    const source = exactLine || text;
+    const match = String(source || "").match(new RegExp(`${sectionLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\$?([\\d,]+(?:\\.\\d{1,2})?)`, "i"));
+    if (match) return normalizeMoneyValue(match[1]);
+  }
+  return 0;
+}
+
+function hasApplicantName(applicant) {
+  return Boolean(fullApplicantName(applicant) || applicant?.firstName || applicant?.lastName || applicant?.surname);
 }
 
 function infinityApplicantRows(payload) {
-  const rows = collectionAt(payload, "infinity.applicants");
+  const rows = collectionAt(payload, "infinity.applicants").filter(hasApplicantName);
   if (rows.length) return rows;
-  return [getValue(payload, "infinity.clientDetails")].filter(Boolean);
+  return [getValue(payload, "infinity.clientDetails")].filter(hasApplicantName);
 }
 
 function rawApplicantForIndex(payload, index) {
@@ -1592,17 +1659,39 @@ function isClientDetailsPage() {
   return pageHasAnyText(["Client Details", "Entity Type", "Applicant Type", "Current Address"]);
 }
 
+function collectVisibleApplicantTabs() {
+  const textItems = [
+    ...document.querySelectorAll("a, button, li, div, span")
+  ]
+    .filter(isVisible)
+    .map((element) => ({ element, text: visibleText(element) }))
+    .filter((item) => item.text && item.text.length <= 80)
+    .filter((item) => /^[a-z]+(?:\s+[a-z]+)+$/.test(item.text))
+    .filter((item) => !/(client details|add applicants|primary applicant|applicant type|entity type|related spouse|home phone|work phone)/i.test(item.text));
+  const seen = new Set();
+  return textItems.filter((item) => {
+    if (seen.has(item.text)) return false;
+    seen.add(item.text);
+    return true;
+  });
+}
+
+function applicantNameParts(applicant) {
+  return {
+    fullName: fullApplicantName(applicant),
+    firstName: applicant?.firstName || "",
+    surname: applicant?.surname || applicant?.lastName || ""
+  };
+}
+
 function clickApplicantTabByName(name) {
   if (!name) return false;
   const wanted = normalize(name);
-  const candidates = [
-    ...clickableElements(document),
-    ...document.querySelectorAll("li, span, div, a")
-  ].filter(isVisible);
+  const candidates = collectVisibleApplicantTabs().map((item) => item.element);
   const tab = candidates.find((element) => {
     const text = visibleText(element);
     if (!text || text.length > 120) return false;
-    return text === wanted || text.includes(wanted);
+    return text === wanted;
   });
   if (!tab) return false;
   clickElement(tab);
@@ -1628,7 +1717,7 @@ async function clickSubTab(text, result) {
 }
 
 async function waitForActiveApplicant(applicantName) {
-  if (!applicantName) return document;
+  if (!applicantName) return null;
   const wanted = normalize(applicantName);
   return waitFor(() => {
     const activeCandidates = [...document.querySelectorAll(".active, .selected, [aria-selected='true'], li, a, span")]
@@ -1638,7 +1727,7 @@ async function waitForActiveApplicant(applicantName) {
         const marker = normalize(`${element.className || ""} ${element.getAttribute("aria-selected") || ""}`);
         return text && (text === wanted || text.includes(wanted)) && (marker.includes("active") || marker.includes("selected") || element.getAttribute("aria-selected") === "true");
       });
-    return activeCandidates[0] || (pageHasAnyText([applicantName]) ? document : null);
+    return activeCandidates[0] || null;
   }, { timeout: 4000, interval: 150 });
 }
 
@@ -1660,7 +1749,61 @@ function getActiveApplicantScope(applicantName) {
     .filter(isVisible)
     .filter((element) => element.querySelector(controlSelector))
     .sort((a, b) => (b.getBoundingClientRect().width * b.getBoundingClientRect().height) - (a.getBoundingClientRect().width * a.getBoundingClientRect().height));
-  return visibleForms[0] || document;
+  return visibleForms[0] || null;
+}
+
+function readClientNameFields(scope) {
+  return {
+    firstName: readFieldByExactLabel("First Name", scope || document),
+    surname: readFieldByExactLabel("Surname", scope || document)
+  };
+}
+
+async function activateInfinityApplicantTab(applicant, result, rowIndex) {
+  const { fullName, firstName, surname } = applicantNameParts(applicant);
+  const visibleApplicantTabs = collectVisibleApplicantTabs().map((item) => item.text);
+  if (!fullName || !firstName || !surname) {
+    recordFieldSkipped(result, "clientDetails", fullName || `Applicant ${rowIndex + 1}`, "Applicant name incomplete; skipped to avoid filling wrong tab", {
+      rowIndex,
+      expected: { firstName, surname, fullName },
+      visibleApplicantTabs
+    });
+    return { ok: false, skip: true, visibleApplicantTabs };
+  }
+
+  const clicked = clickApplicantTabByName(fullName);
+  if (!clicked) {
+    recordError(result, "clientDetails", fullName, `Applicant tab not found for ${fullName}`, { rowIndex, visibleApplicantTabs });
+    return { ok: false, clicked: false, visibleApplicantTabs };
+  }
+
+  await waitForAngularSettle();
+  await sleep(500);
+  const active = await waitForActiveApplicant(fullName);
+  const scope = getActiveApplicantScope(fullName);
+  const actual = readClientNameFields(scope || document);
+  const ok = Boolean(
+    scope &&
+    valuesMatch(firstName, actual.firstName) &&
+    valuesMatch(surname, actual.surname)
+  );
+
+  const details = {
+    rowIndex,
+    clicked,
+    selectorUsed: active ? visibleText(active) : "",
+    expected: { firstName, surname, fullName },
+    actual,
+    visibleApplicantTabs
+  };
+
+  if (!ok) {
+    recordError(result, "clientDetails", fullName, "Applicant tab did not activate or visible form does not match payload. Stopped this applicant before filling.", details);
+    return { ok: false, clicked, scope: null, ...details };
+  }
+
+  result.actions.push({ action: "activate-applicant-tab", section: "clientDetails", label: fullName, ...details });
+  return { ok: true, clicked, scope, ...details };
 }
 
 function addressPartsFromApplicant(applicant, fallbackAddressText = "") {
@@ -2108,9 +2251,14 @@ async function selectRelatedSpouse(value, scope, result, rowIndex, applicantName
     return false;
   }
   let ok = await selectDropdownControlOption(found.element, value);
+  let visibleOptions = [];
   if (!ok) {
     clickElement(found.element);
     await sleep(250);
+    visibleOptions = [...document.querySelectorAll("option, [role='option'], li, .option, .dropdown-item, .select-item, .ui-select-choices-row, .ui-select-choices-row-inner, .select2-results__option, a, span")]
+      .filter(isVisible)
+      .map((element) => ({ element, text: String(element.textContent || element.getAttribute("value") || "").trim() }))
+      .filter((item) => item.text && item.text.length <= 120);
     const searchInput = [...document.querySelectorAll("input.ui-select-search, input[type='search'], input[aria-autocomplete]")]
       .filter(isVisible)[0];
     if (searchInput) {
@@ -2124,19 +2272,20 @@ async function selectRelatedSpouse(value, scope, result, rowIndex, applicantName
     }
   }
   await sleep(350);
-  const actual = readFieldValue(found.element) || found.element.textContent || "";
+  const actual = readDropdownDisplay(found.element);
   result.fieldsFilled.push({ section: "clientDetails", label: "Related Spouse", selector: found.selector, expected: value, actual, rowIndex });
-  const verified = valuesMatch(value, actual) || pageHasAnyText([value]);
+  const verified = valuesMatch(value, actual);
   if (!ok || !verified) {
     pressEscape();
     recordVerificationFailure(result, "clientDetails", "Related Spouse", "Related spouse option was clicked but selected value could not be verified", {
       expected: value,
       actual,
       rowIndex,
-      applicantName
+      applicantName,
+      visibleOptions: visibleOptions.map((option) => option.text)
     });
   }
-  return ok;
+  return ok && verified;
 }
 
 async function fillClientDetailsDirect(applicant, result, rowIndex, scope = document) {
@@ -2223,20 +2372,33 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
 
   for (let index = 0; index < applicants.length; index += 1) {
     throwIfAutomationStopped();
-    const applicant = applicants[index];
+    const spouse = applicants.length > 1 ? applicants[index === 0 ? 1 : 0] : null;
+    const applicant = {
+      ...applicants[index],
+      maritalStatus: applicants.length > 1 ? "Married" : applicants[index].maritalStatus,
+      relatedSpouse: spouse ? fullApplicantName(spouse) : applicants[index].relatedSpouse
+    };
     const name = fullApplicantName(applicant);
     setAutomationProgress(index, applicants.length, `Client Details: ${name || `Applicant ${index + 1}`}`);
-    const clicked = clickApplicantTabByName(name);
-    result.actions.push({ action: clicked ? "open-applicant-tab" : "review-applicant-tab", section: "clientDetails", label: name, rowIndex: index });
-    if (clicked) {
-      await waitForAngularSettle();
-      await waitForActiveApplicant(name);
+    const activation = await activateInfinityApplicantTab(applicant, result, index);
+    if (!activation.ok) {
+      if (activation.skip) continue;
+      result.verificationFailures.push({
+        section: "clientDetails",
+        label: name || `Applicant ${index + 1}`,
+        message: "Applicant was not filled because active tab/form could not be verified.",
+        rowIndex: index
+      });
+      continue;
     }
 
-    const scope = getActiveApplicantScope(name);
+    const scope = activation.scope;
     await clearAddressGarbageFromPhoneFields(scope, result, name);
     await cleanupMisfilledClientDetails(result, index, scope);
     await fillClientDetailsDirect(applicant, result, index, scope);
+    if (applicant.relatedSpouse) {
+      await selectRelatedSpouse(applicant.relatedSpouse, scope, result, index, name);
+    }
     await detectAndFixDateSwap(applicant, scope, result);
     await fillApplicantAddresses(applicant, rawApplicantForIndex(payload, index), result, index);
     await clearAddressGarbageFromPhoneFields(scope, result, name);
@@ -2331,6 +2493,16 @@ async function runFinancialsWorkflow(payload, mapping, apiBase, result) {
     setAutomationProgress(index, rows.length, `Financials: ${row.type} ${index + 1}/${rows.length}`);
     await upsertExpenseRow(row, payload, result);
     advanceAutomationProgress(`Financials saved/reviewed: ${row.type}`);
+  }
+  const expectedTotal = rows.reduce((sum, row) => sum + normalizeMoneyValue(row.amount), 0);
+  const actualTotal = readSectionTotal("Monthly Expenses");
+  if (expectedTotal && Number(expectedTotal) !== Number(actualTotal)) {
+    recordVerificationFailure(result, "financialsExpense", "Monthly Expenses Total", "Monthly Expenses total does not match prepared payload rows", {
+      expected: expectedTotal,
+      actual: actualTotal
+    });
+  } else if (expectedTotal) {
+    result.actions.push({ action: "verify-expense-total", section: "financialsExpense", expected: expectedTotal, actual: actualTotal });
   }
   return true;
 }
@@ -2460,8 +2632,11 @@ async function runLoansProductsWorkflow(payload, mapping, apiBase, result) {
   return true;
 }
 
-async function runWorkflow({ payload, mapping, apiBase }) {
-  resetAutomationRun(1);
+async function runWorkflow({ payload, mapping, apiBase, preserveProgress = false }) {
+  if (!preserveProgress) {
+    resetAutomationRun(100);
+    configureAutomationSegment(0, 100);
+  }
   const result = ensureResultShape({ sectionId: "workflow", fieldsFilled: [], fieldsSkipped: [], errors: [], actions: [], verificationFailures: [] });
 
   try {
@@ -2489,7 +2664,7 @@ async function runWorkflow({ payload, mapping, apiBase }) {
   } catch (error) {
     if (/stopped by user/i.test(error.message || "")) {
       result.actions.push({ action: "stop-run", section: "workflow", message: error.message });
-      showAutomationStatus("EasyFlow AI stopped.", "error", { keepProgress: true });
+      showAutomationStatus("EasyFlow AI stopped.", "error", { keepProgress: true, final: true, autoHideMs: 10000 });
     } else {
       throw error;
     }
@@ -2545,7 +2720,7 @@ async function runAllPages({ payload, mapping, apiBase }) {
   const platform = detectPlatform();
   const plan = navigationPlans[platform] || [];
   const result = ensureResultShape({ sectionId: "all-pages", fieldsFilled: [], fieldsSkipped: [], errors: [], actions: [], verificationFailures: [], pages: [], platform });
-  resetAutomationRun(Math.max(1, plan.length * 10));
+  resetAutomationRun(100);
 
   if (!plan.length) {
     result.errors.push({ message: "Could not detect Infinity or AOL page. Open a case page first." });
@@ -2555,7 +2730,9 @@ async function runAllPages({ payload, mapping, apiBase }) {
   try {
     for (const [pageIndex, step] of plan.entries()) {
       throwIfAutomationStopped();
-      setAutomationProgress(pageIndex * 10, plan.length * 10, `Opening ${step.labels[0]}...`);
+      const pageSpan = 100 / Math.max(1, plan.length);
+      configureAutomationSegment(pageIndex * pageSpan, pageSpan);
+      setAutomationProgress(0, 1, `Opening ${step.labels[0]}...`);
       const navigated = await navigateToPage(step);
       result.pages.push({ id: step.id, labels: step.labels, navigated });
       if (!navigated) {
@@ -2563,7 +2740,7 @@ async function runAllPages({ payload, mapping, apiBase }) {
         continue;
       }
 
-      const pageResult = await runWorkflow({ payload, mapping, apiBase });
+      const pageResult = await runWorkflow({ payload, mapping, apiBase, preserveProgress: true });
       mergeAutofillResult(result, pageResult);
 
       const compareResult = await scanCompare({ mode: "visible", payload, mapping });
@@ -2577,12 +2754,12 @@ async function runAllPages({ payload, mapping, apiBase }) {
       });
       await sleep(500);
       cleanupStuckModalState();
-      setAutomationProgress((pageIndex + 1) * 10, plan.length * 10, `Completed ${step.labels[0]}`);
+      setAutomationProgress(1, 1, `Completed ${step.labels[0]}`);
     }
   } catch (error) {
     if (/stopped by user/i.test(error.message || "")) {
       result.actions.push({ action: "stop-run", section: "all-pages", message: error.message });
-      showAutomationStatus("EasyFlow AI stopped.", "error", { keepProgress: true });
+      showAutomationStatus("EasyFlow AI stopped.", "error", { keepProgress: true, final: true, autoHideMs: 10000 });
     } else {
       throw error;
     }
@@ -2594,7 +2771,8 @@ async function runAllPages({ payload, mapping, apiBase }) {
     issueCount
       ? `EasyFlow AI finished with ${issueCount} item(s) to review.`
       : "EasyFlow AI finished. Review before Push AOL or Submit.",
-    issueCount ? "error" : "success"
+    issueCount ? "error" : "success",
+    { final: true, progress: 100, autoHideMs: 10000 }
   );
   return result;
 }
@@ -2636,25 +2814,18 @@ async function diagnoseClientDetails(payload, result) {
 
   for (const [index, applicant] of applicants.entries()) {
     const name = fullApplicantName(applicant);
-    const clicked = clickApplicantTabByName(name);
-    await waitForAngularSettle();
-    const active = await waitForActiveApplicant(name);
-    const scope = getActiveApplicantScope(name);
-    const firstName = readFieldByExactLabel("First Name", scope);
-    const surname = readFieldByExactLabel("Surname", scope);
-    const formMatches =
-      (!applicant.firstName || valuesMatch(applicant.firstName, firstName)) &&
-      (!(applicant.surname || applicant.lastName) || valuesMatch(applicant.surname || applicant.lastName, surname));
+    const activation = await activateInfinityApplicantTab(applicant, result, index);
     addDiagnosticCheck(
       result,
-      clicked && active && scope && formMatches ? "pass" : "fail",
+      activation.ok ? "pass" : hasApplicantName(applicant) ? "fail" : "warn",
       "clientDetails",
       `Applicant tab ${index + 1}: ${name}`,
-      clicked && active && scope && formMatches
+      activation.ok
         ? "Applicant tab activates and visible form matches payload name"
         : "Applicant tab did not activate or visible form does not match payload. Autofill must stop before filling this applicant.",
-      { clicked, active: Boolean(active), hasScope: Boolean(scope), expectedFirstName: applicant.firstName, actualFirstName: firstName, expectedSurname: applicant.surname || applicant.lastName, actualSurname: surname }
+      activation
     );
+    if (!activation.ok) continue;
 
     for (const label of ["Current Address", "Previous Address", "Post Settlement Address", "Mailing Address"]) {
       const edit = findEditButtonForAddress(label);
@@ -2732,7 +2903,7 @@ async function diagnoseLoansProducts(payload, result) {
     "loansProducts",
     "Create/Needs Analysis",
     "Checked for Create Application or Needs Analysis entry points",
-    { hasNeedsAnalysis: isNeedsAnalysisVisible(), hasCreateApplication: Boolean(findClickableByText(["Create Application"])) }
+    { hasNeedsAnalysis: isNeedsAnalysisVisible(), hasCreateApplication: Boolean(findClickableByText(["Create Application"])), visibleActions: collectVisibleButtonsAndLinks() }
   );
 }
 
@@ -2764,7 +2935,7 @@ async function runDiagnostics({ payload }) {
         ? `EasyFlow AI test passed: ${result.summary.pass} checks.`
         : `EasyFlow AI test found ${result.summary.fail} fail / ${result.summary.warn} warn.`,
       result.summary.ok ? "success" : "error",
-      { progress: 100 }
+      { progress: 100, final: true, autoHideMs: 10000 }
     );
   }
   return result;

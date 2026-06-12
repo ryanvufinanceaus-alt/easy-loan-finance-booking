@@ -23,6 +23,7 @@ function clientDetailsForApplicant(applicant, options = {}) {
   const rawLicenceNo = applicant?.id?.driversLicenceNo || "";
   const rawExpiry = applicant?.id?.licenceExpiryDate || "";
   return {
+    fullName: fullName(applicant),
     entityType: "Individual",
     primaryApplicant: options.primaryApplicant ? "Yes" : "No",
     applicantType: "Applicant",
@@ -225,7 +226,7 @@ export function buildTemplateTextPreview(caseData) {
 
 export function buildInfinityTemplate(caseData) {
   const applicants = (caseData.applicants || [])
-    .filter(Boolean)
+    .filter((applicant) => Boolean(fullName(applicant)))
     .sort((a, b) => (a.role === "primary" ? -1 : 0) - (b.role === "primary" ? -1 : 0));
   const primary = applicants.find((applicant) => applicant.role === "primary") || applicants[0];
   const secondary = applicants.find((applicant) => applicant.role === "secondary") || null;
