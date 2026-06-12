@@ -123,8 +123,8 @@ function renderReview() {
 
   if (state.lastResult?.crossPlatformMismatches) {
     rows.push(["Snapshots", String(state.lastResult.snapshotCount)]);
-    rows.push(["Page issues", String(state.lastResult.pageIssues.length)]);
-    rows.push(["Infinity/AOL issues", String(state.lastResult.crossPlatformMismatches.length)]);
+    rows.push(["Page issues", String(Math.min(state.lastResult.pageIssues.length, 200)) + (state.lastResult.pageIssues.length > 200 ? ` shown of ${state.lastResult.pageIssues.length}` : "")]);
+    rows.push(["Infinity/AOL issues", String(Math.min(state.lastResult.crossPlatformMismatches.length, 200)) + (state.lastResult.crossPlatformMismatches.length > 200 ? ` shown of ${state.lastResult.crossPlatformMismatches.length}` : "")]);
     rows.push(["Not checked yet", String(state.lastResult.pendingChecks?.length || 0)]);
   }
 
@@ -164,13 +164,13 @@ function renderReview() {
       path: issue.path,
       severity: "error"
     })),
-    ...(state.lastResult?.pageIssues || []).map((issue) => ({
+    ...(state.lastResult?.pageIssues || []).slice(0, 8).map((issue) => ({
       label: `${issue.platform || "page"}: ${issue.label}`,
       value: `${shortValue(issue.actual ?? "missing")} -> ${shortValue(issue.expected ?? "")}`,
       path: issue.fieldPath || issue.path,
       section: issue.platform
     })),
-    ...(state.lastResult?.crossPlatformMismatches || []).map((issue) => ({
+    ...(state.lastResult?.crossPlatformMismatches || []).slice(0, 8).map((issue) => ({
       label: `Infinity/AOL: ${issue.label}`,
       value: `${shortValue(issue.infinityValue ?? "blank")} <> ${shortValue(issue.aolValue ?? "blank")}`,
       path: issue.fieldPath || issue.path,
@@ -320,12 +320,11 @@ async function startAutofill() {
       apiBase
     });
 
-    const report = await fetchComparisonReport();
-    state.lastResult = report || result;
-    const issues = (report?.pageIssues?.length || 0) + (report?.crossPlatformMismatches?.length || 0) + (result.errors?.length || 0) + (result.verificationFailures?.length || 0);
+    state.lastResult = result;
+    const issues = (result.errors?.length || 0) + (result.verificationFailures?.length || 0);
     setStatus(
       issues
-        ? `AutoFill finished, but ${issues} item(s) need review. See Broker Review below.`
+        ? `${result.message || `AutoFill stopped with ${issues} item(s) to review.`}`
         : "AutoFill finished. Review the page before Push AOL or Submit.",
       issues ? "error" : "success"
     );
