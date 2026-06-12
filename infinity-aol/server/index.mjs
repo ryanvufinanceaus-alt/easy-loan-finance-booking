@@ -1572,6 +1572,41 @@ function buildLocalCaseFromCallNote(note) {
   };
 }
 
+function latestLinkedIntakeForCase(caseData) {
+  if (!caseData?.id) return null;
+  const sourceCallNoteId = caseData.sourceCallNoteId;
+  return [...clientIntakes]
+    .filter((intake) =>
+      intake?.submission &&
+      (intake.caseId === caseData.id ||
+        (sourceCallNoteId && intake.callNoteId === sourceCallNoteId) ||
+        callNotes.some((note) => note.id === intake.callNoteId && note.convertedCaseId === caseData.id))
+    )
+    .sort((a, b) => new Date(b.updatedAt || b.submittedAt || b.createdAt || 0) - new Date(a.updatedAt || a.submittedAt || a.createdAt || 0))[0] || null;
+}
+
+function hydrateCaseFromLinkedLoanForm(caseData) {
+  const intake = latestLinkedIntakeForCase(caseData);
+  if (!intake?.submission) return caseData;
+  const note = callNotes.find((item) => item.id === intake.callNoteId) || {};
+  const combined = {
+    ...note,
+    ...(intake.submission || {}),
+    id: note.id || caseData.sourceCallNoteId || intake.callNoteId,
+    brokerUser: caseData.brokerUser || note.brokerUser || intake.brokerUser,
+    convertedCaseId: caseData.id
+  };
+  const hydrated = buildLocalCaseFromCallNote(combined);
+  return {
+    ...caseData,
+    ...hydrated,
+    id: caseData.id,
+    status: caseData.status,
+    sourceCallNoteId: caseData.sourceCallNoteId || note.id || intake.callNoteId,
+    brokerUser: caseData.brokerUser || hydrated.brokerUser
+  };
+}
+
 function upsertLocalCaseFromCallNote(noteIndex, historyType = "client-intake-synced") {
   const note = callNotes[noteIndex];
   if (!note) return null;
@@ -1749,6 +1784,7 @@ function summarizePrepared(prepared, type) {
 }
 
 function prepareCase(caseData, source = "prepare", options = {}) {
+  const sourceCase = hydrateCaseFromLinkedLoanForm(caseData);
   if (options.templateId || options.templateOverrides || options.hemMonthly || options.financialAssetBuffer || options.manualIntake) {
     const draft = buildDocumentDraft([], {
       templateId: options.templateId,
@@ -1757,17 +1793,17 @@ function prepareCase(caseData, source = "prepare", options = {}) {
       financialAssetBuffer: options.financialAssetBuffer,
       manualIntake: options.manualIntake
     });
-    documentDrafts.set(caseData.id, draft);
+    documentDrafts.set(sourceCase.id, draft);
   }
 
-  const mergedCase = mergeDocumentDraft(caseData, documentDrafts.get(caseData.id));
+  const mergedCase = mergeDocumentDraft(sourceCase, documentDrafts.get(sourceCase.id));
   const payload = buildInfinityPayload(mergedCase);
   const validation = validateInfinityPayload(payload);
   const token = crypto.randomBytes(16).toString("hex");
   const prepared = {
     token,
-    caseId: caseData.id,
-    brokerUser: caseData.brokerUser,
+    caseId: sourceCase.id,
+    brokerUser: sourceCase.brokerUser,
     payload,
     validation,
     mappingVersion: payload.meta.mappingVersion,
@@ -1776,18 +1812,18 @@ function prepareCase(caseData, source = "prepare", options = {}) {
   };
 
   preparedCases.set(token, prepared);
-  preparedCases.set(caseData.id, prepared);
+  preparedCases.set(sourceCase.id, prepared);
   persistPrepared(prepared);
   auditLog.push({
     type: source,
     timestamp: new Date().toISOString(),
-    brokerUser: caseData.brokerUser,
-    caseId: caseData.id,
+    brokerUser: sourceCase.brokerUser,
+    caseId: sourceCase.id,
     token,
     errors: validation.issues.filter((issue) => issue.severity === "error").length,
     warnings: validation.issues.filter((issue) => issue.severity === "warning").length
   });
-  pushCaseHistory(caseData.id, summarizePrepared(prepared, source));
+  pushCaseHistory(sourceCase.id, summarizePrepared(prepared, source));
 
   return prepared;
 }
