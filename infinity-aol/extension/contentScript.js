@@ -301,9 +301,16 @@ function readFieldValue(element) {
 
 function chooseVisibleOption(text, root = activeSurfaceRoot()) {
   const wanted = normalize(text);
-  const option = [...root.querySelectorAll("[role='option'], li, .option, .dropdown-item, .select-item")]
+  const option = [...root.querySelectorAll("[role='option'], li, .option, .dropdown-item, .select-item, .ui-select-choices-row, .ui-select-choices-row-inner, .select2-results__option, a, span, div")]
     .filter(isVisible)
-    .find((item) => normalize(item.textContent) === wanted || normalize(item.textContent).includes(wanted));
+    .filter((item) => {
+      const textContent = normalize(item.textContent);
+      return textContent && textContent.length <= 120;
+    })
+    .find((item) => {
+      const textContent = normalize(item.textContent);
+      return textContent === wanted || textContent.includes(wanted);
+    });
   if (!option && root !== document) return chooseVisibleOption(text, document);
   if (!option) return false;
   clickElement(option);
@@ -440,6 +447,15 @@ async function setFieldValue(element, value) {
     await sleep(250);
     for (const alias of optionAliases(value)) {
       if (chooseVisibleOption(alias)) return true;
+    }
+    const typedInput = [...document.querySelectorAll("input[type='search'], input[aria-autocomplete], .ui-select-search")]
+      .filter(isVisible)[0];
+    if (typedInput) {
+      nativeSetValue(typedInput, value);
+      await sleep(250);
+      for (const alias of optionAliases(value)) {
+        if (chooseVisibleOption(alias)) return true;
+      }
     }
     return false;
   }
@@ -1704,8 +1720,9 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
     }
     try {
       const ok = await setFieldValue(found.element, value);
-      const actual = readFieldValue(found.element);
       if (ok) {
+        await waitFor(() => valuesMatch(value, readFieldValue(found.element)), { timeout: 900, interval: 100 });
+        const actual = readFieldValue(found.element);
         result.fieldsFilled.push({ section: "clientDetails", label, selector: found.selector, expected: value, actual, rowIndex });
         if (!valuesMatch(value, actual)) {
           recordVerificationFailure(result, "clientDetails", label, "CRM field value does not match prepared payload after fill", {
@@ -1730,11 +1747,14 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
 async function fillApplicantAddresses(applicant, rawApplicant, result, rowIndex) {
   const rawAddress = rawApplicant?.address || {};
   const preparedAddress = applicant?.address || {};
+  const currentAddressSource = rawAddress.line1 || rawAddress.current || rawAddress.fullAddress || applicant?.currentAddress || preparedAddress.line1 || preparedAddress.current || preparedAddress.fullAddress;
+  const postSettlementSource = rawApplicant?.postSettlementAddress || rawAddress.postSettlement || applicant?.postSettlementAddress || preparedAddress.postSettlement || currentAddressSource;
+  const mailingSource = rawApplicant?.mailingAddress || rawAddress.mailing || applicant?.mailingAddress || preparedAddress.mailing || currentAddressSource;
   const addressRows = [
-    ["Current Address", rawAddress.line1 || rawAddress.current || rawAddress.fullAddress || applicant?.currentAddress || preparedAddress.line1 || preparedAddress.current || preparedAddress.fullAddress],
+    ["Current Address", currentAddressSource],
     ["Previous Address", rawApplicant?.previousAddress || rawApplicant?.previousResidentialAddress || rawAddress.previous || applicant?.previousAddress || preparedAddress.previous],
-    ["Post Settlement Address", rawApplicant?.postSettlementAddress || rawAddress.postSettlement || applicant?.postSettlementAddress || preparedAddress.postSettlement],
-    ["Mailing Address", rawApplicant?.mailingAddress || rawAddress.mailing || applicant?.mailingAddress || preparedAddress.mailing]
+    ["Post Settlement Address", postSettlementSource],
+    ["Mailing Address", mailingSource]
   ];
   for (const [label, addressSource] of addressRows) {
     await fillAddressForApplicant(label, applicant, addressSource, result, { rowIndex, applicantName: fullApplicantName(applicant) });
