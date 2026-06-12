@@ -727,29 +727,37 @@ function controlAfterLabel(node, value, root) {
   const direct = directControlForLabel(node, value);
   if (direct) return direct;
 
+  const nodeRect = node.getBoundingClientRect();
+  const scoreControlNearLabel = (control) => {
+    const rect = control.getBoundingClientRect();
+    const belowLabel = rect.top >= nodeRect.bottom - 4;
+    const sameColumn = rect.left <= nodeRect.right + 80 && rect.right >= nodeRect.left - 8;
+    const rightSameRow = Math.abs(rect.top - nodeRect.top) < 24 && rect.left > nodeRect.right + 20;
+    const verticalGap = Math.max(0, rect.top - nodeRect.bottom);
+    const horizontalGap = Math.abs(rect.left - nodeRect.left);
+    const rowPenalty = belowLabel ? 0 : 500;
+    const columnPenalty = sameColumn ? 0 : 300;
+    const rightRowPenalty = rightSameRow ? 800 : 0;
+    return rowPenalty + columnPenalty + rightRowPenalty + verticalGap * 4 + horizontalGap;
+  };
+
   const fieldContainer = nearestFieldContainer(node);
   if (fieldContainer) {
     const local = candidateControls(fieldContainer, value);
-    const nodeRect = node.getBoundingClientRect();
-    const sameField = local.find((control) => {
-      const rect = control.getBoundingClientRect();
-      return rect.left >= nodeRect.left - 8 && rect.top >= nodeRect.top - 12;
-    });
+    const sameField = local
+      .map((control) => ({ control, rect: control.getBoundingClientRect(), score: scoreControlNearLabel(control) }))
+      .filter(({ rect }) => rect.top >= nodeRect.top - 12 && rect.top - nodeRect.bottom < 110)
+      .sort((a, b) => a.score - b.score)[0]?.control;
     if (sameField) return sameField;
   }
 
-  const nodeRect = node.getBoundingClientRect();
   const controls = [...root.querySelectorAll(controlSelector)]
     .filter(isVisible)
     .map((control) => ({ control, rect: control.getBoundingClientRect() }))
-    .filter(({ rect }) => rect.top >= nodeRect.top - 8 && rect.left >= nodeRect.left - 12)
-    .filter(({ rect }) => rect.top - nodeRect.bottom < 90 || Math.abs(rect.top - nodeRect.top) < 45)
+    .filter(({ rect }) => rect.top >= nodeRect.top - 12 && rect.top - nodeRect.bottom < 110)
+    .filter(({ rect }) => rect.left <= nodeRect.right + 260 && rect.right >= nodeRect.left - 16)
     .sort((a, b) => {
-      const aRow = Math.abs(a.rect.top - nodeRect.top);
-      const bRow = Math.abs(b.rect.top - nodeRect.top);
-      const aDistance = aRow * 4 + Math.max(0, a.rect.left - nodeRect.left);
-      const bDistance = bRow * 4 + Math.max(0, b.rect.left - nodeRect.left);
-      return aDistance - bDistance;
+      return scoreControlNearLabel(a.control) - scoreControlNearLabel(b.control);
     });
   return controls[0]?.control || null;
 }
@@ -2552,6 +2560,13 @@ async function cleanupMisfilledClientDetails(result, rowIndex, scope = document)
   if (licenceStateValue && !isAustralianState(licenceStateValue)) {
     await setFieldValue(licenceState.element, "");
     result.actions.push({ action: "clear-invalid-field", section: "clientDetails", label: "Licence State", reason: "invalid Australian state", actual: licenceStateValue, rowIndex });
+  }
+
+  const dob = findExactByLabelText("Date of Birth", "", scope) || findByLabelText(["Date of Birth"], "", scope);
+  const dobValue = dob ? readFieldValue(dob.element) : "";
+  if (dobValue && /^(male|female|other)$/i.test(String(dobValue).trim())) {
+    await setFieldValue(dob.element, "");
+    result.actions.push({ action: "clear-invalid-field", section: "clientDetails", label: "Date of Birth", reason: "gender detected in date field", actual: dobValue, rowIndex });
   }
 }
 
