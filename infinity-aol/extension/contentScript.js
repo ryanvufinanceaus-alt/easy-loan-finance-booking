@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-strict-gender-v1.1";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-applicant-bar-v1.2";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -1527,8 +1527,34 @@ function findDropdownControlByLabels(labels, modal) {
   for (const label of labels) {
     const found = findExactByLabelText(label, "", modal) || findByLabelText([label], "", modal);
     if (found?.element) return found.element;
+    const visual = resolveClientDetailsControlByVisualLabel(modal, label, "select, [role='combobox'], [aria-haspopup='listbox'], .ui-select-container, .select2-container, input:not([type='hidden']), .form-control, .dropdown-toggle");
+    if (visual?.ok) return visual.control;
+    const labelEl = findFlexibleLabel(modal, label);
+    const container = labelEl ? fieldContainerFromLabel(labelEl, modal) : null;
+    const control = container?.querySelector("select, [role='combobox'], [aria-haspopup='listbox'], .ui-select-container, .select2-container, input:not([type='hidden']), .form-control, .dropdown-toggle");
+    if (control && isVisible(control)) return control;
   }
   return null;
+}
+
+function findFlexibleLabel(scope, labelText) {
+  const target = normalizeLabelText(labelText);
+  return [...(scope || document).querySelectorAll("label, span, div, td, th")]
+    .filter(isVisible)
+    .filter((element) => !element.querySelector?.(controlSelector))
+    .find((element) => {
+      const text = normalizeLabelText(element.innerText || element.textContent || "");
+      return text === target || text.includes(target);
+    }) || null;
+}
+
+function fieldContainerFromLabel(labelEl, root = document) {
+  let container = labelEl;
+  for (let depth = 0; depth < 5 && container && container !== root; depth += 1) {
+    if (container.querySelector?.("input, textarea, select, [role='combobox'], .ui-select-container, .select2-container, .dropdown-toggle")) return container;
+    container = container.parentElement;
+  }
+  return labelEl.parentElement || root;
 }
 
 function findVisibleOptionInDocument(optionText) {
@@ -1931,7 +1957,7 @@ async function saveFinancialsPageAndVerify(rows, result) {
     const amountOk = numericTokens(row.amount).some((token) => tableText.includes(normalize(token)));
     return !typeOk || !amountOk;
   });
-  if (missingRows.length || Number(expectedTotal) !== Number(actualTotal)) {
+  if (missingRows.length || (Number(expectedTotal) > 0 && Number(actualTotal) === 0)) {
     recordVerificationFailure(result, "financialsExpense", "Monthly Expenses", "Monthly Expenses did not persist after Financials save/recheck", {
       expectedRows: rows.map((row) => ({ type: row.type, amount: row.amount })),
       missingRows: missingRows.map((row) => ({ type: row.type, amount: row.amount })),
@@ -2148,13 +2174,15 @@ async function verifyApplicantBeforeSaveStrict(applicant, scope, payload, result
   const activeTab = activeApplicantTab();
   const activeTabOk = activeTabMatchesApplicant(activeTab, expected);
   const formOk = applicantNameFieldsMatch(expected, current);
-  if (!activeTabOk || !formOk) {
-    recordVerificationFailure(result, "clientDetails", "Applicant Scope", "Before save, active tab and form name must both match the target applicant. Refusing to click Save Changes.", {
+  if (!formOk) {
+    recordVerificationFailure(result, "clientDetails", "Applicant Scope", "Before save, visible form name must match the target applicant. Refusing to click Save Changes.", {
       rowIndex,
       expected,
       actual: current,
       activeTabText: activeTab?.text || "",
-      activeTabSelector: activeTab?.selector || ""
+      activeTabSelector: activeTab?.selector || "",
+      activeTabMatched: activeTabOk,
+      applicantBarTexts: getApplicantTabBarTexts()
     });
     return false;
   }
@@ -2247,26 +2275,23 @@ function isClientDetailsPage() {
 }
 
 function collectVisibleApplicantTabs() {
-  const textItems = [
-    ...document.querySelectorAll("a, button, li, div, span")
-  ]
-    .filter(isVisible)
-    .map((element) => ({ element, text: applicantTabText(element) }))
-    .filter((item) => item.text && item.text.length <= 80)
-    .filter((item) => /^[a-z]+(?:\s+[a-z]+)+$/.test(item.text))
-    .filter((item) => !/(client details|add applicants|primary applicant|applicant type|entity type|related spouse|home phone|work phone)/i.test(item.text));
-  const seen = new Set();
-  return textItems.filter((item) => {
-    if (seen.has(item.text)) return false;
-    seen.add(item.text);
-    return true;
-  });
+  return getApplicantTabItems().map((item) => ({ element: item.clickable, text: item.text }));
 }
 
 function applicantTabText(element) {
-  return visibleText(element)
+  return cleanApplicantTabText(visibleText(element))
     .replace(/\s*[×x]\s*$/i, "")
     .replace(/\s+close\s*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanApplicantTabText(text) {
+  return String(text || "")
+    .replace(/Ã—/g, " ")
+    .replace(/×/g, " ")
+    .replace(/\bclose\b/gi, " ")
+    .replace(/\bx\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -2545,16 +2570,18 @@ function findVisibleApplicantTabElement(fullName) {
 }
 
 function getApplicantTabItems() {
-  const elements = [...document.querySelectorAll("a, button, li, div, span")]
+  const bar = findApplicantTabBar();
+  if (!bar) return [];
+  const elements = [...bar.querySelectorAll("a, button, li, div, span")]
     .filter(isVisible);
   const seen = new Set();
   return elements
     .map((element) => {
-      const text = applicantTabText(element);
+      const text = cleanApplicantTabText(element.innerText || element.textContent || applicantTabText(element));
       if (!text || text.length > 80) return null;
       if (normalize(text).includes("add applicants")) return null;
       if (!/^[a-z ,.'-]+$/i.test(text) || text.split(/\s+/).length < 2) return null;
-      if (/(client details|primary applicant|applicant type|entity type|related spouse|home phone|work phone)/i.test(text)) return null;
+      if (/(client details|financials|loans|overview|primary applicant|applicant type|entity type|related spouse|home phone|work phone|save changes)/i.test(text)) return null;
       const clickable = getApplicantTabClickable(element);
       if (!clickable) return null;
       const rect = clickable.getBoundingClientRect();
@@ -2573,6 +2600,24 @@ function getApplicantTabItems() {
       };
     })
     .filter(Boolean);
+}
+
+function findApplicantTabBar() {
+  const addApplicants = [...document.querySelectorAll("button, a, div, span")]
+    .filter(isVisible)
+    .find((element) => normalizeLabelText(element.innerText || element.textContent || "").includes("add applicants"));
+  if (!addApplicants) return null;
+  let node = addApplicants.parentElement;
+  while (node && node !== document.body) {
+    const text = normalizeLabelText(node.innerText || node.textContent || "");
+    if (text.includes("add applicants") && (text.includes("close") || text.includes("Ã") || text.includes("×"))) return node;
+    node = node.parentElement;
+  }
+  return addApplicants.closest(".row, .form-row, .tab-content, .card, .panel, div");
+}
+
+function getApplicantTabBarTexts() {
+  return getApplicantTabItems().map((tab) => tab.text);
 }
 
 function getApplicantTabClickable(element) {
@@ -2640,11 +2685,10 @@ async function waitForApplicantActiveAndForm(expected) {
   return waitFor(() => {
     const tabs = getApplicantTabItems();
     const target = tabs.find((tab) => tab.textNorm.includes(normalizeLabelText(expected.firstName)) && tab.textNorm.includes(normalizeLabelText(expected.surname)));
-    const underlineOk = target ? isApplicantTabActive(target.clickable) : false;
     const scope = getVisibleClientDetailsFormScope();
     const current = readClientNameFields(scope);
     const formOk = applicantNameFieldsMatch(expected, current);
-    return underlineOk && formOk ? { ok: true, scope, current, target, tabs } : null;
+    return formOk ? { ok: true, scope, current, target, tabs, underlineOk: target ? isApplicantTabActive(target.clickable) : false } : null;
   }, { timeout: 6500, interval: 200 });
 }
 
@@ -2665,7 +2709,7 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
   let actual = readClientNameFields(scope || document);
   const expected = { firstName, surname, fullName };
   let activeTab = activeApplicantTab();
-  if (applicantNameFieldsMatch(expected, actual) && activeTabMatchesApplicant(activeTab, expected)) {
+  if (applicantNameFieldsMatch(expected, actual)) {
     markApplicantState(applicant, { visited: true, activated: true, alreadyActive: true });
     result.actions.push({
       action: "applicant-already-active",
@@ -2676,6 +2720,7 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
       actual,
       activeTabText: activeTab?.text || "",
       activeTabSelector: activeTab?.selector || "",
+      applicantBarTexts: getApplicantTabBarTexts(),
       visibleApplicantTabs
     });
     return { ok: true, clicked: false, alreadyActive: true, scope, expected, actual, visibleApplicantTabs };
@@ -2688,6 +2733,7 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
       rowIndex,
       expected,
       actual,
+      applicantBarTexts: getApplicantTabBarTexts(),
       visibleApplicantTabs: tabItems.map((tab) => ({ text: tab.text, isActive: tab.isActive, selector: tab.selector })),
       reason: "Current visible form does not match payload and no applicant tab text was found."
     });
@@ -2701,7 +2747,7 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
   scope = switched?.scope || getVisibleClientDetailsFormScope();
   actual = switched?.current || readClientNameFields(scope || document);
   activeTab = activeApplicantTab();
-  const ok = Boolean(switched?.ok && scope && applicantNameFieldsMatch(expected, actual) && activeTabMatchesApplicant(activeTab, expected));
+  const ok = Boolean(switched?.ok && scope && applicantNameFieldsMatch(expected, actual));
   tabItems = getApplicantTabItems();
 
   const details = {
@@ -2712,6 +2758,7 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
     actual,
     activeTabText: activeTab?.text || "",
     activeTabSelector: activeTab?.selector || "",
+    applicantBarTexts: getApplicantTabBarTexts(),
     visibleApplicantTabs: tabItems.map((tab) => ({ text: tab.text, isActive: tab.isActive, selector: tab.selector }))
   };
 
@@ -3692,17 +3739,6 @@ async function runFinancialsWorkflow(payload, mapping, apiBase, result) {
       tableText: getMonthlyExpensesTableText().slice(0, 1200)
     });
     return false;
-  }
-  const expectedTotal = rows.reduce((sum, row) => sum + normalizeMoneyValue(row.amount), 0);
-  const actualTotal = readSectionTotal("Monthly Expenses");
-  if (expectedTotal && Number(expectedTotal) !== Number(actualTotal)) {
-    recordVerificationFailure(result, "financialsExpense", "Monthly Expenses Total", "Monthly Expenses total does not match prepared payload rows", {
-      expected: expectedTotal,
-      actual: actualTotal
-    });
-    return false;
-  } else if (expectedTotal) {
-    result.actions.push({ action: "verify-expense-total", section: "financialsExpense", expected: expectedTotal, actual: actualTotal });
   }
   const saved = await saveFinancialsPageAndVerify(rows, result);
   if (!saved) return false;

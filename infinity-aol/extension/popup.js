@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-strict-gender-v1.1";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-applicant-bar-v1.2";
 
 const state = {
   prepared: null,
