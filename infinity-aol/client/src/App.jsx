@@ -211,8 +211,10 @@ function initialManualIntake(caseData) {
 
 async function api(path, options) {
   const { headers, ...fetchOptions } = options || {};
+  const method = fetchOptions.method || "GET";
   const response = await fetch(`${apiBase}${path}`, {
     ...fetchOptions,
+    cache: "no-store",
     headers: { accept: "application/json", "content-type": "application/json", ...(headers || {}) }
   });
   const contentType = response.headers.get("content-type") || "";
@@ -227,6 +229,7 @@ async function api(path, options) {
   }
 
   if (!contentType.includes("application/json")) {
+    const shortBody = text.replace(/\s+/g, " ").trim().slice(0, 120);
     console.error("Expected JSON API response", {
       url: `${apiBase}${path}`,
       status: response.status,
@@ -235,7 +238,7 @@ async function api(path, options) {
     });
     throw new Error(response.status === 401
       ? "Your session has expired. Please log in again."
-      : "API connection issue. The server returned a web page instead of data.");
+      : `API connection issue on ${method} ${path}. Server returned ${contentType || "unknown content"} ${response.status}${shortBody ? `: ${shortBody}` : ""}`);
   }
 
   if (!response.ok) throw new Error(data?.detail || data?.error || response.statusText || "API request failed.");
@@ -5108,6 +5111,13 @@ export default function App() {
     });
   }
 
+  async function refreshCaseSidePanels(caseId = selectedCaseId) {
+    await Promise.all([
+      api("/api/audit-log").then(setAuditLog).catch(() => {}),
+      caseId ? api(`/api/cases/${caseId}/history`).then(setCaseHistory).catch(() => {}) : Promise.resolve()
+    ]);
+  }
+
   function openEasyFlowCase(caseId = "") {
     const cleanCaseId = String(caseId || "").trim();
     if (cleanCaseId) selectCase(cleanCaseId);
@@ -5183,8 +5193,7 @@ export default function App() {
       });
       setPrepared(result);
       if (result.documentDraft || result.payload?.documentIntake) setDocumentDraft(result.documentDraft || result.payload.documentIntake);
-      setAuditLog(await api("/api/audit-log"));
-      setCaseHistory(await api(`/api/cases/${selectedCaseId}/history`));
+      await refreshCaseSidePanels(selectedCaseId);
       return true;
     } catch (err) {
       setError(err.message);
@@ -5260,15 +5269,21 @@ export default function App() {
       const endpoint = prepare ? "intake-and-prepare" : "document-intake";
       const response = await fetch(`${apiBase}/api/cases/${selectedCaseId}/${endpoint}`, {
         method: "POST",
+        cache: "no-store",
         body: formData
       });
-      if (!response.ok) throw new Error((await response.json()).error || response.statusText);
+      const contentType = response.headers.get("content-type") || "";
+      const text = await response.text();
+      if (!contentType.includes("application/json")) {
+        const shortBody = text.replace(/\s+/g, " ").trim().slice(0, 120);
+        throw new Error(`API connection issue on POST /api/cases/${selectedCaseId}/${endpoint}. Server returned ${contentType || "unknown content"} ${response.status}${shortBody ? `: ${shortBody}` : ""}`);
+      }
+      const result = text ? JSON.parse(text) : {};
+      if (!response.ok) throw new Error(result.error || response.statusText);
 
-      const result = await response.json();
       setDocumentDraft(result.draft || result.documentDraft);
       if (prepare) setPrepared(result);
-      setAuditLog(await api("/api/audit-log"));
-      setCaseHistory(await api(`/api/cases/${selectedCaseId}/history`));
+      await refreshCaseSidePanels(selectedCaseId);
     } catch (err) {
       setError(err.message);
     } finally {
