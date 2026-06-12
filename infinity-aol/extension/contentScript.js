@@ -2189,9 +2189,108 @@ function findVisibleApplicantTabElement(fullName) {
   return loose?.element || null;
 }
 
+function getApplicantTabItems() {
+  const elements = [...document.querySelectorAll("a, button, li, div, span")]
+    .filter(isVisible);
+  const seen = new Set();
+  return elements
+    .map((element) => {
+      const text = applicantTabText(element);
+      if (!text || text.length > 80) return null;
+      if (normalize(text).includes("add applicants")) return null;
+      if (!/^[a-z ,.'-]+$/i.test(text) || text.split(/\s+/).length < 2) return null;
+      if (/(client details|primary applicant|applicant type|entity type|related spouse|home phone|work phone)/i.test(text)) return null;
+      const clickable = getApplicantTabClickable(element);
+      if (!clickable) return null;
+      const rect = clickable.getBoundingClientRect();
+      if (rect.width < 70 || rect.height < 16 || rect.height > 100) return null;
+      const key = `${normalize(text)}:${Math.round(rect.left)}:${Math.round(rect.top)}`;
+      if (seen.has(key)) return null;
+      seen.add(key);
+      return {
+        text,
+        textNorm: normalizeLabelText(text),
+        element,
+        clickable,
+        rect,
+        selector: describeElement(clickable),
+        isActive: isApplicantTabActive(clickable)
+      };
+    })
+    .filter(Boolean);
+}
+
+function getApplicantTabClickable(element) {
+  if (!element) return null;
+  const text = normalize(element.innerText || element.textContent || "");
+  if (text === "x" || text === "×") return null;
+  const clickable = element.closest("li, a, button, [role='tab'], [ng-click], [data-ng-click], .nav-link, .tab") || element;
+  const clickableText = normalize(clickable.innerText || clickable.textContent || "");
+  if (clickableText === "x" || clickableText === "×") return null;
+  return clickable;
+}
+
+function isGreenishCssColor(value) {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("green") || text.includes("teal")) return true;
+  const rgb = text.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (!rgb) return false;
+  const [, r, g, b] = rgb.map(Number);
+  return g >= 90 && g >= r * 1.15 && g >= b * 1.05;
+}
+
+function isApplicantTabActive(tabEl) {
+  if (!tabEl || !isVisible(tabEl)) return false;
+  const rect = tabEl.getBoundingClientRect();
+  const style = getComputedStyle(tabEl);
+  if (tabEl.classList.contains("active") || tabEl.classList.contains("selected") || tabEl.getAttribute("aria-selected") === "true") return true;
+  if (parseFloat(style.borderBottomWidth || "0") >= 2 && isGreenishCssColor(style.borderBottomColor)) return true;
+  return [...document.querySelectorAll("div, span, a, li")]
+    .filter(isVisible)
+    .some((line) => {
+      const lineRect = line.getBoundingClientRect();
+      if (lineRect.height < 1 || lineRect.height > 6) return false;
+      const underTab = lineRect.top >= rect.bottom - 10 &&
+        lineRect.top <= rect.bottom + 14 &&
+        lineRect.left >= rect.left - 12 &&
+        lineRect.right <= rect.right + 12;
+      if (!underTab) return false;
+      const lineStyle = getComputedStyle(line);
+      return isGreenishCssColor(lineStyle.backgroundColor) ||
+        isGreenishCssColor(lineStyle.borderBottomColor) ||
+        isGreenishCssColor(lineStyle.borderColor) ||
+        isGreenishCssColor(lineStyle.color);
+    });
+}
+
+function clickApplicantTabBody(tabItem) {
+  const tab = tabItem?.clickable || tabItem;
+  if (!tab) return false;
+  const rect = tab.getBoundingClientRect();
+  const x = rect.left + rect.width * 0.42;
+  const y = rect.top + rect.height * 0.55;
+  for (const type of ["mousemove", "mousedown", "mouseup", "click"]) {
+    tab.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
+  }
+  return true;
+}
+
+async function waitForApplicantActiveAndForm(expected) {
+  return waitFor(() => {
+    const tabs = getApplicantTabItems();
+    const target = tabs.find((tab) => tab.textNorm.includes(normalizeLabelText(expected.firstName)) && tab.textNorm.includes(normalizeLabelText(expected.surname)));
+    const underlineOk = target ? isApplicantTabActive(target.clickable) : false;
+    const scope = getVisibleClientDetailsFormScope();
+    const current = readClientNameFields(scope);
+    const formOk = applicantNameFieldsMatch(expected, current);
+    return underlineOk && formOk ? { ok: true, scope, current, target, tabs } : null;
+  }, { timeout: 6500, interval: 200 });
+}
+
 async function activateInfinityApplicantTab(applicant, result, rowIndex) {
   const { fullName, firstName, surname } = applicantNameParts(applicant);
-  const visibleApplicantTabs = collectVisibleApplicantTabs().map((item) => item.text);
+  let tabItems = getApplicantTabItems();
+  const visibleApplicantTabs = tabItems.map((item) => item.text);
   if (!fullName || !firstName || !surname) {
     recordFieldSkipped(result, "clientDetails", fullName || `Applicant ${rowIndex + 1}`, "Applicant name incomplete; skipped to avoid filling wrong tab", {
       rowIndex,
@@ -2218,38 +2317,39 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
     return { ok: true, clicked: false, alreadyActive: true, scope, expected, actual, visibleApplicantTabs };
   }
 
-  const tabElement = findVisibleApplicantTabElement(fullName);
-  const clickTarget = closestClickable(tabElement);
-  if (!clickTarget) {
+  const targetTab = tabItems.find((tab) => tab.textNorm === normalizeLabelText(fullName)) ||
+    tabItems.find((tab) => tab.textNorm.includes(normalizeLabelText(firstName)) && tab.textNorm.includes(normalizeLabelText(surname)));
+  if (!targetTab) {
     recordError(result, "clientDetails", fullName, `Applicant tab not found for ${fullName}`, {
       rowIndex,
       expected,
       actual,
-      visibleApplicantTabs,
+      visibleApplicantTabs: tabItems.map((tab) => ({ text: tab.text, isActive: tab.isActive, selector: tab.selector })),
       reason: "Current visible form does not match payload and no applicant tab text was found."
     });
     return { ok: false, clicked: false, scope: null, expected, actual, visibleApplicantTabs };
   }
 
-  clickElement(clickTarget);
+  clickApplicantTabBody(targetTab);
   await waitForAngularSettle();
-  await sleep(700);
-  const active = await waitForActiveApplicant(fullName);
-  scope = getVisibleClientDetailsFormScope() || getActiveApplicantScope(fullName);
-  actual = readClientNameFields(scope || document);
-  const ok = Boolean(scope && applicantNameFieldsMatch(expected, actual));
+  await sleep(900);
+  const switched = await waitForApplicantActiveAndForm(expected);
+  scope = switched?.scope || getVisibleClientDetailsFormScope();
+  actual = switched?.current || readClientNameFields(scope || document);
+  const ok = Boolean(switched?.ok && scope && applicantNameFieldsMatch(expected, actual));
+  tabItems = getApplicantTabItems();
 
   const details = {
     rowIndex,
     clicked: true,
-    selectorUsed: active ? visibleText(active) : "",
+    selectorUsed: targetTab.selector,
     expected,
     actual,
-    visibleApplicantTabs
+    visibleApplicantTabs: tabItems.map((tab) => ({ text: tab.text, isActive: tab.isActive, selector: tab.selector }))
   };
 
   if (!ok) {
-    recordError(result, "clientDetails", fullName, "Applicant tab did not activate or visible form does not match payload. Stopped this applicant before filling.", details);
+    recordVerificationFailure(result, "clientDetails", "Applicant Switch", "Clicked applicant tab but active underline/form did not verify for target applicant. Stopped before filling.", details);
     return { ok: false, clicked: true, scope: null, ...details };
   }
 
@@ -2728,6 +2828,14 @@ async function fillClientDetailsCriticalText(scope, applicantKey, label, value, 
 async function fillClientDetailsCriticalDate(scope, applicantKey, label, value, result, meta = {}) {
   if (value === undefined || value === null || value === "") return false;
   const expected = formatDateValue(value, "au");
+  if (["male", "female", "other"].includes(normalizeLabelText(expected))) {
+    recordVerificationFailure(result, "clientDetails", label, "Refusing to fill gender-like value into date field", {
+      ...meta,
+      expected,
+      selector: "fillClientDetailsCriticalDate"
+    });
+    return false;
+  }
   const resolved = resolveClientDetailsControlByVisualLabel(scope, label, "input:not([type='hidden'])");
   if (!resolved.ok) {
     recordVerificationFailure(result, "clientDetails", label, "Could not resolve correct control for critical Client Details date field", {

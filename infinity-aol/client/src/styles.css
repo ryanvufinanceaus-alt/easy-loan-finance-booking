@@ -1434,7 +1434,7 @@ pre {
   border-radius: 8px;
   display: grid;
   gap: 14px;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, auto);
+  grid-template-columns: minmax(0, 1fr);
   padding: 10px;
 }
 
@@ -1503,8 +1503,8 @@ pre {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  justify-content: flex-end;
-  min-width: 180px;
+  justify-content: flex-start;
+  min-width: 0;
 }
 
 .submission-row-actions button {
