@@ -133,6 +133,9 @@
     window.__easyflowDemoRuntime = { onMessage: { addListener(fn) { window.__easyflowListeners.push(fn); } } };
     const demoState = {
       active: 0,
+      dirty: false,
+      blockedAddressClicks: [],
+      blockedApplicantSwitches: [],
       currentAddressLabel: null,
       applicants: [
         { firstName: "Arsalan", surname: "Saleem", title: "Mr.", gender: "Male", primaryApplicant: "Yes", mobile: "0469802339", email: "arsalan.saleem@icloud.com" },
@@ -152,6 +155,7 @@
     const fieldEls = () => [...document.querySelectorAll("[data-field]")];
     function loadApplicant(index) {
       demoState.active = index;
+      demoState.dirty = false;
       document.querySelectorAll(".applicant-tab").forEach((tab) => tab.classList.toggle("active", Number(tab.dataset.index) === index));
       const applicant = demoState.applicants[index];
       fieldEls().forEach((el) => {
@@ -165,6 +169,7 @@
     function saveApplicant() {
       const applicant = demoState.applicants[demoState.active];
       fieldEls().forEach((el) => { applicant[el.dataset.field] = el.value; });
+      demoState.dirty = false;
       const toast = document.getElementById("toast");
       toast.classList.add("show");
       setTimeout(() => toast.classList.remove("show"), 1500);
@@ -179,6 +184,10 @@
       });
     }
     function openAddressModal(label) {
+      if (demoState.dirty) {
+        demoState.blockedAddressClicks.push({ label, active: demoState.active, reason: "unsaved changes" });
+        return;
+      }
       demoState.currentAddressLabel = label;
       document.getElementById("address-modal").classList.add("show");
     }
@@ -204,15 +213,21 @@
     document.querySelectorAll(".applicant-tab").forEach((tab) => {
       tab.addEventListener("click", (event) => {
         if (event.target.matches("[data-remove]")) return;
+        if (demoState.dirty) {
+          demoState.blockedApplicantSwitches.push({ from: demoState.active, to: Number(tab.dataset.index), reason: "unsaved changes" });
+          return;
+        }
         loadApplicant(Number(tab.dataset.index));
       });
     });
+    fieldEls().forEach((el) => el.addEventListener("input", () => { demoState.dirty = true; }));
+    fieldEls().forEach((el) => el.addEventListener("change", () => { demoState.dirty = true; }));
     document.querySelectorAll("[data-edit-address]").forEach((link) => link.addEventListener("click", () => openAddressModal(link.dataset.editAddress)));
     document.querySelectorAll("[data-delete-address]").forEach((link) => link.addEventListener("click", () => deleteAddress(link.dataset.deleteAddress)));
     document.getElementById("save-changes").addEventListener("click", saveApplicant);
     document.getElementById("close-modal").addEventListener("click", closeAddressModal);
     document.getElementById("save-modal").addEventListener("click", saveAddressModal);
-    loadApplicant(0);
+    loadApplicant(1);
     history.replaceState(null, "", "/accounts#!/details");
   </script>
   <script src="/contentScript.js"></script>
@@ -227,9 +242,7 @@
           maritalStatus: "Married", relatedSpouse: "Araj Khan", currentHousingSituation: "Renting",
           permanentInAustralia: "Yes", country: "Australia", numberOfDependants: "0",
           driversLicenceNo: "21316568", licenceExpiryDate: "2028-07-31", licenceState: "NSW", licenceClass: "C",
-          address: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" },
-          postSettlementAddress: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" },
-          mailingAddress: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" }
+          address: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" }
         },
         secondary: {
           firstName: "Araj", surname: "Khan", title: "Mrs.", gender: "Female",
@@ -237,9 +250,7 @@
           maritalStatus: "Married", relatedSpouse: "Arsalan Saleem", currentHousingSituation: "Renting",
           permanentInAustralia: "Yes", country: "Australia", numberOfDependants: "0",
           driversLicenceNo: "26172973", licenceExpiryDate: "2031-02-03", licenceState: "NSW", licenceClass: "C",
-          address: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" },
-          postSettlementAddress: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" },
-          mailingAddress: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" }
+          address: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" }
         }
       }
     };
@@ -272,6 +283,10 @@
         postSettlementLeftBlank: !demoState.addresses.some((rows) => rows["Post Settlement Address"]),
         mailingLeftBlank: !demoState.addresses.some((rows) => rows["Mailing Address"]),
         housingRenting: demoState.applicants.every((item) => item.currentHousingSituation === "Renting")
+        ,
+        noAddressClickBlockedByDirtyState: demoState.blockedAddressClicks.length === 0
+        ,
+        noApplicantSwitchBlockedByDirtyState: demoState.blockedApplicantSwitches.length === 0
       };
       report.textContent = JSON.stringify({ ok: Object.values(checks).every(Boolean), checks, result, finalState }, null, 2);
     }

@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "legacy-address-single-save-v2.10";
+const EASYFLOW_EXTENSION_BUILD_ID = "clean-save-before-address-v2.11";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -247,9 +247,20 @@ function setNativeValue(element, value) {
 }
 
 function clickElement(element) {
-  element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-  element.click();
-  element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  const rect = element.getBoundingClientRect?.();
+  const init = {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+    clientX: rect ? rect.left + rect.width / 2 : 0,
+    clientY: rect ? rect.top + rect.height / 2 : 0
+  };
+  const PointerCtor = typeof PointerEvent !== "undefined" ? PointerEvent : MouseEvent;
+  element.dispatchEvent(new PointerCtor("pointerdown", init));
+  element.dispatchEvent(new MouseEvent("mousedown", init));
+  element.dispatchEvent(new PointerCtor("pointerup", init));
+  element.dispatchEvent(new MouseEvent("mouseup", init));
+  element.click?.();
 }
 
 function angularClickElement(element) {
@@ -514,6 +525,31 @@ async function clickPageSaveIfVisible() {
   await clickAtCenter(save);
   await sleep(900);
   return true;
+}
+
+async function saveVisibleClientDetailsBeforeSwitch(result, meta = {}) {
+  if (activeModal()) return false;
+  const save = findSaveChangesButton(document);
+  if (!save || !isVisible(save) || isUnsafeFinalAction(save) || isDisabled(save)) return false;
+  result?.actions?.push?.({
+    action: "pre-switch-save-visible-client-details",
+    section: "clientDetails",
+    saveSelector: describeElement(save),
+    saveRect: rectJson(save.getBoundingClientRect()),
+    ...meta
+  });
+  await clickAtCenter(save);
+  const saved = await waitForSaveComplete();
+  if (!saved) {
+    result?.warnings?.push?.({
+      section: "clientDetails",
+      label: "Save Changes",
+      message: "Pre-switch Save Changes was clicked but no save toast/settle signal was detected; continuing with guarded applicant click.",
+      ...meta
+    });
+  }
+  await waitForAngularSettle();
+  return Boolean(saved);
 }
 
 function findSaveChangesButton(root = document) {
@@ -1220,6 +1256,11 @@ function advanceRepeatCursor(section, payload, rowIndex, rowCount) {
 }
 
 async function logAutofill(apiBase, payload, result) {
+  if (!apiBase) {
+    result.warnings = result.warnings || [];
+    result.warnings.push({ label: "Audit log", message: "Audit log skipped because apiBase is not available in demo/local mode." });
+    return;
+  }
   try {
     await fetch(`${apiBase}/api/infinity/autofill-log`, {
       method: "POST",
@@ -1235,7 +1276,8 @@ async function logAutofill(apiBase, payload, result) {
       })
     });
   } catch (error) {
-    result.errors.push({ label: "Audit log", message: error.message });
+    result.warnings = result.warnings || [];
+    result.warnings.push({ label: "Audit log", message: error.message });
   }
 }
 
@@ -3533,6 +3575,17 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
     return { ok: true, clicked: false, alreadyActive: true, scope, expected, actual, visibleApplicantTabs };
   }
 
+  if (!applicantNameFieldsBlank(actual)) {
+    await saveVisibleClientDetailsBeforeSwitch(result, {
+      rowIndex,
+      targetApplicant: fullName,
+      currentFirstName: actual.firstName || "",
+      currentSurname: actual.surname || "",
+      reason: "clean-unsaved-before-applicant-switch"
+    });
+    await sleep(350);
+  }
+
   await scrollToText(["Add Applicants", fullName, firstName], document);
   await sleep(250);
   tabItems = getApplicantTabItems();
@@ -5060,26 +5113,12 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     await fillClientDetailsDirect(applicant, result, index, scope, payload);
     markApplicantState(applicant, { filled: true });
 
-    active = await freshVerifiedApplicantScope(applicant, result, index, "address-fill-before-save");
-    if (!active.ok) {
-      markApplicantState(applicant, { verifiedAfterSave: false });
-      continue;
-    }
-    scope = active.scope;
-    const addressesOk = await fillApplicantAddresses(applicant, rawApplicant || applicant, result, index);
-    if (!addressesOk) {
-      markApplicantState(applicant, { verifiedAfterSave: false });
-      setClientDetailsWriteMode("readonly-verify", `Address failed before final save: ${name}`, result, { rowIndex: index });
-      advanceAutomationProgress(`Client Details address failed: ${name || `Applicant ${index + 1}`}`);
-      continue;
-    }
-
     active = await freshVerifiedApplicantScope(applicant, result, index, "before-final-save");
     if (!active.ok) continue;
     scope = active.scope;
     setClientDetailsWriteMode("filling-applicant", `Final date refill before save: ${name}`, result, { rowIndex: index });
     await fillDeferredClientDetailsDateFields(applicant, result, index, scope);
-    setClientDetailsWriteMode("readonly-verify", `Finished Client Details field/address fill for ${name}; final save`, result, { rowIndex: index });
+    setClientDetailsWriteMode("readonly-verify", `Finished Client Details field fill for ${name}; saving before address`, result, { rowIndex: index });
     const beforeSave = await verifyApplicantCriticalFields(applicant, scope, result, "before-save");
     const blockingBeforeSaveFailures = beforeSave.failures.filter(isBlockingClientDetailsFailure);
     if (blockingBeforeSaveFailures.length) {
@@ -5102,16 +5141,48 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
       result.actions.push({ action: "continue-after-optional-client-details-warning", section: "clientDetails", label: name, rowIndex: index, failures: beforeSave.failures });
     }
     markApplicantState(applicant, { verifiedBeforeSave: true });
-    setClientDetailsWriteMode("saving", `Saving applicant once after fields and address: ${name}`, result, { rowIndex: index });
+    setClientDetailsWriteMode("saving", `Saving applicant fields before address: ${name}`, result, { rowIndex: index });
     const saved = await saveClientDetailsAndVerify(applicant, result, index, payload);
-    markApplicantState(applicant, { saved, verifiedAfterSave: saved });
-    if (saved) {
+    if (!saved) {
+      markApplicantState(applicant, { saved: false, verifiedAfterSave: false });
+      setClientDetailsWriteMode("readonly-verify", `Field save failed; address not attempted: ${name}`, result, { rowIndex: index });
+      advanceAutomationProgress(`Client Details save before address failed: ${name || `Applicant ${index + 1}`}`);
+      continue;
+    }
+
+    active = await freshVerifiedApplicantScope(applicant, result, index, "address-fill-after-save");
+    if (!active.ok) {
+      markApplicantState(applicant, { saved: true, verifiedAfterSave: false });
+      continue;
+    }
+    scope = active.scope;
+    setClientDetailsWriteMode("filling-applicant", `Address fill after clean save: ${name}`, result, { rowIndex: index });
+    const addressesOk = await fillApplicantAddresses(applicant, rawApplicant || applicant, result, index);
+    if (!addressesOk) {
+      markApplicantState(applicant, { saved: true, verifiedAfterSave: false });
+      setClientDetailsWriteMode("readonly-verify", `Address failed after clean save: ${name}`, result, { rowIndex: index });
+      advanceAutomationProgress(`Client Details address failed: ${name || `Applicant ${index + 1}`}`);
+      continue;
+    }
+
+    await clickPageSaveIfVisible();
+    active = await freshVerifiedApplicantScope(applicant, result, index, "after-address-save");
+    scope = active.ok ? active.scope : getVisibleClientDetailsFormScope();
+    const afterAddress = await verifyApplicantCriticalFields(applicant, scope, result, "after-address-save");
+    const blockingAfterAddressFailures = afterAddress.failures.filter(isBlockingClientDetailsFailure);
+    const completed = !blockingAfterAddressFailures.length;
+    markApplicantState(applicant, { saved: completed, verifiedAfterSave: completed });
+    if (completed) {
       setClientDetailsWriteMode("completed", `Applicant completed: ${name}`, result, { rowIndex: index });
       markClientDetailsApplicantCompleted(applicant, result, index);
     } else {
-      setClientDetailsWriteMode("readonly-verify", `Save after address failed; no more Client Details writes: ${name}`, result, { rowIndex: index });
+      setClientDetailsWriteMode("readonly-verify", `Applicant failed after address save: ${name}`, result, { rowIndex: index });
+      recordVerificationFailure(result, "clientDetails", name, "Applicant fields did not verify after address save", {
+        rowIndex: index,
+        failures: blockingAfterAddressFailures
+      });
     }
-    advanceAutomationProgress(saved ? `Client Details saved, addressed, and verified: ${name || `Applicant ${index + 1}`}` : `Client Details save after address failed: ${name || `Applicant ${index + 1}`}`);
+    advanceAutomationProgress(completed ? `Client Details saved, addressed, and verified: ${name || `Applicant ${index + 1}`}` : `Client Details failed after address: ${name || `Applicant ${index + 1}`}`);
     await sleep(500);
   }
 
