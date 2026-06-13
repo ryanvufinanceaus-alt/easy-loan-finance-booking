@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-transaction-v2.2";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-final-dates-financial-flow-v2.3";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -2756,10 +2756,6 @@ function applicantCriticalChecks(applicant) {
 }
 
 function isOptionalClientDetailsFailureLabel(label) {
-  const normalizedLabel = normalizeLabelText(label || "");
-  if (normalizedLabel.includes("date of birth")) return true;
-  if (normalizedLabel.includes("licence expiry date")) return true;
-  if (normalizedLabel.includes("driver") && normalizedLabel.includes("licence") && normalizedLabel.includes("no")) return true;
   return false;
 }
 
@@ -3996,8 +3992,13 @@ async function fillClientDetailsCriticalDate(scope, applicantKey, label, value, 
     });
     return false;
   }
-  await clearAndType(resolved.control, expected);
-  await sleep(220);
+  resolved.control.focus?.();
+  nativeSetValue(resolved.control, expected);
+  resolved.control.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+  resolved.control.dispatchEvent(new Event("input", { bubbles: true }));
+  resolved.control.dispatchEvent(new Event("change", { bubbles: true }));
+  resolved.control.dispatchEvent(new Event("blur", { bubbles: true }));
+  await sleep(550);
   const actual = formatDateValue(readFieldValue(resolved.control), "au");
   result.fieldsFilled.push({ section: "clientDetails", label, selector: describeElement(resolved.control), expected, actual, nearestLabel: resolved.nearestLabel?.text || "", ...meta });
   if (!valuesMatch(expected, actual)) {
@@ -4142,12 +4143,16 @@ async function selectRelatedSpouse(value, scope, result, rowIndex, applicantName
   return fillClientDetailsCriticalDropdown(scope, applicantName, "Related Spouse", value, result, { rowIndex, applicantName });
 }
 
-async function fillClientDetailsDirect(applicant, result, rowIndex, scope = document, payload = {}) {
+async function fillClientDetailsDirect(applicant, result, rowIndex, scope = document, payload = {}, options = {}) {
   let filledCount = 0;
   const applicantName = fullApplicantName(applicant);
   traceApplicantClientDetails(result, "before-direct-fill", applicant, scope, { rowIndex, payload });
   for (const [label, key, dateFormat] of clientDetailsFieldMap()) {
     if (label === "Gender") continue;
+    if (options.deferDateFields && ["Date of Birth", "Licence Expiry Date"].includes(label)) {
+      result.actions.push({ action: "defer-client-details-date-field", section: "clientDetails", label, applicantName, rowIndex });
+      continue;
+    }
     if (!canWriteClientDetailsField(applicant, label, result, { rowIndex, phase: "direct-fill" })) continue;
     const rawValue = applicant?.[key];
     if (rawValue === undefined || rawValue === null || rawValue === "") continue;
@@ -4226,6 +4231,37 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
   return filledCount;
 }
 
+async function fillDeferredClientDetailsDateFields(applicant, result, rowIndex, scope = document) {
+  const applicantName = fullApplicantName(applicant);
+  let filledCount = 0;
+  const deferredFields = [
+    ["Date of Birth", "dateOfBirth"],
+    ["Licence Expiry Date", "licenceExpiryDate"]
+  ];
+  for (const [label, key] of deferredFields) {
+    const rawValue = applicant?.[key];
+    if (rawValue === undefined || rawValue === null || rawValue === "") {
+      recordVerificationFailure(result, "clientDetails", label, "Deferred date field missing from canonical applicant before final save", {
+        rowIndex,
+        applicantName
+      });
+      continue;
+    }
+    if (!canWriteClientDetailsField(applicant, label, result, { rowIndex, phase: "final-date-fill" })) continue;
+    const ok = await fillClientDetailsCriticalDate(scope, applicantName, label, rawValue, result, {
+      rowIndex,
+      applicantName,
+      phase: "final-date-fill"
+    });
+    if (ok) {
+      markClientDetailsFieldWritten(applicant, label);
+      filledCount += 1;
+    }
+  }
+  result.actions.push({ action: "final-client-details-date-fill-complete", section: "clientDetails", applicantName, rowIndex, filledCount });
+  return filledCount;
+}
+
 async function fillApplicantAddresses(applicant, rawApplicant, result, rowIndex) {
   const rawAddress = rawApplicant?.address || {};
   const preparedAddress = applicant?.address || {};
@@ -4233,15 +4269,25 @@ async function fillApplicantAddresses(applicant, rawApplicant, result, rowIndex)
   const postSettlementSource = rawApplicant?.postSettlementAddress || rawAddress.postSettlement || applicant?.postSettlementAddress || preparedAddress.postSettlement || currentAddressSource;
   const mailingSource = rawApplicant?.mailingAddress || rawAddress.mailing || applicant?.mailingAddress || preparedAddress.mailing || currentAddressSource;
   const addressRows = [
-    ["Current Address", currentAddressSource],
-    ["Previous Address", rawApplicant?.previousAddress || rawApplicant?.previousResidentialAddress || rawAddress.previous || applicant?.previousAddress || preparedAddress.previous],
-    ["Post Settlement Address", postSettlementSource],
-    ["Mailing Address", mailingSource]
+    ["Current Address", currentAddressSource, true],
+    ["Previous Address", rawApplicant?.previousAddress || rawApplicant?.previousResidentialAddress || rawAddress.previous || applicant?.previousAddress || preparedAddress.previous, false],
+    ["Post Settlement Address", postSettlementSource, true],
+    ["Mailing Address", mailingSource, true]
   ];
-  for (const [label, addressSource] of addressRows) {
-    await fillAddressForApplicant(label, applicant, addressSource, result, { rowIndex, applicantName: fullApplicantName(applicant) });
+  let ok = true;
+  for (const [label, addressSource, required] of addressRows) {
+    const filled = await fillAddressForApplicant(label, applicant, addressSource, result, { rowIndex, applicantName: fullApplicantName(applicant) });
+    if (!filled && required) {
+      ok = false;
+      recordVerificationFailure(result, "clientDetails", label, "Required address did not open/fill/save; applicant transaction stopped before save", {
+        rowIndex,
+        applicantName: fullApplicantName(applicant)
+      });
+      break;
+    }
     await sleep(250);
   }
+  return ok;
 }
 
 async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
@@ -4317,18 +4363,25 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     setClientDetailsWriteMode("filling-applicant", `Start single fill transaction: ${name}`, result, { rowIndex: index });
     await clearAddressGarbageFromPhoneFields(scope, result, name);
     await cleanupMisfilledClientDetails(result, index, scope);
-    await fillClientDetailsDirect(applicant, result, index, scope, payload);
+    await fillClientDetailsDirect(applicant, result, index, scope, payload, { deferDateFields: true });
     markApplicantState(applicant, { filled: true });
 
     active = await freshVerifiedApplicantScope(applicant, result, index, "address-fill");
     if (!active.ok) continue;
     scope = active.scope;
-    await fillApplicantAddresses(applicant, rawApplicant || applicant, result, index);
-    setClientDetailsWriteMode("readonly-verify", `Finished fill transaction: ${name}`, result, { rowIndex: index });
+    const addressesOk = await fillApplicantAddresses(applicant, rawApplicant || applicant, result, index);
+    if (!addressesOk) {
+      markApplicantState(applicant, { verifiedBeforeSave: false });
+      setClientDetailsWriteMode("readonly-verify", `Address failed; no save for ${name}`, result, { rowIndex: index });
+      advanceAutomationProgress(`Client Details address failed: ${name || `Applicant ${index + 1}`}`);
+      continue;
+    }
 
-    active = await freshVerifiedApplicantScope(applicant, result, index, "before-save-verify");
+    active = await freshVerifiedApplicantScope(applicant, result, index, "final-date-fill");
     if (!active.ok) continue;
     scope = active.scope;
+    await fillDeferredClientDetailsDateFields(applicant, result, index, scope);
+    setClientDetailsWriteMode("readonly-verify", `Finished final date fill for ${name}; save next`, result, { rowIndex: index });
     const beforeSave = await verifyApplicantCriticalFields(applicant, scope, result, "before-save");
     const blockingBeforeSaveFailures = beforeSave.failures.filter(isBlockingClientDetailsFailure);
     if (blockingBeforeSaveFailures.length) {
@@ -4394,21 +4447,41 @@ async function runPopupWorkflow(workflow, payload, mapping, apiBase, result) {
       continue;
     }
 
+    await scrollToText(workflow.pageHints || workflow.addLabels, document);
+    await sleep(250);
     const addButton = findClickableByText(workflow.addLabels);
     if (!addButton) {
       result.fieldsSkipped.push({
         section: workflow.sectionId,
         label: workflow.addLabels[0],
         reason: "Add/Edit button not visible on this page",
-        rowIndex: sourceIndex
+        rowIndex: sourceIndex,
+        pageHints: workflow.pageHints,
+        visibleActions: collectVisibleButtonsAndLinks().slice(0, 80)
       });
       return;
     }
 
-    result.actions.push({ action: "open-popup", section: workflow.sectionId, label: visibleText(addButton), rowIndex: sourceIndex });
-    const modal = await clickAndWaitForModal(addButton);
+    result.actions.push({
+      action: "open-popup",
+      section: workflow.sectionId,
+      label: visibleText(addButton),
+      rowIndex: sourceIndex,
+      addSelector: describeElement(addButton),
+      addRect: rectJson(addButton.getBoundingClientRect())
+    });
+    await clickAtCenter(addButton);
+    const modal = await waitFor(() => activeModal(), { timeout: 7000, interval: 180 });
     if (!modal) {
-      result.errors.push({ section: workflow.sectionId, label: workflow.addLabels[0], message: "Popup did not open", rowIndex: sourceIndex });
+      result.errors.push({
+        section: workflow.sectionId,
+        label: workflow.addLabels[0],
+        message: "Popup did not open",
+        rowIndex: sourceIndex,
+        addSelector: describeElement(addButton),
+        addRect: rectJson(addButton.getBoundingClientRect()),
+        visibleDialogs: getVisibleDialogsDebug()
+      });
       return;
     }
 
