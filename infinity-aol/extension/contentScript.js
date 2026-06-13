@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-second-tab-v1.3";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-tab-click-retry-v1.4";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -2585,7 +2585,7 @@ function getApplicantTabItems() {
       const clickable = getApplicantTabClickable(element);
       if (!clickable) return null;
       const rect = clickable.getBoundingClientRect();
-      if (rect.width < 70 || rect.height < 16 || rect.height > 100) return null;
+      if (rect.width < 35 || rect.height < 10 || rect.height > 120) return null;
       const key = `${normalize(text)}:${Math.round(rect.left)}:${Math.round(rect.top)}`;
       if (seen.has(key)) return null;
       seen.add(key);
@@ -2669,8 +2669,29 @@ function activeTabMatchesApplicant(activeTab, expected) {
   return text.includes(normalizeLabelText(expected.firstName)) && text.includes(normalizeLabelText(expected.surname));
 }
 
-async function clickApplicantTabBody(tabItem) {
-  const tab = tabItem?.clickable || tabItem;
+function applicantTabClickTargets(tabItem) {
+  const raw = [
+    tabItem?.element,
+    tabItem?.clickable,
+    tabItem?.element?.closest?.("[ng-click], [data-ng-click], [role='tab'], a, button, li, .nav-link, .tab"),
+    tabItem?.clickable?.parentElement,
+    tabItem?.element?.parentElement,
+    tabItem?.element?.parentElement?.parentElement
+  ].filter(Boolean);
+  const seen = new Set();
+  return raw.filter((element) => {
+    if (!element || seen.has(element) || !isVisible(element)) return false;
+    seen.add(element);
+    const text = normalizeLabelText(element.innerText || element.textContent || "");
+    if (text === "x" || text === "close" || text === "Ã—") return false;
+    if (text.includes("add applicants")) return false;
+    return true;
+  });
+}
+
+async function clickApplicantTabBody(tabItem, result = null, meta = {}) {
+  const targets = applicantTabClickTargets(tabItem);
+  const tab = targets[0];
   if (!tab) return false;
   await scrollElementIntoView(tab, "center");
   await sleep(250);
@@ -2680,10 +2701,40 @@ async function clickApplicantTabBody(tabItem) {
   for (const type of ["mousemove", "mousedown", "mouseup", "click"]) {
     tab.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
   }
+  tab.click?.();
+  result?.actions?.push?.({ action: "click-applicant-tab-target", section: "clientDetails", selector: describeElement(tab), targetCount: targets.length, ...meta });
   return true;
 }
 
-async function waitForApplicantActiveAndForm(expected) {
+async function clickApplicantTabUntilFormMatches(targetTab, expected, result, rowIndex) {
+  const targets = applicantTabClickTargets(targetTab);
+  for (const [attempt, target] of targets.entries()) {
+    await scrollElementIntoView(target, "center");
+    await sleep(180);
+    const rect = target.getBoundingClientRect();
+    const x = rect.left + Math.min(rect.width * 0.42, Math.max(8, rect.width - 18));
+    const y = rect.top + rect.height * 0.55;
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+      const EventCtor = type.startsWith("pointer") && typeof PointerEvent !== "undefined" ? PointerEvent : MouseEvent;
+      target.dispatchEvent(new EventCtor(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+    }
+    target.click?.();
+    result.actions.push({
+      action: "try-applicant-tab-click",
+      section: "clientDetails",
+      rowIndex,
+      attempt: attempt + 1,
+      selector: describeElement(target),
+      expected
+    });
+    await waitForAngularSettle();
+    const switched = await waitForApplicantActiveAndForm(expected, 1800);
+    if (switched?.ok) return { ok: true, switched, selectorUsed: describeElement(target), attempt: attempt + 1 };
+  }
+  return { ok: false, attempts: targets.map(describeElement) };
+}
+
+async function waitForApplicantActiveAndForm(expected, timeout = 6500) {
   return waitFor(() => {
     const tabs = getApplicantTabItems();
     const target = tabs.find((tab) => tab.textNorm.includes(normalizeLabelText(expected.firstName)) && tab.textNorm.includes(normalizeLabelText(expected.surname)));
@@ -2691,7 +2742,7 @@ async function waitForApplicantActiveAndForm(expected) {
     const current = readClientNameFields(scope);
     const formOk = applicantNameFieldsMatch(expected, current);
     return formOk ? { ok: true, scope, current, target, tabs, underlineOk: target ? isApplicantTabActive(target.clickable) : false } : null;
-  }, { timeout: 6500, interval: 200 });
+  }, { timeout, interval: 200 });
 }
 
 async function activateInfinityApplicantTab(applicant, result, rowIndex) {
@@ -2745,10 +2796,10 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
     return { ok: false, clicked: false, scope: null, expected, actual, visibleApplicantTabs };
   }
 
-  await clickApplicantTabBody(targetTab);
+  const clickResult = await clickApplicantTabUntilFormMatches(targetTab, expected, result, rowIndex);
   await waitForAngularSettle();
-  await sleep(900);
-  const switched = await waitForApplicantActiveAndForm(expected);
+  await sleep(400);
+  const switched = clickResult.switched || await waitForApplicantActiveAndForm(expected, 2500);
   scope = switched?.scope || getVisibleClientDetailsFormScope();
   actual = switched?.current || readClientNameFields(scope || document);
   activeTab = activeApplicantTab();
@@ -2758,7 +2809,9 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
   const details = {
     rowIndex,
     clicked: true,
-    selectorUsed: targetTab.selector,
+    selectorUsed: clickResult.selectorUsed || targetTab.selector,
+    clickAttempts: clickResult.attempts || undefined,
+    clickAttempt: clickResult.attempt,
     expected,
     actual,
     activeTabText: activeTab?.text || "",
