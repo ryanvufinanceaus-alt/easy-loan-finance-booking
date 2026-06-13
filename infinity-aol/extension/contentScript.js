@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-final-dates-financial-flow-v2.3";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-address-tab-safe-v2.4";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -3149,6 +3149,17 @@ function getApplicantTabClickable(element) {
   return clickable;
 }
 
+function isApplicantDeleteTarget(target) {
+  if (!target) return false;
+  const text = normalize(target.innerText || target.textContent || "");
+  const marker = normalize(`${target.className || ""} ${target.getAttribute?.("title") || ""} ${target.getAttribute?.("aria-label") || ""} ${target.getAttribute?.("ng-click") || ""} ${target.getAttribute?.("data-ng-click") || ""}`);
+  if (text === "x" || text === "Ã—" || text === "×" || text === "close") return true;
+  if (/\b(delete|remove|close)\b/.test(marker)) return true;
+  const clickable = target.closest?.("button, a, [role='button'], [ng-click], [data-ng-click], .close");
+  if (clickable && clickable !== target) return isApplicantDeleteTarget(clickable);
+  return false;
+}
+
 function isGreenishCssColor(value) {
   const text = String(value || "").toLowerCase();
   if (text.includes("green") || text.includes("teal")) return true;
@@ -3193,6 +3204,7 @@ function applicantTabClickTargets(tabItem) {
   const targets = [];
   const add = (target, reason) => {
     if (!target || !isVisible(target)) return;
+    if (isApplicantDeleteTarget(target)) return;
     const text = normalizeLabelText(target.innerText || target.textContent || "");
     if (text === "x" || text === "close" || text === "Ã—" || text === "×") return;
     if (text.includes("add applicants")) return;
@@ -3576,8 +3588,6 @@ function rowForAddressLabel(addressLabel) {
 
 function findEditButtonForAddress(addressLabel) {
   const wanted = normalize(addressLabel);
-  const addressSection = findSectionByHeading("Addresses") || document;
-  const addressSectionRect = addressSection === document ? null : addressSection.getBoundingClientRect();
   const nodes = [...document.querySelectorAll("label, span, div, p, strong, h1, h2, h3, h4, td, th")]
     .filter(isVisible)
     .filter((node) => {
@@ -3587,7 +3597,24 @@ function findEditButtonForAddress(addressLabel) {
 
   for (const node of nodes) {
     node.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
+    let container = node.parentElement;
+    for (let depth = 0; depth < 8 && container; depth += 1) {
+      const edit = findClickableByText(["Edit"], container);
+      if (edit) return edit;
+      const iconEdit = [...container.querySelectorAll("[ng-click], [data-ng-click], [onclick], a, button, span, i")]
+        .filter(isVisible)
+        .find((item) => {
+          const text = visibleText(item);
+          const marker = normalize(`${item.className || ""} ${item.getAttribute("title") || ""} ${item.getAttribute("aria-label") || ""}`);
+          return text === "edit" || text.includes("edit") || marker.includes("edit") || marker.includes("pencil");
+        });
+      if (iconEdit) return iconEdit;
+      container = container.parentElement;
+    }
+
     const labelRect = node.getBoundingClientRect();
+    const addressSection = findSectionByHeading("Addresses") || document;
+    const addressSectionRect = addressSection === document ? null : addressSection.getBoundingClientRect();
     const visualCandidates = [...document.querySelectorAll("button, a, [role='button'], [ng-click], [data-ng-click], [onclick], span, i")]
       .filter(isVisible)
       .map((item) => {
@@ -3617,21 +3644,6 @@ function findEditButtonForAddress(addressLabel) {
       .filter((candidate, index, list) => candidate.element && list.findIndex((item) => item.element === candidate.element) === index)
       .sort((a, b) => a.score - b.score);
     if (visualCandidates[0]?.element) return visualCandidates[0].element;
-
-    let container = node.parentElement;
-    for (let depth = 0; depth < 8 && container; depth += 1) {
-      const edit = findClickableByText(["Edit"], container);
-      if (edit) return edit;
-      const iconEdit = [...container.querySelectorAll("[ng-click], [data-ng-click], [onclick], a, button, span, i")]
-        .filter(isVisible)
-        .find((item) => {
-          const text = visibleText(item);
-          const marker = normalize(`${item.className || ""} ${item.getAttribute("title") || ""} ${item.getAttribute("aria-label") || ""}`);
-          return text === "edit" || text.includes("edit") || marker.includes("edit") || marker.includes("pencil");
-        });
-      if (iconEdit) return iconEdit;
-      container = container.parentElement;
-    }
   }
   return null;
 }
@@ -3647,7 +3659,6 @@ async function clickAddressEdit(addressLabel, result, meta = {}) {
     });
     return null;
   }
-  const before = activeModal();
   result.actions.push({
     action: "click-address-edit",
     section: "clientDetails",
@@ -3657,13 +3668,7 @@ async function clickAddressEdit(addressLabel, result, meta = {}) {
     editRect: rectJson(edit.getBoundingClientRect()),
     ...meta
   });
-  await clickAtCenter(edit);
-  const modal = await waitFor(() => {
-    const current = activeModal();
-    if (!current || current === before) return null;
-    const text = normalize(current.innerText || current.textContent || "");
-    return text.includes("edit address") || text.includes("address type") || text.includes("street name") ? current : null;
-  }, { timeout: 8000, interval: 180 });
+  const modal = await clickAndWaitForModal(edit);
   if (!modal) {
     recordError(result, "clientDetails", addressLabel, "Edit Address modal did not open", {
       ...meta,
