@@ -3755,6 +3755,45 @@ function rowForAddressLabel(addressLabel) {
   return null;
 }
 
+function valueTextFromElement(element) {
+  if (!element) return "";
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
+    return element.selectedOptions?.[0]?.textContent?.trim() || element.value || element.getAttribute("value") || "";
+  }
+  return element.innerText || element.textContent || element.getAttribute?.("value") || "";
+}
+
+function collectAddressValueText(row, addressLabel) {
+  const parts = [];
+  const add = (value) => {
+    const text = String(value || "").trim();
+    if (text) parts.push(text);
+  };
+  add(row?.innerText || row?.textContent || "");
+  row?.querySelectorAll?.("input:not([type='hidden']), textarea, select, [contenteditable='true'], [role='textbox']")
+    ?.forEach((control) => add(valueTextFromElement(control)));
+
+  const rowRect = row?.getBoundingClientRect?.();
+  const section = findAddressesSectionRoot();
+  if (rowRect && section) {
+    const controls = [...section.querySelectorAll("input:not([type='hidden']), textarea, select, [contenteditable='true'], [role='textbox'], div, span")]
+      .filter(isVisible)
+      .filter((element) => !isEasyFlowOverlayElement(element))
+      .map((element) => ({ element, rect: element.getBoundingClientRect(), value: valueTextFromElement(element) }))
+      .filter(({ rect, value }) => {
+        if (!looksLikeAddressValue(value)) return false;
+        const verticallyNear = rect.top >= rowRect.top - 12 && rect.top <= rowRect.bottom + 80;
+        const sameBand = rect.bottom >= rowRect.top - 12 && rect.top <= rowRect.bottom + 80;
+        const horizontallyRelevant = rect.left >= rowRect.left - 24 || rect.right >= rowRect.left;
+        return (verticallyNear || sameBand) && horizontallyRelevant;
+      })
+      .sort((a, b) => Math.abs(a.rect.top - rowRect.top) - Math.abs(b.rect.top - rowRect.top));
+    controls.slice(0, 3).forEach(({ value }) => add(value));
+  }
+
+  return parts.join(" ");
+}
+
 function findAddressesSectionRoot() {
   const headings = [...document.querySelectorAll("h1,h2,h3,h4,h5,legend,div,span")]
     .filter(isVisible)
@@ -3828,7 +3867,7 @@ function findEditButtonInAddressRow(addressLabel) {
 function addressRowHasSavedValue(addressLabel) {
   const row = rowForAddressLabel(addressLabel);
   if (!row) return false;
-  const text = normalize(row.innerText || row.textContent || "");
+  const text = normalize(collectAddressValueText(row, addressLabel));
   return Boolean(text && !text.includes("please start typing address") && /\b(\d{4}|australia|nsw|act|qld|vic|sa|wa|tas|nt)\b/.test(text));
 }
 
@@ -4327,12 +4366,13 @@ async function saveModalAndVerifyClosed(result, description) {
 async function verifyAddressRowNotPlaceholder(addressLabel, parsed, result, applicantName) {
   await scrollToText([addressLabel]);
   const row = rowForAddressLabel(addressLabel);
-  const text = normalize(row?.textContent || "");
+  const actualText = collectAddressValueText(row, addressLabel);
+  const text = normalize(actualText);
   if (!row || text.includes("please start typing address")) {
     recordVerificationFailure(result, "clientDetails", addressLabel, "Address row still shows placeholder after save", { applicantName, expected: parsed });
     return false;
   }
-  const rowText = normalize(row?.textContent || "");
+  const rowText = normalize(actualText);
   const streetName = normalize(parsed.streetName);
   const state = normalize(parsed.state);
   const postcode = normalize(parsed.postcode);
@@ -4349,7 +4389,7 @@ async function verifyAddressRowNotPlaceholder(addressLabel, parsed, result, appl
     recordVerificationFailure(result, "clientDetails", addressLabel, "Address row saved but does not match expected parsed address", {
       applicantName,
       expected: parsed,
-      actual: row?.textContent?.trim() || "",
+      actual: actualText.trim() || row?.textContent?.trim() || "",
       checks: { hasLocation, hasStreetName, hasStreetNumber, hasStreetType, hasStreet, hasUnit }
     });
     return false;
@@ -4361,7 +4401,7 @@ async function verifyAddressRowNotPlaceholder(addressLabel, parsed, result, appl
       message: "Address row saved and contains street/location, but unit format differs from parsed payload.",
       applicantName,
       expected: parsed,
-      actual: row?.textContent?.trim() || ""
+      actual: actualText.trim() || row?.textContent?.trim() || ""
     });
   }
   result.actions.push({ action: "verify-address-row", section: "clientDetails", label: addressLabel, applicantName, checks: { hasLocation, hasStreetName, hasStreetNumber, hasStreetType, hasStreet, hasUnit } });

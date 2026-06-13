@@ -95,10 +95,10 @@
         <div class="field"><label>Email</label><input data-field="email"></div>
         <section class="addresses">
           <h2>Addresses</h2>
-          <div class="address-row" data-address-row="Current Address"><span class="address-title">Current Address</span><a data-edit-address="Current Address">Edit</a><a data-delete-address="Current Address">Delete</a><div class="address-display">Please Start Typing Address</div></div>
-          <div class="address-row" data-address-row="Previous Address"><span class="address-title">Previous Address</span><a data-edit-address="Previous Address">Edit</a><a data-delete-address="Previous Address">Delete</a><div class="address-display">Please Start Typing Address</div></div>
-          <div class="address-row" data-address-row="Post Settlement Address"><span class="address-title">Post Settlement Address</span><a data-edit-address="Post Settlement Address">Edit</a><a data-delete-address="Post Settlement Address">Delete</a><div class="address-display">Please Start Typing Address</div></div>
-          <div class="address-row" data-address-row="Mailing Address"><span class="address-title">Mailing Address</span><a data-edit-address="Mailing Address">Edit</a><a data-delete-address="Mailing Address">Delete</a><div class="address-display">Please Start Typing Address</div></div>
+          <div class="address-row" data-address-row="Current Address"><span class="address-title">Current Address</span><a data-edit-address="Current Address">Edit</a><a data-delete-address="Current Address">Delete</a><input class="address-display" value="Please Start Typing Address" readonly></div>
+          <div class="address-row" data-address-row="Previous Address"><span class="address-title">Previous Address</span><a data-edit-address="Previous Address">Edit</a><a data-delete-address="Previous Address">Delete</a><input class="address-display" value="Please Start Typing Address" readonly></div>
+          <div class="address-row" data-address-row="Post Settlement Address"><span class="address-title">Post Settlement Address</span><a data-edit-address="Post Settlement Address">Edit</a><a data-delete-address="Post Settlement Address">Delete</a><input class="address-display" value="Please Start Typing Address" readonly></div>
+          <div class="address-row" data-address-row="Mailing Address"><span class="address-title">Mailing Address</span><a data-edit-address="Mailing Address">Edit</a><a data-delete-address="Mailing Address">Delete</a><input class="address-display" value="Please Start Typing Address" readonly></div>
         </section>
         <section class="employment"><h2>Employment</h2><button>Add Employment</button></section>
       </div>
@@ -173,7 +173,9 @@
       const addressSet = demoState.addresses[demoState.active] || {};
       document.querySelectorAll("[data-address-row]").forEach((row) => {
         const label = row.dataset.addressRow;
-        row.querySelector(".address-display").textContent = addressSet[label] || "Please Start Typing Address";
+        const display = row.querySelector(".address-display");
+        if ("value" in display) display.value = addressSet[label] || "Please Start Typing Address";
+        else display.textContent = addressSet[label] || "Please Start Typing Address";
       });
     }
     function openAddressModal(label) {
