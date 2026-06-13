@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-applicant-bar-v1.2";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-second-tab-v1.3";
 
 const state = {
   prepared: null,

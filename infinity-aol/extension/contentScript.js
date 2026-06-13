@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-applicant-bar-v1.2";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-second-tab-v1.3";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -2669,9 +2669,11 @@ function activeTabMatchesApplicant(activeTab, expected) {
   return text.includes(normalizeLabelText(expected.firstName)) && text.includes(normalizeLabelText(expected.surname));
 }
 
-function clickApplicantTabBody(tabItem) {
+async function clickApplicantTabBody(tabItem) {
   const tab = tabItem?.clickable || tabItem;
   if (!tab) return false;
+  await scrollElementIntoView(tab, "center");
+  await sleep(250);
   const rect = tab.getBoundingClientRect();
   const x = rect.left + rect.width * 0.42;
   const y = rect.top + rect.height * 0.55;
@@ -2726,6 +2728,9 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
     return { ok: true, clicked: false, alreadyActive: true, scope, expected, actual, visibleApplicantTabs };
   }
 
+  await scrollToText(["Add Applicants", fullName, firstName], document);
+  await sleep(250);
+  tabItems = getApplicantTabItems();
   const targetTab = tabItems.find((tab) => tab.textNorm === normalizeLabelText(fullName)) ||
     tabItems.find((tab) => tab.textNorm.includes(normalizeLabelText(firstName)) && tab.textNorm.includes(normalizeLabelText(surname)));
   if (!targetTab) {
@@ -2740,7 +2745,7 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
     return { ok: false, clicked: false, scope: null, expected, actual, visibleApplicantTabs };
   }
 
-  clickApplicantTabBody(targetTab);
+  await clickApplicantTabBody(targetTab);
   await waitForAngularSettle();
   await sleep(900);
   const switched = await waitForApplicantActiveAndForm(expected);
