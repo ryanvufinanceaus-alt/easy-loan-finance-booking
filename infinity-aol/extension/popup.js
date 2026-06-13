@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-real-applicant-tabs-v1.5";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-active-underline-v1.6";
 
 const state = {
   prepared: null,

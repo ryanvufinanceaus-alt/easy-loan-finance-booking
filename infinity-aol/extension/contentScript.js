@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-real-applicant-tabs-v1.5";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-active-underline-v1.6";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -2742,7 +2742,8 @@ function isApplicantTabActive(tabEl) {
   if (!tabEl || !isVisible(tabEl)) return false;
   const rect = tabEl.getBoundingClientRect();
   const style = getComputedStyle(tabEl);
-  if (tabEl.classList.contains("active") || tabEl.classList.contains("selected") || tabEl.getAttribute("aria-selected") === "true") return true;
+  const classText = String(tabEl.className || "").toLowerCase();
+  if (classText.split(/\s+/).includes("active") || classText.split(/\s+/).includes("selected") || tabEl.getAttribute("aria-selected") === "true") return true;
   if (parseFloat(style.borderBottomWidth || "0") >= 2 && isGreenishCssColor(style.borderBottomColor)) return true;
   return [...document.querySelectorAll("div, span, a, li")]
     .filter(isVisible)
@@ -2790,15 +2791,23 @@ function applicantTabClickTargets(tabItem) {
   });
 }
 
+function applicantTabClickPoint(element) {
+  const rect = element.getBoundingClientRect();
+  const safeRight = Math.max(rect.left + 8, rect.right - 32);
+  const bodyX = rect.left + rect.width * 0.35;
+  return {
+    x: Math.min(bodyX, safeRight),
+    y: rect.top + rect.height * 0.55
+  };
+}
+
 async function clickApplicantTabBody(tabItem, result = null, meta = {}) {
   const targets = applicantTabClickTargets(tabItem);
   const tab = targets[0];
   if (!tab) return false;
   await scrollElementIntoView(tab, "center");
   await sleep(250);
-  const rect = tab.getBoundingClientRect();
-  const x = rect.left + rect.width * 0.42;
-  const y = rect.top + rect.height * 0.55;
+  const { x, y } = applicantTabClickPoint(tab);
   for (const type of ["mousemove", "mousedown", "mouseup", "click"]) {
     tab.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
   }
@@ -2812,9 +2821,7 @@ async function clickApplicantTabUntilFormMatches(targetTab, expected, result, ro
   for (const [attempt, target] of targets.entries()) {
     await scrollElementIntoView(target, "center");
     await sleep(180);
-    const rect = target.getBoundingClientRect();
-    const x = rect.left + Math.min(rect.width * 0.42, Math.max(8, rect.width - 18));
-    const y = rect.top + rect.height * 0.55;
+    const { x, y } = applicantTabClickPoint(target);
     for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
       const EventCtor = type.startsWith("pointer") && typeof PointerEvent !== "undefined" ? PointerEvent : MouseEvent;
       target.dispatchEvent(new EventCtor(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }));
@@ -2842,7 +2849,8 @@ async function waitForApplicantActiveAndForm(expected, timeout = 6500) {
     const scope = getVisibleClientDetailsFormScope();
     const current = readClientNameFields(scope);
     const formOk = applicantNameFieldsMatch(expected, current);
-    return formOk ? { ok: true, scope, current, target, tabs, underlineOk: target ? isApplicantTabActive(target.clickable) : false } : null;
+    const underlineOk = target ? isApplicantTabActive(target.clickable) : false;
+    return formOk ? { ok: true, scope, current, target, tabs, underlineOk } : null;
   }, { timeout, interval: 200 });
 }
 
