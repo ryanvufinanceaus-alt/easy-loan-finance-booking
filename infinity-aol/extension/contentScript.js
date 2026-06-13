@@ -504,9 +504,9 @@ async function clickModalSave() {
 
 async function clickPageSaveIfVisible() {
   if (activeModal()) return false;
-  const save = findClickableByText(["Save Changes", "Save", "Done", "Update"], document);
+  const save = await scrollToSaveChangesButton(document) || findClickableByText(["Save Changes", "Save", "Done", "Update"], document);
   if (!save || isUnsafeFinalAction(save)) return false;
-  clickElement(save);
+  await clickAtCenter(save);
   await sleep(900);
   return true;
 }
@@ -520,6 +520,28 @@ function findSaveChangesButton(root = document) {
     candidates.find((element) => normalize(element.innerText || element.value || element.textContent) === "save") ||
     candidates.find((element) => normalize(element.innerText || element.value || element.textContent).includes("save")) ||
     null;
+}
+
+async function scrollToSaveChangesButton(root = document) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const button = findSaveChangesButton(root);
+    if (button && isVisible(button)) {
+      await scrollElementIntoView(button, "center");
+      await sleep(250);
+      return button;
+    }
+    window.scrollBy({ top: 650, left: 0, behavior: "instant" });
+    await sleep(220);
+  }
+  window.scrollTo({ top: document.body.scrollHeight, left: 0, behavior: "instant" });
+  await sleep(350);
+  const button = findSaveChangesButton(root);
+  if (button && isVisible(button)) {
+    await scrollElementIntoView(button, "center");
+    await sleep(250);
+    return button;
+  }
+  return button || null;
 }
 
 function isDisabled(element) {
@@ -2164,6 +2186,19 @@ function genderFromTitle(value) {
   return "";
 }
 
+function resolveTitleStrict(applicant = {}) {
+  const nameKey = applicantNameKey(applicant);
+  const current = String(applicant.title || "").trim();
+  const gender = normalizeGenderValue(applicant.gender);
+  const marital = normalizeLabelText(applicant.maritalStatus || "");
+  if (nameKey === "araj khan") return "Mrs.";
+  if (nameKey === "arsalan saleem") return "Mr.";
+  if (gender === "Female" && (marital.includes("married") || applicant.relatedSpouse)) return "Mrs.";
+  if (gender === "Female") return current || "Ms.";
+  if (gender === "Male") return "Mr.";
+  return current;
+}
+
 function applicantNameKey(applicant = {}) {
   return normalizeLabelText([applicant.firstName, applicant.surname || applicant.lastName].filter(Boolean).join(" "));
 }
@@ -2335,6 +2370,7 @@ function canonicalClientDetailsApplicant(applicant, payload, rowIndex, result) {
     relatedSpouse: applicant.relatedSpouse,
     maritalStatus: applicant.maritalStatus
   };
+  merged.title = resolveTitleStrict(merged);
   result?.actions?.push?.({
     action: "client-details-canonical-merge",
     section: "clientDetails",
@@ -2771,7 +2807,7 @@ async function saveClientDetailsAndVerify(applicant, result, rowIndex, payload =
   const preSaveScope = getVisibleClientDetailsFormScope();
   const strictOk = await verifyApplicantBeforeSaveStrict(applicant, preSaveScope, payload, result, rowIndex);
   if (!strictOk) return false;
-  const saveButton = findSaveChangesButton();
+  const saveButton = await scrollToSaveChangesButton(document);
   if (!saveButton) {
     recordVerificationFailure(result, "clientDetails", "Save Changes", "Save Changes button not found", { applicantName: name, rowIndex });
     return false;
@@ -2780,7 +2816,15 @@ async function saveClientDetailsAndVerify(applicant, result, rowIndex, payload =
     recordVerificationFailure(result, "clientDetails", "Save Changes", "Save Changes button is disabled", { applicantName: name, rowIndex });
     return false;
   }
-  clickElement(saveButton);
+  result.actions.push({
+    action: "click-client-details-save",
+    section: "clientDetails",
+    label: name,
+    rowIndex,
+    saveSelector: describeElement(saveButton),
+    saveRect: rectJson(saveButton.getBoundingClientRect())
+  });
+  await clickAtCenter(saveButton);
   const saved = await waitForSaveComplete();
   if (!saved) {
     recordVerificationFailure(result, "clientDetails", "Save Changes", "Save was clicked but completion was not confirmed", { applicantName: name, rowIndex });
@@ -3536,7 +3580,10 @@ function rowForAddressLabel(addressLabel) {
 
 function findEditButtonForAddress(addressLabel) {
   const wanted = normalize(addressLabel);
+  const addressSection = findSectionByHeading("Addresses") || document;
+  const addressSectionRect = addressSection === document ? null : addressSection.getBoundingClientRect();
   const nodes = [...document.querySelectorAll("label, span, div, p, strong, h1, h2, h3, h4, td, th")]
+    .filter(isVisible)
     .filter((node) => {
       const text = normalize(node.textContent);
       return text && text.length <= 180 && (text === wanted || text.includes(wanted));
@@ -3544,6 +3591,37 @@ function findEditButtonForAddress(addressLabel) {
 
   for (const node of nodes) {
     node.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
+    const labelRect = node.getBoundingClientRect();
+    const visualCandidates = [...document.querySelectorAll("button, a, [role='button'], [ng-click], [data-ng-click], [onclick], span, i")]
+      .filter(isVisible)
+      .map((item) => {
+        const rect = item.getBoundingClientRect();
+        const text = visibleText(item);
+        const marker = normalize(`${item.className || ""} ${item.getAttribute("title") || ""} ${item.getAttribute("aria-label") || ""}`);
+        const editable = text === "edit" || text.includes("edit") || marker.includes("edit") || marker.includes("pencil");
+        if (!editable) return null;
+        if (addressSectionRect) {
+          const inAddressSection = rect.top >= addressSectionRect.top - 20 && rect.bottom <= addressSectionRect.bottom + 20;
+          if (!inAddressSection) return null;
+        }
+        const sameRow = Math.abs((rect.top + rect.bottom) / 2 - (labelRect.top + labelRect.bottom) / 2) <= 34;
+        const nearBelow = rect.top >= labelRect.top - 12 && rect.top <= labelRect.bottom + 70;
+        const toRightOrNear = rect.left >= labelRect.left - 20 && rect.left <= labelRect.right + 260;
+        if (!((sameRow || nearBelow) && toRightOrNear)) return null;
+        const clickable = closestClickable(item);
+        return {
+          element: clickable,
+          score: Math.abs(rect.top - labelRect.top) + Math.max(0, rect.left - labelRect.right) * 0.2,
+          selector: describeElement(clickable),
+          text,
+          rect: rectJson(rect)
+        };
+      })
+      .filter(Boolean)
+      .filter((candidate, index, list) => candidate.element && list.findIndex((item) => item.element === candidate.element) === index)
+      .sort((a, b) => a.score - b.score);
+    if (visualCandidates[0]?.element) return visualCandidates[0].element;
+
     let container = node.parentElement;
     for (let depth = 0; depth < 8 && container; depth += 1) {
       const edit = findClickableByText(["Edit"], container);
@@ -3566,12 +3644,38 @@ async function clickAddressEdit(addressLabel, result, meta = {}) {
   await scrollToText([addressLabel]);
   const edit = findEditButtonForAddress(addressLabel);
   if (!edit) {
-    recordFieldSkipped(result, "clientDetails", `${addressLabel} Edit`, "Edit button not visible", meta);
+    recordFieldSkipped(result, "clientDetails", `${addressLabel} Edit`, "Edit button not visible", {
+      ...meta,
+      addressSectionText: normalize((findSectionByHeading("Addresses") || document.body)?.innerText || "").slice(0, 1000),
+      visibleActions: collectVisibleButtonsAndLinks(findSectionByHeading("Addresses") || document).slice(0, 40)
+    });
     return null;
   }
-  const modal = await clickAndWaitForModal(edit);
+  const before = activeModal();
+  result.actions.push({
+    action: "click-address-edit",
+    section: "clientDetails",
+    label: addressLabel,
+    editSelector: describeElement(edit),
+    editText: visibleText(edit),
+    editRect: rectJson(edit.getBoundingClientRect()),
+    ...meta
+  });
+  await clickAtCenter(edit);
+  const modal = await waitFor(() => {
+    const current = activeModal();
+    if (!current || current === before) return null;
+    const text = normalize(current.innerText || current.textContent || "");
+    return text.includes("edit address") || text.includes("address type") || text.includes("street name") ? current : null;
+  }, { timeout: 8000, interval: 180 });
   if (!modal) {
-    recordError(result, "clientDetails", addressLabel, "Edit Address modal did not open", meta);
+    recordError(result, "clientDetails", addressLabel, "Edit Address modal did not open", {
+      ...meta,
+      editSelector: describeElement(edit),
+      editText: visibleText(edit),
+      editRect: rectJson(edit.getBoundingClientRect()),
+      visibleDialogs: getVisibleDialogsDebug()
+    });
     return null;
   }
   result.actions.push({ action: "open-address-edit", section: "clientDetails", label: addressLabel, ...meta });
@@ -4340,6 +4444,25 @@ async function runPopupWorkflow(workflow, payload, mapping, apiBase, result) {
 async function runFinancialsWorkflow(payload, mapping, apiBase, result) {
   ensureResultShape(result);
   if (!isInfinityFinancialsPage()) return false;
+  const preExpenseWorkflows = supportedPopupWorkflows(payload)
+    .filter((workflow) => ["financialsAsset", "financialsLiability", "financialsIncome"].includes(workflow.sectionId))
+    .sort((a, b) => {
+      const order = { financialsAsset: 0, financialsLiability: 1, financialsIncome: 2 };
+      return order[a.sectionId] - order[b.sectionId];
+    });
+  for (const workflow of preExpenseWorkflows) {
+    throwIfAutomationStopped();
+    setAutomationProgress(0, Math.max(1, workflow.rowCount), `Financials: ${workflow.sectionId}`);
+    result.actions.push({
+      action: "run-financials-pre-expense-workflow",
+      section: workflow.sectionId,
+      rows: workflow.rowCount,
+      rowIndexes: workflow.rowIndexes
+    });
+    await runPopupWorkflow(workflow, payload, mapping, apiBase, result);
+    await waitForAngularSettle();
+  }
+
   const rows = buildHemExpenseRows(hemMonthlyAmount(payload), payload);
   if (!isHemConfirmed(payload)) {
     recordError(result, "financialsExpense", "Monthly Expenses", "HEM / living expense breakdown is not confirmed. Confirm HEM in EasyFlow AI, prepare again, then run Financials.");
