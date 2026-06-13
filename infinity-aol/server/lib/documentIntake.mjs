@@ -589,7 +589,15 @@ export function mergeDocumentDraft(caseData, draft) {
     merged.expenses = { ...merged.expenses, ...template.defaults.expenses };
   }
 
-  if (template?.defaults?.currentHousingSituation) {
+  const hasApplicantHousing = Boolean(
+    merged.applicants?.some((applicant) =>
+      applicant?.currentHousingSituation ||
+      applicant?.currentResidentialStatus ||
+      applicant?.address?.residentialStatus ||
+      applicant?.address?.currentResidentialStatus
+    )
+  );
+  if (template?.defaults?.currentHousingSituation && !merged.clientProfile?.currentHousingSituation && !hasApplicantHousing) {
     merged.clientProfile = { ...(merged.clientProfile || {}), currentHousingSituation: template.defaults.currentHousingSituation };
   }
 

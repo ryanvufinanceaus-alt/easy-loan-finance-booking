@@ -1161,6 +1161,8 @@ function buildNormalisedPayload(submission, validationStatus) {
         permanentInAustralia: submission.permanentInAustralia || (submission.residencyStatus ? "Yes" : ""),
         visaSubclass: submission.visaSubclass || "",
         maritalStatus: submission.maritalStatus,
+        currentResidentialStatus: submission.currentResidentialStatus || "",
+        currentHousingSituation: submission.currentResidentialStatus || "",
         dependants: submission.dependants,
         id: {
           driversLicenceNo: submission.driversLicenceNo || "",
@@ -1194,6 +1196,8 @@ function buildNormalisedPayload(submission, validationStatus) {
         permanentInAustralia: submission.secondApplicantPermanentInAustralia || (submission.secondApplicantResidencyStatus ? "Yes" : ""),
         visaSubclass: submission.secondApplicantVisaSubclass || "",
         maritalStatus: submission.secondApplicantMaritalStatus,
+        currentResidentialStatus: submission.secondApplicantCurrentResidentialStatus || submission.currentResidentialStatus || "",
+        currentHousingSituation: submission.secondApplicantCurrentResidentialStatus || submission.currentResidentialStatus || "",
         dependants: submission.secondApplicantDependants,
         id: {
           driversLicenceNo: submission.secondApplicantDriversLicenceNo || "",

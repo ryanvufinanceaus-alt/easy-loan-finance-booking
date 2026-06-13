@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-save-before-address-v2.5";
+const EASYFLOW_EXTENSION_BUILD_ID = "address-edit-housing-source-v2.6";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -2337,6 +2337,23 @@ function resolveCurrentHousingSituation(applicant = {}, canonical = {}, rawAppli
   ));
 }
 
+function resolveLoanFormHousingForApplicant(payload = {}, rowIndex = 0, applicant = {}) {
+  const sourceRows = rawApplicantRows(payload);
+  const byIndex = sourceRows[rowIndex] || {};
+  const applicantKey = applicantNameKey(applicant);
+  const byName = sourceRows.find((row) => applicantNameKey(row) === applicantKey) || {};
+  return normalizeHousingSituation(nonEmptyValue(
+    byIndex.currentResidentialStatus,
+    byIndex.currentHousingSituation,
+    byIndex.address?.residentialStatus,
+    byIndex.address?.currentResidentialStatus,
+    byName.currentResidentialStatus,
+    byName.currentHousingSituation,
+    byName.address?.residentialStatus,
+    byName.address?.currentResidentialStatus
+  ));
+}
+
 function canonicalClientDetailsApplicant(applicant, payload, rowIndex, result) {
   const rawCanonical = findCanonicalApplicantData(applicant, payload) || applicant || {};
   const canonical = clientDetailsFromRawApplicant(rawCanonical || {});
@@ -2350,7 +2367,8 @@ function canonicalClientDetailsApplicant(applicant, payload, rowIndex, result) {
     });
     return applicant;
   }
-  const housing = resolveCurrentHousingSituation(applicant, canonical, rawCanonical);
+  const housing = resolveLoanFormHousingForApplicant(payload, rowIndex, applicant) ||
+    resolveCurrentHousingSituation(applicant, canonical, rawCanonical);
   const merged = {
     ...applicant,
     title: nonEmptyValue(canonical.title, applicant.title),
@@ -3597,21 +3615,6 @@ function findEditButtonForAddress(addressLabel) {
 
   for (const node of nodes) {
     node.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
-    let container = node.parentElement;
-    for (let depth = 0; depth < 8 && container; depth += 1) {
-      const edit = findClickableByText(["Edit"], container);
-      if (edit) return edit;
-      const iconEdit = [...container.querySelectorAll("[ng-click], [data-ng-click], [onclick], a, button, span, i")]
-        .filter(isVisible)
-        .find((item) => {
-          const text = visibleText(item);
-          const marker = normalize(`${item.className || ""} ${item.getAttribute("title") || ""} ${item.getAttribute("aria-label") || ""}`);
-          return text === "edit" || text.includes("edit") || marker.includes("edit") || marker.includes("pencil");
-        });
-      if (iconEdit) return iconEdit;
-      container = container.parentElement;
-    }
-
     const labelRect = node.getBoundingClientRect();
     const addressSection = findSectionByHeading("Addresses") || document;
     const addressSectionRect = addressSection === document ? null : addressSection.getBoundingClientRect();
@@ -3619,19 +3622,24 @@ function findEditButtonForAddress(addressLabel) {
       .filter(isVisible)
       .map((item) => {
         const rect = item.getBoundingClientRect();
-        const text = visibleText(item);
+        const text = normalize(item.innerText || item.textContent || "");
         const marker = normalize(`${item.className || ""} ${item.getAttribute("title") || ""} ${item.getAttribute("aria-label") || ""}`);
         const editable = text === "edit" || text.includes("edit") || marker.includes("edit") || marker.includes("pencil");
         if (!editable) return null;
+        if (text.includes("delete") || marker.includes("delete") || marker.includes("remove")) return null;
+        if ((item.innerText || item.textContent || "").length > 40 && !marker.includes("pencil")) return null;
         if (addressSectionRect) {
           const inAddressSection = rect.top >= addressSectionRect.top - 20 && rect.bottom <= addressSectionRect.bottom + 20;
           if (!inAddressSection) return null;
         }
         const sameRow = Math.abs((rect.top + rect.bottom) / 2 - (labelRect.top + labelRect.bottom) / 2) <= 34;
         const nearBelow = rect.top >= labelRect.top - 12 && rect.top <= labelRect.bottom + 70;
-        const toRightOrNear = rect.left >= labelRect.left - 20 && rect.left <= labelRect.right + 260;
+        const toRightOrNear = rect.left >= labelRect.left - 20 && rect.left <= labelRect.right + 360;
         if (!((sameRow || nearBelow) && toRightOrNear)) return null;
         const clickable = closestClickable(item);
+        const clickableText = normalize(clickable?.innerText || clickable?.textContent || "");
+        const clickableMarker = normalize(`${clickable?.className || ""} ${clickable?.getAttribute?.("title") || ""} ${clickable?.getAttribute?.("aria-label") || ""}`);
+        if (clickableText.includes("delete") || clickableMarker.includes("delete") || clickableMarker.includes("remove")) return null;
         return {
           element: clickable,
           score: Math.abs(rect.top - labelRect.top) + Math.max(0, rect.left - labelRect.right) * 0.2,
@@ -3644,6 +3652,21 @@ function findEditButtonForAddress(addressLabel) {
       .filter((candidate, index, list) => candidate.element && list.findIndex((item) => item.element === candidate.element) === index)
       .sort((a, b) => a.score - b.score);
     if (visualCandidates[0]?.element) return visualCandidates[0].element;
+
+    let container = node.parentElement;
+    for (let depth = 0; depth < 6 && container; depth += 1) {
+      const iconEdit = [...container.querySelectorAll("[ng-click], [data-ng-click], [onclick], a, button, span, i")]
+        .filter(isVisible)
+        .find((item) => {
+          const text = normalize(item.innerText || item.textContent || "");
+          const marker = normalize(`${item.className || ""} ${item.getAttribute("title") || ""} ${item.getAttribute("aria-label") || ""}`);
+          if (text.includes("delete") || marker.includes("delete") || marker.includes("remove")) return false;
+          if ((item.innerText || item.textContent || "").length > 40 && !marker.includes("pencil")) return false;
+          return text === "edit" || text.includes("edit") || marker.includes("edit") || marker.includes("pencil");
+        });
+      if (iconEdit) return closestClickable(iconEdit);
+      container = container.parentElement;
+    }
   }
   return null;
 }
@@ -3668,7 +3691,14 @@ async function clickAddressEdit(addressLabel, result, meta = {}) {
     editRect: rectJson(edit.getBoundingClientRect()),
     ...meta
   });
-  const modal = await clickAndWaitForModal(edit);
+  await clickAtCenter(edit);
+  angularClickElement(edit);
+  const modal = await waitFor(() => {
+    const current = activeModal();
+    if (!current) return null;
+    const text = normalize(current.innerText || current.textContent || "");
+    return text.includes("edit address") || text.includes("address type") || text.includes("street name") ? current : null;
+  }, { timeout: 8000, interval: 180 });
   if (!modal) {
     recordError(result, "clientDetails", addressLabel, "Edit Address modal did not open", {
       ...meta,
