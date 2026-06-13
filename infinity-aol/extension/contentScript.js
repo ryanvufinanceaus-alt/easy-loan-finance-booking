@@ -709,6 +709,35 @@ function optionAliases(value) {
   return [...new Set(aliases.filter(Boolean))];
 }
 
+function canonicalStreetType(value) {
+  const normalized = normalize(value);
+  const aliases = {
+    ave: "Avenue",
+    avenue: "Avenue",
+    blvd: "Boulevard",
+    boulevard: "Boulevard",
+    ct: "Court",
+    court: "Court",
+    cres: "Crescent",
+    crescent: "Crescent",
+    dr: "Drive",
+    drive: "Drive",
+    ln: "Lane",
+    lane: "Lane",
+    pde: "Parade",
+    parade: "Parade",
+    pl: "Place",
+    place: "Place",
+    rd: "Road",
+    road: "Road",
+    st: "Street",
+    street: "Street",
+    tce: "Terrace",
+    terrace: "Terrace"
+  };
+  return aliases[normalized] || value || "";
+}
+
 function formatDateValue(value, format) {
   if (!format || value === undefined || value === null || value === "") return value;
   const text = String(value).trim();
@@ -3763,6 +3792,74 @@ function findEditButtonInAddressRow(addressLabel) {
     }) || null;
 }
 
+function addressRowHasSavedValue(addressLabel) {
+  const row = rowForAddressLabel(addressLabel);
+  if (!row) return false;
+  const text = normalize(row.innerText || row.textContent || "");
+  return Boolean(text && !text.includes("please start typing address") && /\b(\d{4}|australia|nsw|act|qld|vic|sa|wa|tas|nt)\b/.test(text));
+}
+
+function findDeleteButtonInAddressRow(addressLabel) {
+  const row = findAddressRowByLabel(addressLabel);
+  if (!row) return null;
+  return [...row.querySelectorAll("button, a, [role='button'], [ng-click], [data-ng-click], [onclick], span, i")]
+    .filter(isVisible)
+    .map((item) => closestClickable(item))
+    .filter((item, index, list) => item && list.indexOf(item) === index)
+    .find((item) => {
+      const text = visibleText(item);
+      const marker = normalize(`${item.className || ""} ${item.getAttribute?.("title") || ""} ${item.getAttribute?.("aria-label") || ""} ${item.getAttribute?.("ng-click") || ""} ${item.getAttribute?.("data-ng-click") || ""}`);
+      return text.includes("delete") || marker.includes("delete") || marker.includes("remove");
+    }) || null;
+}
+
+async function clearOptionalAddressIfNoSource(addressLabel, result, meta = {}) {
+  if (!addressRowHasSavedValue(addressLabel)) {
+    recordFieldSkipped(result, "clientDetails", addressLabel, "optional address empty and no loan-form value supplied", meta);
+    return true;
+  }
+  const deleteButton = findDeleteButtonInAddressRow(addressLabel);
+  if (!deleteButton) {
+    result.warnings.push({
+      section: "clientDetails",
+      label: addressLabel,
+      message: "Optional address has existing value but Delete button was not visible; leaving for broker review.",
+      ...meta
+    });
+    return true;
+  }
+  const before = normalize(rowForAddressLabel(addressLabel)?.innerText || rowForAddressLabel(addressLabel)?.textContent || "");
+  result.actions.push({
+    action: "clear-optional-address-without-source",
+    section: "clientDetails",
+    label: addressLabel,
+    before,
+    deleteSelector: describeElement(deleteButton),
+    ...meta
+  });
+  clickElement(deleteButton);
+  angularClickElement(deleteButton);
+  await sleep(350);
+  const confirm = activeModal();
+  if (confirm) {
+    const okButton = findClickableByText(["Yes", "OK", "Delete", "Confirm"], confirm);
+    if (okButton && !isUnsafeFinalAction(okButton)) await clickAtCenter(okButton);
+  }
+  await waitForAngularSettle();
+  await waitFor(() => !addressRowHasSavedValue(addressLabel), { timeout: 2500, interval: 150 });
+  if (addressRowHasSavedValue(addressLabel)) {
+    result.warnings.push({
+      section: "clientDetails",
+      label: addressLabel,
+      message: "Optional address delete was attempted but the row still has a value; continuing without blocking later tabs.",
+      before,
+      after: normalize(rowForAddressLabel(addressLabel)?.innerText || rowForAddressLabel(addressLabel)?.textContent || ""),
+      ...meta
+    });
+  }
+  return true;
+}
+
 function collectEditButtonsForAddress(addressLabel) {
   const wanted = normalize(addressLabel);
   const root = findAddressesSectionRoot();
@@ -4169,7 +4266,7 @@ async function fillAddressModal(parsed, modal, result, meta = {}) {
     ["Unit Number", parsed.unitNumber],
     ["Street Number", parsed.streetNumber],
     ["Street Name", parsed.streetName],
-    ["Street Type", parsed.streetType],
+    ["Street Type", canonicalStreetType(parsed.streetType)],
     ["Suburb/City", parsed.suburb],
     ["State", parsed.state],
     ["Postcode", parsed.postcode],
@@ -4208,17 +4305,19 @@ async function verifyAddressRowNotPlaceholder(addressLabel, parsed, result, appl
   const postcode = normalize(parsed.postcode);
   const streetNumber = normalize(parsed.streetNumber);
   const unitNumber = normalize(parsed.unitNumber);
+  const streetType = normalize(canonicalStreetType(parsed.streetType));
   const hasLocation = (!state || rowText.includes(state)) && (!postcode || rowText.includes(postcode));
   const hasStreetName = !streetName || rowText.includes(streetName);
   const hasStreetNumber = !streetNumber || rowText.includes(streetNumber);
-  const hasStreet = hasStreetName && hasStreetNumber;
+  const hasStreetType = !streetType || rowText.includes(streetType) || optionAliases(parsed.streetType).some((alias) => rowText.includes(normalize(alias)));
+  const hasStreet = hasStreetName && hasStreetNumber && hasStreetType;
   const hasUnit = !unitNumber || rowText.includes(unitNumber) || rowText.includes(`${unitNumber} /`) || rowText.includes(`${unitNumber}/`);
-  if (!hasLocation || !hasStreetName || !hasStreetNumber) {
+  if (!hasLocation || !hasStreetName || !hasStreetNumber || !hasStreetType) {
     recordVerificationFailure(result, "clientDetails", addressLabel, "Address row saved but does not match expected parsed address", {
       applicantName,
       expected: parsed,
       actual: row?.textContent?.trim() || "",
-      checks: { hasLocation, hasStreetName, hasStreetNumber, hasStreet, hasUnit }
+      checks: { hasLocation, hasStreetName, hasStreetNumber, hasStreetType, hasStreet, hasUnit }
     });
     return false;
   }
@@ -4232,7 +4331,7 @@ async function verifyAddressRowNotPlaceholder(addressLabel, parsed, result, appl
       actual: row?.textContent?.trim() || ""
     });
   }
-  result.actions.push({ action: "verify-address-row", section: "clientDetails", label: addressLabel, applicantName, checks: { hasLocation, hasStreetName, hasStreetNumber, hasStreet, hasUnit } });
+  result.actions.push({ action: "verify-address-row", section: "clientDetails", label: addressLabel, applicantName, checks: { hasLocation, hasStreetName, hasStreetNumber, hasStreetType, hasStreet, hasUnit } });
   return true;
 }
 
@@ -4714,6 +4813,11 @@ async function fillApplicantAddresses(applicant, rawApplicant, result, rowIndex)
   ];
   let ok = true;
   for (const [label, addressSource, required] of addressRows) {
+    if (!required && !addressSource) {
+      await clearOptionalAddressIfNoSource(label, result, { rowIndex, applicantName: fullApplicantName(applicant) });
+      await sleep(150);
+      continue;
+    }
     const filled = await fillAddressForApplicant(label, applicant, addressSource, result, { rowIndex, applicantName: fullApplicantName(applicant) });
     if (!filled && required) {
       ok = false;
