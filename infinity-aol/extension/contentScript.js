@@ -3035,9 +3035,25 @@ function findVisibleApplicantTabElement(fullName) {
 }
 
 function findAddApplicantsElement() {
-  return [...document.querySelectorAll("button, a, div, span")]
+  const candidates = [...document.querySelectorAll("button, a, span, div")]
     .filter(isVisible)
-    .find((element) => normalizeLabelText(element.innerText || element.textContent || "").includes("add applicants")) || null;
+    .filter((element) => {
+      const text = normalizeLabelText(element.innerText || element.textContent || "");
+      if (!text.includes("add applicants")) return false;
+      if (text.length > 60) return false;
+      if (element.querySelector?.(controlSelector)) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const aText = normalizeLabelText(a.innerText || a.textContent || "");
+      const bText = normalizeLabelText(b.innerText || b.textContent || "");
+      const aExact = aText === "add applicants" || aText === "+ add applicants" ? 0 : 1;
+      const bExact = bText === "add applicants" || bText === "+ add applicants" ? 0 : 1;
+      const aRect = a.getBoundingClientRect();
+      const bRect = b.getBoundingClientRect();
+      return aExact - bExact || (aRect.width * aRect.height) - (bRect.width * bRect.height);
+    });
+  return candidates[0] || null;
 }
 
 function findApplicantTabRow() {
@@ -3048,11 +3064,22 @@ function findApplicantTabRow() {
     const text = normalizeLabelText(node.innerText || node.textContent || "");
     const rect = node.getBoundingClientRect();
     const hasAddApplicants = text.includes("add applicants");
+    const nameLikeTabs = [...node.querySelectorAll("button, a, li, span, div")]
+      .filter(isVisible)
+      .filter((element) => {
+        const itemText = cleanApplicantTabText(element.innerText || element.textContent || "");
+        return itemText &&
+          itemText.length <= 80 &&
+          /^[a-z ,.'-]+$/i.test(itemText) &&
+          itemText.split(/\s+/).length >= 2 &&
+          !/(client details|financials|loans|overview|current address|date of birth|licence|employment|add applicants)/i.test(itemText);
+      });
+    if (hasAddApplicants && nameLikeTabs.length >= 1 && rect.height <= 140) return node;
     const hasApplicantClose = text.includes("close") || text.includes("Ã—") || text.includes("×") || text.includes(" x ");
     if (hasAddApplicants && hasApplicantClose && rect.height <= 220) return node;
     node = node.parentElement;
   }
-  return addApplicants.closest(".row, .form-row, .tab-content, .card, .panel, div");
+  return addApplicants.closest(".applicant-tabs, .row, .form-row, .nav, .tabs, .tab-header, div");
 }
 
 function looksLikeApplicantTabElement(element, clickable, addRect = null) {
@@ -3525,7 +3552,7 @@ function addressPartsFromApplicant(applicant, fallbackAddressText = "") {
   const stateValue = address.state || stateMatch?.[1]?.toUpperCase() || "";
   const postcodeValue = address.postcode || postcodeMatch?.[1] || "";
   const splitFullAddress = splitAustralianAddress(fullText);
-  const lineBeforeSuburb = splitFullAddress.line1 || line1 || fullText;
+  const lineBeforeSuburb = line1 || splitFullAddress.line1 || fullText;
   const addressBeforeState = String(lineBeforeSuburb)
     .replace(/\b\d{4}\b.*$/i, "")
     .replace(/\b(ACT|NSW|NT|QLD|SA|TAS|VIC|WA)\b.*$/i, "")
@@ -3602,6 +3629,8 @@ function inferSuburb(text, state, postcode) {
 }
 
 function rowForAddressLabel(addressLabel) {
+  const exactRow = findAddressRowByLabel(addressLabel);
+  if (exactRow) return exactRow;
   const wanted = normalize(addressLabel);
   const nodes = [...document.querySelectorAll("label, span, div, p, strong, h1, h2, h3, h4, td, th")]
     .filter(isVisible)
@@ -3633,6 +3662,60 @@ function findAddressesSectionRoot() {
     }
   }
   return getVisibleClientDetailsFormScope() || document;
+}
+
+function findAddressRowByLabel(addressLabel) {
+  const wanted = normalize(addressLabel);
+  const otherAddressLabels = ["current address", "previous address", "post settlement address", "mailing address"].filter((label) => label !== wanted);
+  const labelNodes = [...document.querySelectorAll("label, span, div, p, strong, h1, h2, h3, h4, td, th")]
+    .filter(isVisible)
+    .filter((node) => !isEasyFlowOverlayElement(node))
+    .filter((node) => normalize(node.textContent) === wanted);
+  const candidates = [];
+  for (const node of labelNodes) {
+    let container = node.parentElement;
+    for (let depth = 0; depth < 8 && container; depth += 1) {
+      if (!isVisible(container) || isEasyFlowOverlayElement(container)) {
+        container = container.parentElement;
+        continue;
+      }
+      const text = normalize(container.innerText || container.textContent || "");
+      const hasWanted = text.includes(wanted);
+      const hasEdit = [...container.querySelectorAll("button, a, [role='button'], [ng-click], [data-ng-click], [onclick], span, i")]
+        .filter(isVisible)
+        .some((item) => {
+          const itemText = visibleText(item);
+          const marker = normalize(`${item.className || ""} ${item.getAttribute?.("title") || ""} ${item.getAttribute?.("aria-label") || ""}`);
+          return !itemText.includes("delete") && !marker.includes("delete") && (itemText === "edit" || itemText.includes("edit") || marker.includes("edit") || marker.includes("pencil"));
+        });
+      if (hasWanted && hasEdit) {
+        const rect = container.getBoundingClientRect();
+        const otherLabelCount = otherAddressLabels.filter((label) => text.includes(label)).length;
+        candidates.push({
+          element: container,
+          score: otherLabelCount * 1000 + Math.max(0, rect.height - 140) * 4 + depth * 10 + rect.height
+        });
+      }
+      container = container.parentElement;
+    }
+  }
+  candidates.sort((a, b) => a.score - b.score);
+  return candidates[0]?.element || null;
+}
+
+function findEditButtonInAddressRow(addressLabel) {
+  const row = findAddressRowByLabel(addressLabel);
+  if (!row) return null;
+  return [...row.querySelectorAll("button, a, [role='button'], [ng-click], [data-ng-click], [onclick], span, i")]
+    .filter(isVisible)
+    .map((item) => closestClickable(item))
+    .filter((item, index, list) => item && list.indexOf(item) === index)
+    .find((item) => {
+      const text = visibleText(item);
+      const marker = normalize(`${item.className || ""} ${item.getAttribute?.("title") || ""} ${item.getAttribute?.("aria-label") || ""}`);
+      if (text.includes("delete") || marker.includes("delete") || marker.includes("remove")) return false;
+      return text === "edit" || text.includes("edit") || marker.includes("edit") || marker.includes("pencil");
+    }) || null;
 }
 
 function collectEditButtonsForAddress(addressLabel) {
@@ -3879,8 +3962,25 @@ async function tryOpenAddressModalFromTarget(target, result, addressLabel, meta 
 
 async function clickAddressEdit(addressLabel, result, meta = {}) {
   await scrollToText([addressLabel]);
-  const legacyEdit = findEditButtonForAddressLegacy(addressLabel);
+  const rowEdit = findEditButtonInAddressRow(addressLabel);
   const before = activeModal();
+  if (rowEdit) {
+    result.actions.push({
+      action: "click-address-edit-row",
+      section: "clientDetails",
+      label: addressLabel,
+      editSelector: describeElement(rowEdit),
+      editText: visibleText(rowEdit),
+      editRect: rectJson(rowEdit.getBoundingClientRect()),
+      ...meta
+    });
+    const opened = await tryOpenAddressModalFromTarget(rowEdit, result, addressLabel, meta);
+    if (opened.modal) {
+      result.actions.push({ action: "open-address-edit", section: "clientDetails", label: addressLabel, method: "row", attempts: [{ selector: describeElement(rowEdit), opened: true, targetAttempts: opened.attempted }], ...meta });
+      return opened.modal;
+    }
+  }
+  const legacyEdit = findEditButtonForAddressLegacy(addressLabel);
   if (legacyEdit) {
     result.actions.push({
       action: "click-address-edit-legacy",
@@ -4537,14 +4637,16 @@ async function fillDeferredClientDetailsDateFields(applicant, result, rowIndex, 
 async function fillApplicantAddresses(applicant, rawApplicant, result, rowIndex) {
   const rawAddress = rawApplicant?.address || {};
   const preparedAddress = applicant?.address || {};
-  const currentAddressSource = rawApplicant?.currentAddress || rawAddress.line1 || rawAddress.current || rawAddress.fullAddress || applicant?.currentAddress || preparedAddress.line1 || preparedAddress.current || preparedAddress.fullAddress || rawAddress;
+  const completeRawAddress = rawAddress && typeof rawAddress === "object" && Object.values(rawAddress).some(Boolean) ? rawAddress : null;
+  const completePreparedAddress = preparedAddress && typeof preparedAddress === "object" && Object.values(preparedAddress).some(Boolean) ? preparedAddress : null;
+  const currentAddressSource = rawApplicant?.currentAddress || rawAddress.current || rawAddress.fullAddress || applicant?.currentAddress || preparedAddress.current || preparedAddress.fullAddress || completeRawAddress || completePreparedAddress || rawAddress.line1 || preparedAddress.line1 || rawAddress;
   const postSettlementSource = rawApplicant?.postSettlementAddress || rawAddress.postSettlement || applicant?.postSettlementAddress || preparedAddress.postSettlement || currentAddressSource;
   const mailingSource = rawApplicant?.mailingAddress || rawAddress.mailing || applicant?.mailingAddress || preparedAddress.mailing || currentAddressSource;
   const addressRows = [
     ["Current Address", currentAddressSource, true],
     ["Previous Address", rawApplicant?.previousAddress || rawApplicant?.previousResidentialAddress || rawAddress.previous || applicant?.previousAddress || preparedAddress.previous, false],
-    ["Post Settlement Address", postSettlementSource, true],
-    ["Mailing Address", mailingSource, true]
+    ["Post Settlement Address", postSettlementSource, false],
+    ["Mailing Address", mailingSource, false]
   ];
   let ok = true;
   for (const [label, addressSource, required] of addressRows) {
@@ -4556,6 +4658,14 @@ async function fillApplicantAddresses(applicant, rawApplicant, result, rowIndex)
         applicantName: fullApplicantName(applicant)
       });
       break;
+    } else if (!filled) {
+      result.warnings.push({
+        section: "clientDetails",
+        label,
+        message: "Optional address was not filled automatically; continuing after Current Address so applicant can save.",
+        rowIndex,
+        applicantName: fullApplicantName(applicant)
+      });
     }
     await sleep(250);
   }

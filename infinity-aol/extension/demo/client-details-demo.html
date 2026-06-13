@@ -1,0 +1,256 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>EasyFlow Client Details Demo</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; color: #2f3a3d; background: #eef3f5; }
+    .top { height: 64px; background: #008a8d; color: white; display: flex; align-items: center; padding: 0 24px; font-size: 24px; }
+    .card { width: 1180px; margin: 22px auto; background: white; border: 1px solid #d7dee2; box-shadow: 0 2px 8px #0002; padding: 24px 28px 120px; }
+    .main-tabs { display: flex; justify-content: space-around; border-bottom: 1px solid #cfd8dc; margin-bottom: 18px; }
+    .main-tabs button { border: 0; background: transparent; padding: 14px 34px; color: #9aa5aa; font-size: 16px; }
+    .main-tabs .active { color: #00a889; border-bottom: 3px solid #00a889; font-weight: 700; }
+    .applicant-tabs { display: flex; align-items: flex-end; gap: 16px; margin: 8px 0 24px; }
+    .applicant-tab { position: relative; width: 310px; height: 44px; border: 0; background: transparent; border-bottom: 1px solid #c5ced3; font-size: 16px; cursor: pointer; }
+    .applicant-tab.active { border-bottom: 3px solid #078a2d; }
+    .applicant-tab .name { display: inline-block; padding-top: 10px; pointer-events: none; }
+    .applicant-tab .remove { position: absolute; right: 8px; top: 13px; color: #c3c9cc; font-weight: 700; pointer-events: auto; }
+    .add-applicant { margin-left: auto; color: #00a889; font-weight: 700; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .left-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 22px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .span2 { grid-column: 1 / span 2; }
+    label { font-size: 15px; }
+    input, select { height: 40px; border: 1px solid #00b897; background: #effafb; padding: 0 10px; font-size: 16px; box-sizing: border-box; width: 100%; }
+    .addresses h2, .employment h2 { font-weight: 300; color: #879097; border-bottom: 1px solid #d7dee2; padding-bottom: 6px; }
+    .address-row { margin: 18px 0; }
+    .address-title { display: inline-block; min-width: 160px; }
+    .address-row a { margin-left: 12px; color: #39474d; cursor: pointer; text-decoration: none; }
+    .address-display { margin-top: 8px; border: 1px solid #00b897; background: #effafb; height: 40px; display: flex; align-items: center; padding: 0 12px; }
+    .savebar { position: fixed; right: 72px; bottom: 38px; }
+    .savebar button, .modal-actions button { background: #12b894; color: white; border: 0; padding: 13px 20px; font-size: 16px; border-radius: 4px; cursor: pointer; }
+    .toast { display: none; position: fixed; top: 74px; right: 40px; background: #42a856; color: white; padding: 14px 22px; z-index: 10; }
+    .toast.show { display: block; }
+    .demo-modal-shell { display: none; position: fixed; inset: 0; background: #0007; z-index: 20; align-items: center; justify-content: center; }
+    .demo-modal-shell.show { display: flex; }
+    .modal-content { background: white; width: 520px; padding: 22px 28px; box-shadow: 0 3px 20px #0006; }
+    .modal-content h2 { color: #11b594; text-align: center; font-weight: 400; margin-top: 0; }
+    .modal-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+    .modal-grid .wide { grid-column: 1 / span 3; }
+    .modal-grid .half { grid-column: span 1; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; border-top: 1px solid #e3e7e9; padding-top: 18px; }
+    #demo-report { white-space: pre-wrap; width: 1180px; margin: 20px auto; background: #0f1d18; color: #d5f5e7; padding: 14px; font-family: Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <div class="top">INFYNITY</div>
+  <div class="card">
+    <div class="main-tabs">
+      <button>Overview</button>
+      <button class="active">Client Details</button>
+      <button>Financials</button>
+      <button>Loans &amp; Products</button>
+      <button>Notes</button>
+      <button>Documents</button>
+      <button>Fact Find</button>
+    </div>
+    <div class="applicant-tabs">
+      <button class="applicant-tab active" data-index="0" data-ng-click="selectApplicant(0)">
+        <span class="name">Arsalan Saleem</span><span class="remove" data-remove="0">x</span>
+      </button>
+      <button class="applicant-tab" data-index="1" data-ng-click="selectApplicant(1)">
+        <span class="name">Araj Khan</span><span class="remove" data-remove="1">x</span>
+      </button>
+      <span class="add-applicant">+ Add Applicants</span>
+    </div>
+    <div class="form-grid">
+      <div class="left-grid">
+        <div class="field"><label>Entity Type</label><select data-field="entityType"><option>Individual</option></select></div>
+        <div class="field"><label>Primary Applicant</label><select data-field="primaryApplicant"><option>Yes</option><option>No</option></select></div>
+        <div class="field span2"><label>Applicant Type</label><select data-field="applicantType"><option>Applicant</option></select></div>
+        <div class="field span2"><label>Title</label><select data-field="title"><option>Mr.</option><option>Mrs.</option><option>Ms.</option></select></div>
+        <div class="field span2"><label>First Name *</label><input data-field="firstName"></div>
+        <div class="field span2"><label>Middle Name</label><input data-field="middleName"></div>
+        <div class="field span2"><label>Surname *</label><input data-field="surname"></div>
+        <div class="field span2"><label>Previous Name</label><input data-field="previousName"></div>
+        <div class="field span2"><label>Also Known As</label><input data-field="alsoKnownAs"></div>
+        <div class="field"><label>Marital Status</label><select data-field="maritalStatus"><option>Please Select</option><option>Single</option><option>Married</option></select></div>
+        <div class="field"><label>Related Spouse</label><select data-field="relatedSpouse"><option>Please Select...</option><option>Arsalan Saleem</option><option>Araj Khan</option></select></div>
+        <div class="field"><label>Date of Birth</label><input data-field="dateOfBirth"></div>
+        <div class="field"><label>Gender</label><select data-field="gender"><option>Please Select</option><option>Male</option><option>Female</option></select></div>
+        <div class="field"><label>Current Housing Situation</label><select data-field="currentHousingSituation"><option>Please Select</option><option>Own Home</option><option>Renting</option></select></div>
+        <div class="field"><label>Permanent in Australia</label><select data-field="permanentInAustralia"><option>Yes</option><option>No</option></select></div>
+        <div class="field span2"><label>Country (if not Aus Perm)</label><select data-field="country"><option>Australia</option></select></div>
+        <div class="field"><label>Driver's Licence No.</label><input data-field="driversLicenceNo"></div>
+        <div class="field"><label>Licence Expiry Date</label><input data-field="licenceExpiryDate"></div>
+        <div class="field"><label>Licence State</label><select data-field="licenceState"><option>NSW</option><option>SA</option><option>ACT</option></select></div>
+        <div class="field"><label>Licence Class</label><input data-field="licenceClass"></div>
+        <div class="field span2"><label>Number of Dependents</label><input data-field="numberOfDependants"></div>
+      </div>
+      <div>
+        <div class="field"><label>Home Phone</label><input data-field="homePhone"></div>
+        <div class="field"><label>Work Phone</label><input data-field="workPhone"></div>
+        <div class="field"><label>Fax</label><input data-field="fax"></div>
+        <div class="field"><label>Mobile</label><input data-field="mobile"></div>
+        <div class="field"><label>Email</label><input data-field="email"></div>
+        <section class="addresses">
+          <h2>Addresses</h2>
+          <div class="address-row" data-address-row="Current Address"><span class="address-title">Current Address</span><a data-edit-address="Current Address">Edit</a><a>Delete</a><div class="address-display">Please Start Typing Address</div></div>
+          <div class="address-row" data-address-row="Previous Address"><span class="address-title">Previous Address</span><a data-edit-address="Previous Address">Edit</a><a>Delete</a><div class="address-display">Please Start Typing Address</div></div>
+          <div class="address-row" data-address-row="Post Settlement Address"><span class="address-title">Post Settlement Address</span><a data-edit-address="Post Settlement Address">Edit</a><a>Delete</a><div class="address-display">Please Start Typing Address</div></div>
+          <div class="address-row" data-address-row="Mailing Address"><span class="address-title">Mailing Address</span><a data-edit-address="Mailing Address">Edit</a><a>Delete</a><div class="address-display">Please Start Typing Address</div></div>
+        </section>
+        <section class="employment"><h2>Employment</h2><button>Add Employment</button></section>
+      </div>
+    </div>
+    <div class="savebar"><button id="save-changes">Save Changes</button></div>
+  </div>
+  <div class="toast" id="toast">Account info saved successfully.</div>
+  <div class="demo-modal-shell" id="address-modal">
+    <div class="modal-content" role="dialog">
+      <h2>Edit Address</h2>
+      <div class="modal-grid">
+        <div class="field wide"><label>Copy Address</label><select data-modal-field="copyAddress"><option>Please select...</option></select></div>
+        <div class="field wide"><label>Address Type</label><select data-modal-field="addressType"><option>Standard</option></select></div>
+        <div class="field wide"><label>Building Name</label><input data-modal-field="buildingName"></div>
+        <div class="field"><label>Floor Number</label><input data-modal-field="floorNumber"></div>
+        <div class="field"><label>Unit Number</label><input data-modal-field="unitNumber"></div>
+        <div class="field"><label>Street Number</label><input data-modal-field="streetNumber"></div>
+        <div class="field wide"><label>Street Name</label><input data-modal-field="streetName"></div>
+        <div class="field wide"><label>Street Type</label><select data-modal-field="streetType"><option>Please select...</option><option>Street</option><option>St</option></select></div>
+        <div class="field"><label>Suburb/City</label><input data-modal-field="suburb"></div>
+        <div class="field"><label>State</label><select data-modal-field="state"><option>NSW</option><option>SA</option><option>ACT</option></select></div>
+        <div class="field"><label>Postcode</label><input data-modal-field="postcode"></div>
+        <div class="field"><label>Country</label><select data-modal-field="country"><option>Australia</option></select></div>
+        <div class="field wide"><label>Start Date</label><input data-modal-field="startDate"></div>
+      </div>
+      <div class="modal-actions"><button type="button" id="close-modal">Close</button><button type="button" id="save-modal">Save</button></div>
+    </div>
+  </div>
+  <pre id="demo-report">Demo pending...</pre>
+  <script>
+    window.__easyflowListeners = [];
+    window.chrome = { runtime: { onMessage: { addListener(fn) { window.__easyflowListeners.push(fn); } } } };
+    const demoState = {
+      active: 0,
+      currentAddressLabel: null,
+      applicants: [
+        { firstName: "Arsalan", surname: "Saleem", title: "Mr.", gender: "Male", primaryApplicant: "Yes", mobile: "0469802339", email: "arsalan.saleem@icloud.com" },
+        { firstName: "Araj", surname: "Khan", title: "Mrs.", gender: "Female", primaryApplicant: "No", mobile: "", email: "" }
+      ],
+      addresses: [{}, {}]
+    };
+    const fieldEls = () => [...document.querySelectorAll("[data-field]")];
+    function loadApplicant(index) {
+      demoState.active = index;
+      document.querySelectorAll(".applicant-tab").forEach((tab) => tab.classList.toggle("active", Number(tab.dataset.index) === index));
+      const applicant = demoState.applicants[index];
+      fieldEls().forEach((el) => {
+        const key = el.dataset.field;
+        if (key in applicant) el.value = applicant[key] ?? "";
+        else if (el.tagName === "SELECT" && !el.value) el.selectedIndex = 0;
+        else if (el.tagName !== "SELECT") el.value = "";
+      });
+      renderAddresses();
+    }
+    function saveApplicant() {
+      const applicant = demoState.applicants[demoState.active];
+      fieldEls().forEach((el) => { applicant[el.dataset.field] = el.value; });
+      const toast = document.getElementById("toast");
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 1500);
+    }
+    function renderAddresses() {
+      const addressSet = demoState.addresses[demoState.active] || {};
+      document.querySelectorAll("[data-address-row]").forEach((row) => {
+        const label = row.dataset.addressRow;
+        row.querySelector(".address-display").textContent = addressSet[label] || "Please Start Typing Address";
+      });
+    }
+    function openAddressModal(label) {
+      demoState.currentAddressLabel = label;
+      document.getElementById("address-modal").classList.add("show");
+    }
+    function closeAddressModal() {
+      document.getElementById("address-modal").classList.remove("show");
+    }
+    function saveAddressModal() {
+      const modal = document.getElementById("address-modal");
+      const get = (key) => modal.querySelector(`[data-modal-field="${key}"]`)?.value || "";
+      const text = [get("unitNumber") ? `${get("unitNumber")}/` : "", get("streetNumber"), get("streetName"), get("streetType"), get("suburb"), get("state"), get("postcode"), get("country")]
+        .join(" ")
+        .replace(/\s+\//g, "/")
+        .replace(/\s+/g, " ")
+        .trim();
+      demoState.addresses[demoState.active][demoState.currentAddressLabel] = text;
+      renderAddresses();
+      closeAddressModal();
+    }
+    document.querySelectorAll(".applicant-tab").forEach((tab) => {
+      tab.addEventListener("click", (event) => {
+        if (event.target.matches("[data-remove]")) return;
+        loadApplicant(Number(tab.dataset.index));
+      });
+    });
+    document.querySelectorAll("[data-edit-address]").forEach((link) => link.addEventListener("click", () => openAddressModal(link.dataset.editAddress)));
+    document.getElementById("save-changes").addEventListener("click", saveApplicant);
+    document.getElementById("close-modal").addEventListener("click", closeAddressModal);
+    document.getElementById("save-modal").addEventListener("click", saveAddressModal);
+    loadApplicant(0);
+    history.replaceState(null, "", "/accounts#!/details");
+  </script>
+  <script src="../contentScript.js"></script>
+  <script>
+    const mapping = { sections: [{ id: "clientDetails", fields: [] }] };
+    const payload = {
+      meta: { caseId: "DEMO-CLIENT-DETAILS", brokerUser: "demo" },
+      applicants: {
+        primary: {
+          firstName: "Arsalan", surname: "Saleem", title: "Mr.", gender: "Male",
+          dateOfBirth: "1988-09-29", mobile: "0469802339", email: "arsalan.saleem@icloud.com",
+          maritalStatus: "Married", relatedSpouse: "Araj Khan", currentHousingSituation: "Renting",
+          permanentInAustralia: "Yes", country: "Australia", numberOfDependants: "0",
+          driversLicenceNo: "21316568", licenceExpiryDate: "2028-07-31", licenceState: "NSW", licenceClass: "C",
+          address: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" }
+        },
+        secondary: {
+          firstName: "Araj", surname: "Khan", title: "Mrs.", gender: "Female",
+          dateOfBirth: "1997-04-02", mobile: "", email: "",
+          maritalStatus: "Married", relatedSpouse: "Arsalan Saleem", currentHousingSituation: "Renting",
+          permanentInAustralia: "Yes", country: "Australia", numberOfDependants: "0",
+          driversLicenceNo: "26172973", licenceExpiryDate: "2031-02-03", licenceState: "NSW", licenceClass: "C",
+          address: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" }
+        }
+      }
+    };
+    async function runDemo() {
+      const listener = window.__easyflowListeners[0];
+      const report = document.getElementById("demo-report");
+      if (!listener) {
+        report.textContent = "FAIL: contentScript listener did not register";
+        return;
+      }
+      const result = await new Promise((resolve) => {
+        listener({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" }, null, resolve);
+      });
+      const finalState = {
+        activeApplicant: demoState.active,
+        applicants: demoState.applicants,
+        addresses: demoState.addresses
+      };
+      const checks = {
+        noErrors: !(result.errors || []).length,
+        noVerificationFailures: !(result.verificationFailures || []).length,
+        switchedToSecond: demoState.applicants[1].firstName === "Araj" && demoState.applicants[1].dateOfBirth === "02/04/1997",
+        firstDobPersisted: demoState.applicants[0].dateOfBirth === "29/09/1988",
+        secondDobPersisted: demoState.applicants[1].dateOfBirth === "02/04/1997",
+        firstAddressSaved: /79 Crebert/i.test(demoState.addresses[0]["Current Address"] || ""),
+        secondAddressSaved: /79 Crebert/i.test(demoState.addresses[1]["Current Address"] || ""),
+        housingRenting: demoState.applicants.every((item) => item.currentHousingSituation === "Renting")
+      };
+      report.textContent = JSON.stringify({ ok: Object.values(checks).every(Boolean), checks, result, finalState }, null, 2);
+    }
+    setTimeout(runDemo, 500);
+  </script>
+</body>
+</html>
