@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-name-rect-click-v1.9";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-transaction-v2.2";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -61,6 +61,8 @@ const automationRunState = {
 };
 
 const filledFieldLocks = new Map();
+const clientDetailsWriteLocks = new Set();
+const completedClientDetailsApplicants = new Set();
 const CLIENT_DETAILS_CRITICAL_LABELS = new Set([
   "date of birth",
   "gender",
@@ -2078,6 +2080,148 @@ function findCanonicalApplicantData(applicant, payload = {}) {
   return sources.find((candidate) => applicantNameKey(clientDetailsFromRawApplicant(candidate)) === expected || applicantNameKey(candidate) === expected) || null;
 }
 
+function clientDetailsLockKey(applicant, label) {
+  return `${normalizeLabelText(fullApplicantName(applicant) || applicantNameKey(applicant) || "unknown-applicant")}::${normalizeLabelText(label || "")}`;
+}
+
+function resetClientDetailsTransactionLocks() {
+  clientDetailsWriteLocks.clear();
+  completedClientDetailsApplicants.clear();
+}
+
+function canWriteClientDetailsField(applicant, label, result, meta = {}) {
+  const applicantKey = normalizeLabelText(fullApplicantName(applicant) || applicantNameKey(applicant) || "");
+  const key = clientDetailsLockKey(applicant, label);
+  if (applicantKey && completedClientDetailsApplicants.has(applicantKey)) {
+    result?.actions?.push?.({
+      action: "skip-client-details-late-write",
+      section: "clientDetails",
+      label,
+      reason: "applicant transaction already saved",
+      applicantName: fullApplicantName(applicant),
+      ...meta
+    });
+    return false;
+  }
+  if (clientDetailsWriteLocks.has(key)) {
+    result?.actions?.push?.({
+      action: "skip-client-details-duplicate-write",
+      section: "clientDetails",
+      label,
+      reason: "field already filled in this transaction",
+      applicantName: fullApplicantName(applicant),
+      ...meta
+    });
+    return false;
+  }
+  return true;
+}
+
+function markClientDetailsFieldWritten(applicant, label) {
+  clientDetailsWriteLocks.add(clientDetailsLockKey(applicant, label));
+}
+
+function markClientDetailsApplicantCompleted(applicant, result, rowIndex) {
+  const applicantKey = normalizeLabelText(fullApplicantName(applicant) || applicantNameKey(applicant) || "");
+  if (applicantKey) completedClientDetailsApplicants.add(applicantKey);
+  result?.actions?.push?.({
+    action: "client-details-applicant-transaction-complete",
+    section: "clientDetails",
+    label: fullApplicantName(applicant),
+    rowIndex
+  });
+}
+
+function normalizeHousingSituation(value) {
+  const text = normalizeLabelText(value || "");
+  if (!text) return "";
+  if (text.includes("rent")) return "Renting";
+  if (text.includes("own") || text.includes("owner occup") || text.includes("home owner") || text.includes("mortgage")) return "Own Home";
+  if (text.includes("board")) return "Boarding";
+  if (text.includes("parent")) return "Living with Parents";
+  return String(value || "").trim();
+}
+
+function resolveCurrentHousingSituation(applicant = {}, canonical = {}, rawApplicant = {}) {
+  return normalizeHousingSituation(nonEmptyValue(
+    canonical.currentHousingSituation,
+    canonical.currentResidentialStatus,
+    canonical.housingSituation,
+    canonical.residentialStatus,
+    canonical.livingSituation,
+    canonical.address?.currentHousingSituation,
+    canonical.address?.currentResidentialStatus,
+    canonical.address?.housingSituation,
+    canonical.address?.residentialStatus,
+    rawApplicant.currentHousingSituation,
+    rawApplicant.currentResidentialStatus,
+    rawApplicant.housingSituation,
+    rawApplicant.residentialStatus,
+    rawApplicant.livingSituation,
+    rawApplicant.address?.currentHousingSituation,
+    rawApplicant.address?.currentResidentialStatus,
+    rawApplicant.address?.housingSituation,
+    rawApplicant.address?.residentialStatus,
+    applicant.currentHousingSituation,
+    applicant.currentResidentialStatus,
+    applicant.housingSituation,
+    applicant.residentialStatus,
+    applicant.livingSituation,
+    applicant.address?.currentHousingSituation,
+    applicant.address?.currentResidentialStatus,
+    applicant.address?.housingSituation,
+    applicant.address?.residentialStatus
+  ));
+}
+
+function canonicalClientDetailsApplicant(applicant, payload, rowIndex, result) {
+  const rawCanonical = findCanonicalApplicantData(applicant, payload) || applicant || {};
+  const canonical = clientDetailsFromRawApplicant(rawCanonical || {});
+  const expectedKey = applicantNameKey(applicant);
+  const canonicalKey = applicantNameKey(canonical) || applicantNameKey(rawCanonical);
+  if (expectedKey && canonicalKey && expectedKey !== canonicalKey) {
+    recordVerificationFailure(result, "clientDetails", fullApplicantName(applicant), "Canonical applicant data did not match target applicant name. Refusing to merge cross-applicant data.", {
+      rowIndex,
+      expected: fullApplicantName(applicant),
+      canonical: fullApplicantName(canonical) || fullApplicantName(rawCanonical)
+    });
+    return applicant;
+  }
+  const housing = resolveCurrentHousingSituation(applicant, canonical, rawCanonical);
+  const merged = {
+    ...applicant,
+    title: nonEmptyValue(canonical.title, applicant.title),
+    dateOfBirth: nonEmptyValue(canonical.dateOfBirth, applicant.dateOfBirth),
+    gender: nonEmptyValue(canonical.gender, applicant.gender),
+    currentHousingSituation: housing || "",
+    permanentInAustralia: nonEmptyValue(canonical.permanentInAustralia, applicant.permanentInAustralia),
+    driversLicenceNo: nonEmptyValue(canonical.driversLicenceNo, applicant.driversLicenceNo),
+    licenceExpiryDate: nonEmptyValue(canonical.licenceExpiryDate, applicant.licenceExpiryDate),
+    licenceState: nonEmptyValue(canonical.licenceState, applicant.licenceState),
+    licenceClass: nonEmptyValue(canonical.licenceClass, applicant.licenceClass),
+    currentAddress: nonEmptyValue(canonical.currentAddress, applicant.currentAddress),
+    previousAddress: nonEmptyValue(canonical.previousAddress, applicant.previousAddress),
+    postSettlementAddress: nonEmptyValue(canonical.postSettlementAddress, applicant.postSettlementAddress),
+    mailingAddress: nonEmptyValue(canonical.mailingAddress, applicant.mailingAddress),
+    address: canonical.address || applicant.address || null,
+    relatedSpouse: applicant.relatedSpouse,
+    maritalStatus: applicant.maritalStatus
+  };
+  result?.actions?.push?.({
+    action: "client-details-canonical-merge",
+    section: "clientDetails",
+    label: fullApplicantName(merged),
+    rowIndex,
+    source: rawCanonical === applicant ? "prepared-applicant" : "payload-canonical",
+    title: merged.title || "",
+    gender: merged.gender || "",
+    dateOfBirth: merged.dateOfBirth || "",
+    currentHousingSituation: merged.currentHousingSituation || "",
+    licenceExpiryDate: merged.licenceExpiryDate || ""
+  });
+  return merged;
+}
+
 function resolveApplicantGender(applicant, scope = document, payload = {}) {
   const screenTitle = readDisplayByLabel("Title", scope) || readClientDetailsCriticalValue("Title", scope) || "";
   const canonical = findCanonicalApplicantData(applicant, payload);
@@ -2270,6 +2414,7 @@ function clientDetailsFromRawApplicant(rawApplicant = {}) {
     previousAddress: rawApplicant.previousAddress || rawApplicant.previousResidentialAddress || "",
     postSettlementAddress: rawApplicant.postSettlementAddress || "",
     mailingAddress: rawApplicant.mailingAddress || "",
+    currentHousingSituation: resolveCurrentHousingSituation(rawApplicant, rawApplicant, rawApplicant),
     permanentInAustralia: rawApplicant.permanentInAustralia || (rawApplicant.residencyStatus ? "Yes" : ""),
     driversLicenceNo: rawApplicant.driversLicenceNo || id.driversLicenceNo || "",
     licenceExpiryDate: rawApplicant.licenceExpiryDate || id.licenceExpiryDate || "",
@@ -2434,6 +2579,8 @@ function applicantCriticalChecks(applicant) {
   if (applicant.dateOfBirth) checks.push({ label: "Date of Birth", expected: formatDateValue(applicant.dateOfBirth, "au"), type: "date" });
   if (applicant.gender) checks.push({ label: "Gender", expected: applicant.gender, type: "dropdown" });
   if (applicant.relatedSpouse) checks.push({ label: "Related Spouse", expected: applicant.relatedSpouse, type: "dropdown" });
+  if (applicant.currentHousingSituation) checks.push({ label: "Current Housing Situation", expected: applicant.currentHousingSituation, type: "dropdown" });
+  if (applicant.permanentInAustralia) checks.push({ label: "Permanent in Australia", expected: applicant.permanentInAustralia, type: "dropdown" });
   if (applicant.driversLicenceNo) checks.push({ label: "Driver's Licence No.", expected: applicant.driversLicenceNo, type: "text" });
   if (applicant.licenceExpiryDate) checks.push({ label: "Licence Expiry Date", expected: formatDateValue(applicant.licenceExpiryDate, "au"), type: "date" });
   if (applicant.licenceState) checks.push({ label: "Licence State", expected: applicant.licenceState, type: "dropdown" });
@@ -2510,10 +2657,19 @@ async function saveClientDetailsAndVerify(applicant, result, rowIndex, payload =
   }
   await sleep(700);
   const activation = await activateInfinityApplicantTab(applicant, result, rowIndex);
-  if (!activation.ok) return false;
-  const afterSaveGenderResolution = resolveApplicantGender(applicant, activation.scope, payload);
-  const afterSaveGender = readClientDetailsCriticalValue("Gender", activation.scope);
-  traceApplicantClientDetails(result, "after-save-strict", applicant, activation.scope, {
+  const afterSaveScope = activation.ok ? activation.scope : getVisibleClientDetailsFormScope();
+  if (!activation.ok) {
+    result.warnings.push({
+      section: "clientDetails",
+      label: name,
+      message: "Save success was confirmed, but active applicant could not be re-verified immediately after save.",
+      rowIndex,
+      activation
+    });
+  }
+  const afterSaveGenderResolution = resolveApplicantGender(applicant, afterSaveScope, payload);
+  const afterSaveGender = readClientDetailsCriticalValue("Gender", afterSaveScope);
+  traceApplicantClientDetails(result, "after-save-strict", applicant, afterSaveScope, {
     rowIndex,
     payload,
     genderResolution: afterSaveGenderResolution,
@@ -2530,7 +2686,7 @@ async function saveClientDetailsAndVerify(applicant, result, rowIndex, payload =
     });
     return false;
   }
-  const afterSave = await verifyApplicantCriticalFields(applicant, activation.scope, result, "after-save");
+  const afterSave = await verifyApplicantCriticalFields(applicant, afterSaveScope, result, "after-save");
   const blockingAfterSaveFailures = afterSave.failures.filter(isBlockingClientDetailsFailure);
   if (blockingAfterSaveFailures.length) {
     recordVerificationFailure(result, "clientDetails", name, "Applicant fields were filled but did not persist after Save Changes", {
@@ -2652,6 +2808,14 @@ function applicantNameFieldsMatch(expected, actual) {
     valuesMatch(expected.firstName, actual?.firstName) &&
     valuesMatch(expected.surname, actual?.surname)
   );
+}
+
+function applicantNameFieldsBlank(actual) {
+  return !String(actual?.firstName || "").trim() && !String(actual?.surname || "").trim();
+}
+
+function applicantNameFieldsSafeForTarget(expected, actual) {
+  return applicantNameFieldsMatch(expected, actual) || applicantNameFieldsBlank(actual);
 }
 
 function findVisibleApplicantTabElement(fullName) {
@@ -2779,7 +2943,7 @@ function getApplicantTabItems() {
         tagName: clickable.tagName,
         className: clickable.className || "",
         ngClick: clickable.getAttribute?.("ng-click") || clickable.getAttribute?.("data-ng-click") || "",
-        isActive: isApplicantTabActive(clickable)
+        isActive: isApplicantTabActive(clickable) || isApplicantTabActive(element)
       };
     })
     .filter(Boolean);
@@ -2870,12 +3034,12 @@ function applicantTabClickTargets(tabItem) {
     });
   };
 
-  add(tabItem?.clickable, "primary-clickable");
-  add(tabItem?.element, "text-element");
   if (tabItem?.nameRect) {
     const pointElement = document.elementFromPoint(tabItem.nameRect.left + tabItem.nameRect.width * 0.5, tabItem.nameRect.top + tabItem.nameRect.height * 0.55);
     add(pointElement, "element-from-name-point");
   }
+  add(tabItem?.element, "text-element");
+  add(tabItem?.clickable, "primary-clickable");
   add(tabItem?.element?.querySelector?.("[role='tab'], [ng-click], [data-ng-click], .Tab, .tab, a, button"), "descendant-clickable");
   add(tabItem?.clickable?.querySelector?.("[role='tab'], [ng-click], [data-ng-click], .Tab, .tab, a, button"), "clickable-descendant");
 
@@ -2987,8 +3151,9 @@ async function waitForApplicantActiveAndForm(expected, timeout = 6500) {
     const scope = getVisibleClientDetailsFormScope();
     const current = readClientNameFields(scope);
     const formOk = applicantNameFieldsMatch(expected, current);
-    const underlineOk = target ? isApplicantTabActive(target.clickable) : false;
-    return formOk ? { ok: true, scope, current, target, tabs, underlineOk } : null;
+    const formBlank = applicantNameFieldsBlank(current);
+    const underlineOk = target ? (isApplicantTabActive(target.clickable) || isApplicantTabActive(target.element)) : false;
+    return (formOk || (underlineOk && formBlank)) ? { ok: true, scope, current, target, tabs, underlineOk, formBlank } : null;
   }, { timeout, interval: 200 });
 }
 
@@ -3009,7 +3174,7 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
   let actual = readClientNameFields(scope || document);
   const expected = { firstName, surname, fullName };
   let activeTab = activeApplicantTab();
-  if (applicantNameFieldsMatch(expected, actual)) {
+  if (applicantNameFieldsMatch(expected, actual) || (activeTabMatchesApplicant(activeTab, expected) && applicantNameFieldsBlank(actual))) {
     markApplicantState(applicant, { visited: true, activated: true, alreadyActive: true });
     result.actions.push({
       action: "applicant-already-active",
@@ -3050,7 +3215,7 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
   scope = switched?.scope || getVisibleClientDetailsFormScope();
   actual = switched?.current || readClientNameFields(scope || document);
   activeTab = activeApplicantTab();
-  const ok = Boolean(switched?.ok && scope && applicantNameFieldsMatch(expected, actual));
+  const ok = Boolean(switched?.ok && scope && applicantNameFieldsSafeForTarget(expected, actual));
   tabItems = getApplicantTabItems();
 
   const details = {
@@ -3745,6 +3910,7 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
   traceApplicantClientDetails(result, "before-direct-fill", applicant, scope, { rowIndex, payload });
   for (const [label, key, dateFormat] of clientDetailsFieldMap()) {
     if (label === "Gender") continue;
+    if (!canWriteClientDetailsField(applicant, label, result, { rowIndex, phase: "direct-fill" })) continue;
     const rawValue = applicant?.[key];
     if (rawValue === undefined || rawValue === null || rawValue === "") continue;
     if (dateFormat === "au" && genderLikeValue(rawValue)) {
@@ -3775,7 +3941,10 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
       } else {
         ok = await fillClientDetailsCriticalText(scope, applicantName, label, value, result, meta);
       }
-      if (ok) filledCount += 1;
+      if (ok) {
+        markClientDetailsFieldWritten(applicant, label);
+        filledCount += 1;
+      }
       await sleep(90);
       continue;
     }
@@ -3798,6 +3967,7 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
             applicantName: fullApplicantName(applicant)
           });
         }
+        markClientDetailsFieldWritten(applicant, label);
         filledCount += 1;
       } else {
         result.fieldsSkipped.push({ section: "clientDetails", label, reason: "control refused value", rowIndex });
@@ -3807,8 +3977,13 @@ async function fillClientDetailsDirect(applicant, result, rowIndex, scope = docu
     }
     await sleep(90);
   }
-  const genderOk = await fillGenderDeterministic(applicant, scope, payload, result, rowIndex, "after-direct-fill");
-  if (genderOk) filledCount += 1;
+  if (canWriteClientDetailsField(applicant, "Gender", result, { rowIndex, phase: "direct-fill" })) {
+    const genderOk = await fillGenderDeterministic(applicant, scope, payload, result, rowIndex, "direct-fill");
+    if (genderOk) {
+      markClientDetailsFieldWritten(applicant, "Gender");
+      filledCount += 1;
+    }
+  }
   traceApplicantClientDetails(result, "after-direct-fill", applicant, scope, { rowIndex, payload });
   return filledCount;
 }
@@ -3834,6 +4009,7 @@ async function fillApplicantAddresses(applicant, rawApplicant, result, rowIndex)
 async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
   ensureResultShape(result);
   if (!isClientDetailsPage()) return false;
+  resetClientDetailsTransactionLocks();
   const section = mapping.sections.find((item) => item.id === "clientDetails");
   if (!section) return false;
   const preparedRows = infinityApplicantRows(payload);
@@ -3864,11 +4040,12 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     throwIfAutomationStopped();
     const spouse = applicants.length > 1 ? applicants[index === 0 ? 1 : 0] : null;
     const rawApplicant = rawRows[index] || applicantForRoleOrIndex(payload, index === 0 ? "primary" : "secondary", index);
-    const applicant = {
+    const applicantBeforeCanonical = {
       ...applicants[index],
       maritalStatus: applicants.length > 1 ? "Married" : applicants[index].maritalStatus,
       relatedSpouse: spouse ? fullApplicantName(spouse) : applicants[index].relatedSpouse
     };
+    const applicant = canonicalClientDetailsApplicant(applicantBeforeCanonical, payload, index, result);
     const name = fullApplicantName(applicant);
     setAutomationProgress(index, applicants.length, `Client Details: ${name || `Applicant ${index + 1}`}`);
     result.actions.push({
@@ -3903,7 +4080,6 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     await cleanupMisfilledClientDetails(result, index, scope);
     await fillClientDetailsDirect(applicant, result, index, scope, payload);
     markApplicantState(applicant, { filled: true });
-    await detectAndFixDateSwap(applicant, scope, result);
 
     active = await freshVerifiedApplicantScope(applicant, result, index, "address-fill");
     if (!active.ok) continue;
@@ -3913,9 +4089,6 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     active = await freshVerifiedApplicantScope(applicant, result, index, "before-save-verify");
     if (!active.ok) continue;
     scope = active.scope;
-    await clearAddressGarbageFromPhoneFields(scope, result, name);
-    await detectAndFixDateSwap(applicant, scope, result);
-    await fillGenderDeterministic(applicant, scope, payload, result, index, "before-save-verify");
     const beforeSave = await verifyApplicantCriticalFields(applicant, scope, result, "before-save");
     const blockingBeforeSaveFailures = beforeSave.failures.filter(isBlockingClientDetailsFailure);
     if (blockingBeforeSaveFailures.length) {
@@ -3940,6 +4113,7 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     markApplicantState(applicant, { verifiedBeforeSave: true });
     const saved = await saveClientDetailsAndVerify(applicant, result, index, payload);
     markApplicantState(applicant, { saved, verifiedAfterSave: saved });
+    if (saved) markClientDetailsApplicantCompleted(applicant, result, index);
     advanceAutomationProgress(saved ? `Client Details saved and verified: ${name || `Applicant ${index + 1}`}` : `Client Details save failed: ${name || `Applicant ${index + 1}`}`);
     await sleep(500);
   }

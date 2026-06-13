@@ -39,7 +39,7 @@ function clientDetailsForApplicant(applicant, options = {}) {
     email: applicant?.email || "",
     currentAddress: formatClientAddress(applicant),
     numberOfDependants: applicant?.dependants ?? 0,
-    currentHousingSituation: options.currentHousingSituation || applicant?.currentHousingSituation || applicant?.address?.residentialStatus || "",
+    currentHousingSituation: options.currentHousingSituation || applicant?.currentHousingSituation || applicant?.currentResidentialStatus || applicant?.address?.residentialStatus || applicant?.address?.currentResidentialStatus || "",
     permanentInAustralia: applicant?.permanentInAustralia || (applicant?.residencyStatus ? "Yes" : ""),
     driversLicenceNo: looksLikeDate(rawLicenceNo) ? "" : rawLicenceNo,
     licenceExpiryDate: rawExpiry || (looksLikeDate(rawLicenceNo) ? rawLicenceNo : ""),
@@ -49,10 +49,11 @@ function clientDetailsForApplicant(applicant, options = {}) {
 }
 
 function currentHousingSituationForApplicant(caseData, applicant) {
-  return caseData.clientProfile?.currentHousingSituation ||
-    applicant?.currentHousingSituation ||
+  return applicant?.currentHousingSituation ||
+    applicant?.currentResidentialStatus ||
     applicant?.address?.residentialStatus ||
     applicant?.address?.currentResidentialStatus ||
+    caseData.clientProfile?.currentHousingSituation ||
     "";
 }
 
