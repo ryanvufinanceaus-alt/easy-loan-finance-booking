@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-active-underline-v1.6";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-angular-tab-switch-v1.7";
 
 const state = {
   prepared: null,

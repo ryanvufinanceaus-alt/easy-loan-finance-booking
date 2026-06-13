@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "EasyFlow AI Extension",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "description": "Section-by-section AOL autofill from EasyFlow AI prepared payloads.",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [

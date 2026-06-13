@@ -39,13 +39,21 @@ function clientDetailsForApplicant(applicant, options = {}) {
     email: applicant?.email || "",
     currentAddress: formatClientAddress(applicant),
     numberOfDependants: applicant?.dependants ?? 0,
-    currentHousingSituation: options.currentHousingSituation || "",
+    currentHousingSituation: options.currentHousingSituation || applicant?.currentHousingSituation || applicant?.address?.residentialStatus || "",
     permanentInAustralia: applicant?.permanentInAustralia || (applicant?.residencyStatus ? "Yes" : ""),
     driversLicenceNo: looksLikeDate(rawLicenceNo) ? "" : rawLicenceNo,
     licenceExpiryDate: rawExpiry || (looksLikeDate(rawLicenceNo) ? rawLicenceNo : ""),
     licenceState: applicant?.id?.licenceState || "",
     licenceClass: applicant?.id?.licenceClass || ""
   };
+}
+
+function currentHousingSituationForApplicant(caseData, applicant) {
+  return caseData.clientProfile?.currentHousingSituation ||
+    applicant?.currentHousingSituation ||
+    applicant?.address?.residentialStatus ||
+    applicant?.address?.currentResidentialStatus ||
+    "";
 }
 
 function sentenceName(applicants) {
@@ -250,13 +258,13 @@ export function buildInfinityTemplate(caseData) {
     clientDetails: clientDetailsForApplicant(primary, {
       primaryApplicant: true,
       relatedSpouse: secondary ? fullName(secondary) : "",
-      currentHousingSituation: caseData.clientProfile?.currentHousingSituation || ""
+      currentHousingSituation: currentHousingSituationForApplicant(caseData, primary)
     }),
     applicants: applicants.map((applicant, index) =>
       clientDetailsForApplicant(applicant, {
         primaryApplicant: index === 0,
         relatedSpouse: applicants.length > 1 ? fullName(index === 0 ? applicants[1] : applicants[0]) : "",
-        currentHousingSituation: caseData.clientProfile?.currentHousingSituation || ""
+        currentHousingSituation: currentHousingSituationForApplicant(caseData, applicant)
       })
     ),
     coApplicant: secondary

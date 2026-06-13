@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-active-underline-v1.6";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-angular-tab-switch-v1.7";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -243,6 +243,30 @@ function clickElement(element) {
   element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
   element.click();
   element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+}
+
+function angularClickElement(element) {
+  const angular = window.angular;
+  if (!angular?.element || !element) return false;
+  const targets = [
+    element,
+    element.closest?.("[ng-click], [data-ng-click]"),
+    element.parentElement,
+    element.parentElement?.closest?.("[ng-click], [data-ng-click]")
+  ].filter(Boolean);
+  let fired = false;
+  for (const target of [...new Set(targets)]) {
+    try {
+      const wrapped = angular.element(target);
+      wrapped.triggerHandler?.("click");
+      const scope = wrapped.scope?.() || wrapped.isolateScope?.();
+      scope?.$applyAsync?.();
+      fired = true;
+    } catch (_error) {
+      // Best-effort Angular hook; DOM events remain the primary path.
+    }
+  }
+  return fired;
 }
 
 function pressEscape() {
@@ -2812,7 +2836,8 @@ async function clickApplicantTabBody(tabItem, result = null, meta = {}) {
     tab.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
   }
   tab.click?.();
-  result?.actions?.push?.({ action: "click-applicant-tab-target", section: "clientDetails", selector: describeElement(tab), targetCount: targets.length, ...meta });
+  const angularTriggered = angularClickElement(tab);
+  result?.actions?.push?.({ action: "click-applicant-tab-target", section: "clientDetails", selector: describeElement(tab), targetCount: targets.length, angularTriggered, ...meta });
   return true;
 }
 
@@ -2827,12 +2852,14 @@ async function clickApplicantTabUntilFormMatches(targetTab, expected, result, ro
       target.dispatchEvent(new EventCtor(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }));
     }
     target.click?.();
+    const angularTriggered = angularClickElement(target);
     result.actions.push({
       action: "try-applicant-tab-click",
       section: "clientDetails",
       rowIndex,
       attempt: attempt + 1,
       selector: describeElement(target),
+      angularTriggered,
       expected
     });
     await waitForAngularSettle();

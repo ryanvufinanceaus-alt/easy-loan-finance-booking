@@ -75,7 +75,7 @@ export function buildAolTemplate(caseData, infinity) {
       mobilePhone: primary.mobile || "",
       email: primary.email || "",
       currentResidentialAddress: formatAddress(primary.address),
-      currentHousingSituation: caseData.clientProfile?.currentHousingSituation || "Own Home",
+      currentHousingSituation: caseData.clientProfile?.currentHousingSituation || primary.address?.residentialStatus || primary.address?.currentResidentialStatus || "",
       addressSince: caseData.clientProfile?.addressSince || "",
       employmentName: primary.employment?.employerName || "",
       employmentStatus: primary.employment?.status || "",
