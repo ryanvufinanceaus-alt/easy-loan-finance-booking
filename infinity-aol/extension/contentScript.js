@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "address-edit-housing-source-v2.6";
+const EASYFLOW_EXTENSION_BUILD_ID = "address-candidates-housing-mapper-v2.7";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -20,6 +20,10 @@ function isVisible(element) {
   const rect = element.getBoundingClientRect();
   const style = window.getComputedStyle(element);
   return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+}
+
+function isEasyFlowOverlayElement(element) {
+  return Boolean(element?.closest?.("#easyflow-ai-extension-status"));
 }
 
 function isBackdropOnly(element) {
@@ -448,6 +452,7 @@ function findClickableByText(labels, root = document) {
 
 function allTextNodes(root = document) {
   return [...root.querySelectorAll("label, span, div, p, strong, h1, h2, h3, h4, td, th, li, a, button")]
+    .filter((node) => !isEasyFlowOverlayElement(node))
     .filter((node) => {
       const text = normalize(node.textContent);
       return text && text.length <= 180;
@@ -3604,22 +3609,42 @@ function rowForAddressLabel(addressLabel) {
   return null;
 }
 
-function findEditButtonForAddress(addressLabel) {
-  const wanted = normalize(addressLabel);
-  const nodes = [...document.querySelectorAll("label, span, div, p, strong, h1, h2, h3, h4, td, th")]
+function findAddressesSectionRoot() {
+  const headings = [...document.querySelectorAll("h1,h2,h3,h4,h5,legend,div,span")]
     .filter(isVisible)
+    .filter((element) => !isEasyFlowOverlayElement(element))
+    .filter((element) => normalize(element.innerText || element.textContent || "") === "addresses");
+  for (const heading of headings) {
+    let container = heading.parentElement;
+    for (let depth = 0; depth < 7 && container; depth += 1) {
+      const text = normalize(container.innerText || container.textContent || "");
+      if (text.includes("current address") && text.includes("edit") && text.includes("mailing address")) return container;
+      container = container.parentElement;
+    }
+  }
+  return getVisibleClientDetailsFormScope() || document;
+}
+
+function collectEditButtonsForAddress(addressLabel) {
+  const wanted = normalize(addressLabel);
+  const root = findAddressesSectionRoot();
+  const nodes = [...root.querySelectorAll("label, span, div, p, strong, h1, h2, h3, h4, td, th")]
+    .filter(isVisible)
+    .filter((node) => !isEasyFlowOverlayElement(node))
     .filter((node) => {
       const text = normalize(node.textContent);
       return text && text.length <= 180 && (text === wanted || text.includes(wanted));
     });
+  const matches = [];
 
   for (const node of nodes) {
     node.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
     const labelRect = node.getBoundingClientRect();
-    const addressSection = findSectionByHeading("Addresses") || document;
+    const addressSection = findAddressesSectionRoot();
     const addressSectionRect = addressSection === document ? null : addressSection.getBoundingClientRect();
-    const visualCandidates = [...document.querySelectorAll("button, a, [role='button'], [ng-click], [data-ng-click], [onclick], span, i")]
+    const visualCandidates = [...addressSection.querySelectorAll("button, a, [role='button'], [ng-click], [data-ng-click], [onclick], span, i")]
       .filter(isVisible)
+      .filter((item) => !isEasyFlowOverlayElement(item))
       .map((item) => {
         const rect = item.getBoundingClientRect();
         const text = normalize(item.innerText || item.textContent || "");
@@ -3651,7 +3676,7 @@ function findEditButtonForAddress(addressLabel) {
       .filter(Boolean)
       .filter((candidate, index, list) => candidate.element && list.findIndex((item) => item.element === candidate.element) === index)
       .sort((a, b) => a.score - b.score);
-    if (visualCandidates[0]?.element) return visualCandidates[0].element;
+    matches.push(...visualCandidates);
 
     let container = node.parentElement;
     for (let depth = 0; depth < 6 && container; depth += 1) {
@@ -3664,53 +3689,92 @@ function findEditButtonForAddress(addressLabel) {
           if ((item.innerText || item.textContent || "").length > 40 && !marker.includes("pencil")) return false;
           return text === "edit" || text.includes("edit") || marker.includes("edit") || marker.includes("pencil");
         });
-      if (iconEdit) return closestClickable(iconEdit);
+      if (iconEdit) {
+        const clickable = closestClickable(iconEdit);
+        matches.push({
+          element: clickable,
+          score: 500 + depth,
+          selector: describeElement(clickable),
+          text: visibleText(clickable),
+          rect: rectJson(clickable.getBoundingClientRect())
+        });
+      }
       container = container.parentElement;
     }
   }
-  return null;
+  const seen = new Set();
+  return matches
+    .filter((candidate) => candidate.element && isVisible(candidate.element))
+    .filter((candidate) => {
+      const key = describeElement(candidate.element);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.score - b.score);
+}
+
+function findEditButtonForAddress(addressLabel) {
+  return collectEditButtonsForAddress(addressLabel)[0]?.element || null;
 }
 
 async function clickAddressEdit(addressLabel, result, meta = {}) {
-  await scrollToText([addressLabel]);
-  const edit = findEditButtonForAddress(addressLabel);
-  if (!edit) {
+  const root = findAddressesSectionRoot();
+  await scrollToText([addressLabel], root);
+  const candidates = collectEditButtonsForAddress(addressLabel);
+  if (!candidates.length) {
     recordFieldSkipped(result, "clientDetails", `${addressLabel} Edit`, "Edit button not visible", {
       ...meta,
-      addressSectionText: normalize((findSectionByHeading("Addresses") || document.body)?.innerText || "").slice(0, 1000),
-      visibleActions: collectVisibleButtonsAndLinks(findSectionByHeading("Addresses") || document).slice(0, 40)
+      addressSectionText: normalize((root || document.body)?.innerText || "").slice(0, 1000),
+      visibleActions: collectVisibleButtonsAndLinks(root || document).slice(0, 40)
     });
     return null;
   }
-  result.actions.push({
-    action: "click-address-edit",
-    section: "clientDetails",
-    label: addressLabel,
-    editSelector: describeElement(edit),
-    editText: visibleText(edit),
-    editRect: rectJson(edit.getBoundingClientRect()),
-    ...meta
-  });
-  await clickAtCenter(edit);
-  angularClickElement(edit);
-  const modal = await waitFor(() => {
-    const current = activeModal();
-    if (!current) return null;
-    const text = normalize(current.innerText || current.textContent || "");
-    return text.includes("edit address") || text.includes("address type") || text.includes("street name") ? current : null;
-  }, { timeout: 8000, interval: 180 });
-  if (!modal) {
-    recordError(result, "clientDetails", addressLabel, "Edit Address modal did not open", {
-      ...meta,
+  const attempts = [];
+  for (const [index, candidate] of candidates.entries()) {
+    const edit = candidate.element;
+    result.actions.push({
+      action: "click-address-edit",
+      section: "clientDetails",
+      label: addressLabel,
+      attempt: index + 1,
       editSelector: describeElement(edit),
       editText: visibleText(edit),
       editRect: rectJson(edit.getBoundingClientRect()),
-      visibleDialogs: getVisibleDialogsDebug()
+      candidate,
+      ...meta
     });
-    return null;
+    clickElement(edit);
+    angularClickElement(edit);
+    await sleep(250);
+    let modal = await waitFor(() => {
+      const current = activeModal();
+      if (!current) return null;
+      const text = normalize(current.innerText || current.textContent || "");
+      return text.includes("edit address") || text.includes("address type") || text.includes("street name") ? current : null;
+    }, { timeout: 2500, interval: 150 });
+    if (!modal) {
+      await clickAtCenter(edit);
+      modal = await waitFor(() => {
+        const current = activeModal();
+        if (!current) return null;
+        const text = normalize(current.innerText || current.textContent || "");
+        return text.includes("edit address") || text.includes("address type") || text.includes("street name") ? current : null;
+      }, { timeout: 2500, interval: 150 });
+    }
+    attempts.push({ selector: describeElement(edit), text: visibleText(edit), opened: Boolean(modal), rect: rectJson(edit.getBoundingClientRect()) });
+    if (modal) {
+      result.actions.push({ action: "open-address-edit", section: "clientDetails", label: addressLabel, attempts, ...meta });
+      return modal;
+    }
   }
-  result.actions.push({ action: "open-address-edit", section: "clientDetails", label: addressLabel, ...meta });
-  return modal;
+  recordError(result, "clientDetails", addressLabel, "Edit Address modal did not open", {
+    ...meta,
+    attempts,
+    visibleDialogs: getVisibleDialogsDebug(),
+    addressSectionText: normalize((root || document.body)?.innerText || "").slice(0, 1000)
+  });
+  return null;
 }
 
 function exactLabelNode(label, root) {

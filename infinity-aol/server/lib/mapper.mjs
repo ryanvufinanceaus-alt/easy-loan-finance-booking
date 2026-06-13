@@ -22,6 +22,8 @@ function compactApplicant(applicant) {
     gender: applicant.gender || "",
     dateOfBirth: applicant.dateOfBirth || "",
     maritalStatus: applicant.maritalStatus || "",
+    currentResidentialStatus: applicant.currentResidentialStatus || "",
+    currentHousingSituation: applicant.currentHousingSituation || applicant.currentResidentialStatus || "",
     residencyStatus: applicant.residencyStatus || "",
     dependants: applicant.dependants ?? 0,
     email: applicant.email || "",
