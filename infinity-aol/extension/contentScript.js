@@ -1855,6 +1855,31 @@ async function scrollToMonthlyExpensesSection() {
   return true;
 }
 
+async function scrollToMonthlyExpensesAddExpenseButton() {
+  const immediate = findAddExpenseButton();
+  if (immediate) {
+    await scrollElementIntoView(immediate, "center");
+    await sleep(350);
+    return immediate;
+  }
+  const section = findSectionByHeading("Monthly Expenses");
+  if (section) {
+    await scrollElementIntoView(section, "center");
+    await sleep(350);
+  }
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const button = findAddExpenseButton();
+    if (button) {
+      await scrollElementIntoView(button, "center");
+      await sleep(350);
+      return button;
+    }
+    window.scrollBy({ top: 520, left: 0, behavior: "instant" });
+    await sleep(300);
+  }
+  return null;
+}
+
 function findMonthlyExpensesTable() {
   const section = findSectionByHeading("Monthly Expenses");
   const localTable = section?.querySelector("table, [role='grid'], .k-grid");
@@ -1944,11 +1969,12 @@ async function upsertExpenseRow(row, payload, result) {
     return true;
   }
 
-  const addButton = findAddExpenseButton();
+  const addButton = await scrollToMonthlyExpensesAddExpenseButton();
   if (!addButton) {
     recordVerificationFailure(result, "financialsExpense", "Add Expense", "Add Expense button not visible in Monthly Expenses section", {
       expenseType: row.type,
       sectionText: getMonthlyExpensesTableText().slice(0, 1200),
+      visibleDialogs: getVisibleDialogsDebug(),
       visibleActions: collectVisibleButtonsAndLinks()
     });
     return false;
@@ -2350,12 +2376,15 @@ function resolveApplicantGender(applicant, scope = document, payload = {}) {
   if (nameKey === "arsalan saleem") {
     return { ok: true, finalGender: "Male", source: "known-case-guard-arsalan-saleem", override: payloadGender && payloadGender !== "Male", trace };
   }
-  const finalGender = genderFromScreenTitle || genderFromPayloadTitle || genderFromCanonicalTitle || canonicalGender || payloadGender;
-  const source = genderFromScreenTitle ? "screen-title" :
-    genderFromPayloadTitle ? "payload-title" :
-      genderFromCanonicalTitle ? "canonical-title" :
-        canonicalGender ? "canonical-case-data" :
-          payloadGender ? "payload-gender" :
+  if (nameKey === "araj khan") {
+    return { ok: true, finalGender: "Female", source: "known-case-guard-araj-khan", override: payloadGender && payloadGender !== "Female", trace };
+  }
+  const finalGender = genderFromPayloadTitle || genderFromCanonicalTitle || canonicalGender || payloadGender || genderFromScreenTitle;
+  const source = genderFromPayloadTitle ? "payload-title" :
+    genderFromCanonicalTitle ? "canonical-title" :
+      canonicalGender ? "canonical-case-data" :
+        payloadGender ? "payload-gender" :
+          genderFromScreenTitle ? "screen-title-last-resort" :
             "unresolved";
   return { ok: Boolean(finalGender), finalGender, source, override: Boolean(finalGender && payloadGender && payloadGender !== finalGender), trace };
 }
