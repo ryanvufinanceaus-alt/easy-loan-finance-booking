@@ -1,0 +1,144 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>EasyFlow Financials Demo</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; color: #2f3a3d; background: #eef3f5; }
+    .top { height: 64px; background: #008a8d; color: white; display: flex; align-items: center; padding: 0 24px; font-size: 24px; }
+    .card { width: 1160px; margin: 22px auto 80px; background: white; border: 1px solid #d7dee2; box-shadow: 0 2px 8px #0002; padding: 24px 28px 120px; }
+    .main-tabs { display: flex; justify-content: space-around; border-bottom: 1px solid #cfd8dc; margin-bottom: 28px; }
+    .main-tabs button { border: 0; background: transparent; padding: 14px 34px; color: #9aa5aa; font-size: 16px; }
+    .main-tabs .active { color: #00a889; border-bottom: 3px solid #00a889; font-weight: 700; }
+    section { margin: 0 0 76px; }
+    h2 { font-weight: 300; color: #59666b; font-size: 28px; margin: 0 0 16px; }
+    table { width: 100%; border-collapse: collapse; border: 1px solid #d7dee2; }
+    th, td { border-bottom: 1px solid #e5ebee; padding: 14px 18px; text-align: left; }
+    th { color: #00685f; }
+    .right { text-align: right; }
+    .add-row { display: flex; justify-content: flex-end; margin-top: 18px; }
+    button { border: 1px solid #00a889; background: white; color: #006c5f; padding: 11px 18px; border-radius: 4px; cursor: pointer; font-weight: 700; }
+    .savebar { position: fixed; right: 72px; bottom: 38px; }
+    .savebar button, .modal-actions .primary { background: #12b894; color: white; border: 0; }
+    .toast { display: none; position: fixed; top: 74px; right: 40px; background: #42a856; color: white; padding: 14px 22px; z-index: 10; }
+    .toast.show { display: block; }
+    .demo-modal-shell { display: none; position: fixed; inset: 0; background: #0007; z-index: 20; align-items: center; justify-content: center; }
+    .demo-modal-shell.show { display: flex; }
+    .modal-content { background: white; width: 520px; padding: 22px 28px; box-shadow: 0 3px 20px #0006; }
+    .modal-content h2 { color: #11b594; text-align: center; font-weight: 400; margin-top: 0; }
+    .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    label { font-size: 15px; }
+    input, select { height: 40px; border: 1px solid #00b897; background: #effafb; padding: 0 10px; font-size: 16px; box-sizing: border-box; width: 100%; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; border-top: 1px solid #e3e7e9; padding-top: 18px; }
+    #demo-report { white-space: pre-wrap; width: 1160px; margin: 20px auto; background: #0f1d18; color: #d5f5e7; padding: 14px; font-family: Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <div class="top">INFYNITY</div>
+  <div class="card">
+    <div class="main-tabs">
+      <button>Overview</button>
+      <button>Client Details</button>
+      <button class="active">Financials</button>
+      <button>Loans &amp; Products</button>
+      <button>Notes</button>
+      <button>Documents</button>
+      <button>Fact Find</button>
+    </div>
+    <section><h2>Assets $30,000</h2><table><thead><tr><th>Type</th><th>Value</th><th>Value Basis</th></tr></thead><tbody><tr><td>Deposit Account</td><td>$15,000</td><td>Applicant Estimate</td></tr><tr><td>Motor Vehicle</td><td>$10,000</td><td>Applicant Estimate</td></tr><tr><td>Home Contents</td><td>$5,000</td><td>Applicant Estimate</td></tr></tbody></table><div class="add-row"><button>Add Asset</button></div></section>
+    <section><h2>Liabilities $0</h2><table><thead><tr><th>Type</th><th>Description</th><th>Lender</th><th>Limit</th><th>Balance</th></tr></thead><tbody><tr><td colspan="5">Nothing to show</td></tr></tbody></table><div class="add-row"><button>Add Liability</button></div></section>
+    <section><h2>Annual Incomes $225,600</h2><table><thead><tr><th>Type</th><th>Employer</th><th>Ownership</th><th>Frequency</th><th>Amount</th></tr></thead><tbody><tr><td>Base Salary</td><td></td><td>Arsalan Saleem</td><td>Annually</td><td>$130,600</td></tr><tr><td>Base Salary</td><td></td><td>Araj Khan</td><td>Annually</td><td>$95,000</td></tr></tbody></table><div class="add-row"><button>Add Income</button></div></section>
+    <section id="monthly-expenses"><h2>Monthly Expenses $0</h2><table id="expense-table"><thead><tr><th>Type</th><th>Description</th><th>Ownership</th><th>Frequency</th><th class="right">Amount</th></tr></thead><tbody><tr class="empty"><td colspan="5">Nothing to show</td></tr></tbody></table><div class="add-row"><button id="add-expense">Add Expense</button></div></section>
+    <div class="savebar"><button id="save-changes">Save Changes</button></div>
+  </div>
+  <div class="toast" id="toast">Saved successfully.</div>
+  <div class="demo-modal-shell" id="expense-modal">
+    <div class="modal-content" role="dialog">
+      <h2>Add/Edit Expense</h2>
+      <div class="modal-grid">
+        <div class="field"><label>Expense Type *</label><select id="expense-type"><option>Please Select</option><option>Board</option><option>Child Care</option><option>Child Maintenance</option><option>Clothing &amp; Personal Care</option><option>Electricity</option><option>Entertainment</option><option>Gas</option><option>Groceries</option><option>Health Care</option><option>Higher Education and Vocational Training</option><option>Holiday Home Costs</option><option>Home &amp; Contents Insurance</option><option>Home Maintenance</option><option>Investment Property Costs</option><option>Medical and Life Insurance</option><option>Other</option><option>Other Insurances</option><option>Owner Occupied Council &amp; Water Rates</option><option>Pet Care</option><option>Private and Non-Government Education</option><option>Public Primary and Secondary Education</option><option>Rental Expenses</option><option>Strata Fees and Land Tax</option><option>Telephone and Internet</option><option>Vehicle Insurance</option><option>Vehicle Maintenance &amp; Transport</option><option>Water</option></select></div>
+        <div class="field"><label>Expense Amount</label><input id="expense-amount"></div>
+        <div class="field"><label>Expense Frequency</label><select id="expense-frequency"><option>Monthly</option><option>Annually</option></select></div>
+        <div class="field"><label>Continue Post Settlement</label><select id="continue-post"><option>Yes</option><option>No</option></select></div>
+        <div class="field"><label>Description</label><input id="description"></div>
+        <div class="field"><label>Ownership</label><input value="50%"><input value="50%"></div>
+      </div>
+      <div class="modal-actions"><button type="button" id="close-modal">Close</button><button type="button" class="primary" id="save-modal">Save Changes</button></div>
+    </div>
+  </div>
+  <pre id="demo-report">Demo pending...</pre>
+  <script>
+    window.__easyflowListeners = [];
+    window.chrome = { runtime: { onMessage: { addListener(fn) { window.__easyflowListeners.push(fn); } } } };
+    const expenses = [];
+    function money(n) { return `$${Number(n || 0).toLocaleString("en-AU")}`; }
+    function renderExpenses() {
+      const tbody = document.querySelector("#expense-table tbody");
+      tbody.innerHTML = "";
+      expenses.forEach((row) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${row.type}</td><td>${row.description}</td><td>50% / 50%</td><td>${row.frequency}</td><td class="right">${money(row.amount)}</td>`;
+        tbody.appendChild(tr);
+      });
+      if (!expenses.length) tbody.innerHTML = '<tr class="empty"><td colspan="5">Nothing to show</td></tr>';
+      document.querySelector("#monthly-expenses h2").textContent = `Monthly Expenses ${money(expenses.reduce((sum, row) => sum + Number(row.amount || 0), 0))}`;
+    }
+    function openModal() { document.getElementById("expense-modal").classList.add("show"); }
+    function closeModal() { document.getElementById("expense-modal").classList.remove("show"); }
+    function saveModal() {
+      expenses.push({
+        type: document.getElementById("expense-type").value,
+        amount: Number(String(document.getElementById("expense-amount").value).replace(/[$,]/g, "")),
+        frequency: document.getElementById("expense-frequency").value,
+        description: document.getElementById("description").value
+      });
+      renderExpenses();
+      closeModal();
+    }
+    function savePage() {
+      const toast = document.getElementById("toast");
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 2200);
+    }
+    document.getElementById("add-expense").addEventListener("click", openModal);
+    document.getElementById("close-modal").addEventListener("click", closeModal);
+    document.getElementById("save-modal").addEventListener("click", saveModal);
+    document.getElementById("save-changes").addEventListener("click", savePage);
+    history.replaceState(null, "", "/accounts#!/financials");
+  </script>
+  <script src="../contentScript.js"></script>
+  <script>
+    const payload = {
+      meta: { caseId: "DEMO-FINANCIALS", brokerUser: "demo" },
+      applicants: {
+        primary: { firstName: "Arsalan", surname: "Saleem" },
+        secondary: { firstName: "Araj", surname: "Khan" }
+      },
+      serviceability: { hemMonthly: 3050, hemConfirmed: true },
+      expenses: { livingMonthly: 3050, hemConfirmed: true },
+      infinity: { applicants: [{ firstName: "Arsalan", surname: "Saleem" }, { firstName: "Araj", surname: "Khan" }], financials: { expenses: [] } }
+    };
+    const mapping = { sections: [] };
+    async function runDemo() {
+      const listener = window.__easyflowListeners[0];
+      const report = document.getElementById("demo-report");
+      if (!listener) {
+        report.textContent = "FAIL: contentScript listener did not register";
+        return;
+      }
+      const result = await new Promise((resolve) => listener({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" }, null, resolve));
+      const total = expenses.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+      const checks = {
+        noErrors: !(result.errors || []).length,
+        noVerificationFailures: !(result.verificationFailures || []).length,
+        generatedRowsFromHem: expenses.length === 9,
+        selectedExpenseTypes: ["Groceries", "Vehicle Maintenance & Transport", "Telephone and Internet"].every((type) => expenses.some((row) => row.type === type)),
+        totalMatchesHem: total === 3050
+      };
+      report.textContent = JSON.stringify({ ok: Object.values(checks).every(Boolean), checks, expenses, result }, null, 2);
+    }
+    setTimeout(runDemo, 500);
+  </script>
+</body>
+</html>

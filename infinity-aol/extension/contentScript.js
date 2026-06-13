@@ -1534,7 +1534,15 @@ function buildHemExpenseRows(total, payload) {
   const preparedRows = collectionAt(payload, "infinity.financials.expenses")
     .map(normalizeExpenseRow)
     .filter((row) => row.type && row.amount > 0);
-  return preparedRows;
+  if (preparedRows.length) return preparedRows;
+  return scaleHemExpenseTemplate(total)
+    .map((row) => normalizeExpenseRow({
+      ...row,
+      expenseType: row.type,
+      infinityTypeCandidates: expenseTypeCandidates(row.type),
+      source: "generated from confirmed HEM"
+    }))
+    .filter((row) => row.type && row.amount > 0);
 }
 
 function hemMonthlyAmount(payload) {
@@ -1723,7 +1731,7 @@ async function clickAtCenter(element) {
   const x = rect.left + rect.width / 2;
   const y = rect.top + rect.height / 2;
   const init = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y };
-  for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+  for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"]) {
     const EventCtor = type.startsWith("pointer") && typeof PointerEvent !== "undefined" ? PointerEvent : MouseEvent;
     element.dispatchEvent(new EventCtor(type, init));
   }
@@ -1764,10 +1772,21 @@ async function selectExpenseTypeWithFallback(preferredType, modal, result, prepa
   return "";
 }
 
+function isExpenseOwnershipInput(input) {
+  if (!input || !isVisible(input)) return false;
+  const container = input.closest(".field, .form-group, .control-group, .col, [class*='col-'], tr, li") || input.parentElement;
+  const text = normalize(container?.innerText || container?.textContent || "");
+  if (text.includes("expense amount") || text.includes("description") || text.includes("expense type") || text.includes("frequency") || text.includes("continue post settlement")) {
+    return false;
+  }
+  const value = String(input.value || "").trim();
+  return normalize(value).includes("%") || value === "" || /^\d+%?$/.test(value);
+}
+
 async function fillExpenseOwnership(modal, payload, result, expenseType, row = {}) {
   if (row.ownership && typeof row.ownership === "object") {
     const inputs = [...modal.querySelectorAll("input:not([type='hidden'])")].filter(isVisible);
-    const percentInputs = inputs.filter((input) => normalize(input.value).includes("%") || input.value === "" || /^\d+%?$/.test(String(input.value || "")));
+    const percentInputs = inputs.filter(isExpenseOwnershipInput);
     const values = Object.values(row.ownership).filter((value) => value !== undefined && value !== null && value !== "");
     if (values.length && percentInputs.length >= values.length) {
       for (let index = 0; index < values.length; index += 1) {
@@ -1780,7 +1799,7 @@ async function fillExpenseOwnership(modal, payload, result, expenseType, row = {
   const applicants = infinityApplicantRows(payload);
   if (applicants.length > 1) {
     const inputs = [...modal.querySelectorAll("input:not([type='hidden'])")].filter(isVisible);
-    const percentInputs = inputs.filter((input) => normalize(input.value).includes("%") || input.value === "" || /^\d+%?$/.test(String(input.value || "")));
+    const percentInputs = inputs.filter(isExpenseOwnershipInput);
     if (percentInputs.length >= 2) {
       await setFieldValue(percentInputs[0], "50%");
       await setFieldValue(percentInputs[1], "50%");
@@ -1833,21 +1852,33 @@ function verifyExpenseTableRow(row, selectedType, result) {
 }
 
 function readExpenseAmount(modal) {
-  const found = findExactByLabelText("Expense Amount", "", modal) || findByLabelText(["Expense Amount", "Amount"], "", modal);
-  return normalizeMoneyValue(found?.element ? readFieldValue(found.element) : "");
+  const labelEl = findFlexibleLabel(modal, "Expense Amount");
+  const container = labelEl ? fieldContainerFromLabel(labelEl, modal) : null;
+  const input = container?.querySelector("input:not([type='hidden']), textarea");
+  if (input && isVisible(input)) return normalizeMoneyValue(readFieldValue(input));
+  const found = findExactByLabelText("Expense Amount", "", modal) || findByLabelText(["Expense Amount"], "", modal);
+  if (found?.element) return normalizeMoneyValue(readFieldValue(found.element));
+  const visual = resolveClientDetailsControlByVisualLabel(modal, "Expense Amount", "input:not([type='hidden']), textarea");
+  return normalizeMoneyValue(visual?.ok ? readFieldValue(visual.control) : "");
 }
 
 async function verifyExpenseModalMandatoryFields(modal, row, selectedType, result) {
   const selected = readSelectedExpenseType(modal);
   const amount = readExpenseAmount(modal);
+  const visibleAmounts = [...modal.querySelectorAll("input:not([type='hidden']), textarea")]
+    .filter(isVisible)
+    .map((input) => normalizeMoneyValue(readFieldValue(input)))
+    .filter((value) => Number(value) > 0);
   const typeOk = Boolean(selected && (labelsMatchLoose(selected, selectedType) || labelsMatchLoose(selected, row.type)));
-  const amountOk = Number(amount) === Number(normalizeMoneyValue(row.amount));
+  const expectedAmount = Number(normalizeMoneyValue(row.amount));
+  const amountOk = Number(amount) === expectedAmount || visibleAmounts.some((value) => Number(value) === expectedAmount);
   if (typeOk && amountOk) return true;
   recordVerificationFailure(result, "financialsExpense", row.type, "Expense modal mandatory fields not verified before save", {
     selectedType,
     selected,
     expectedAmount: row.amount,
     actualAmount: amount,
+    visibleAmounts,
     typeOk,
     amountOk
   });
@@ -1929,11 +1960,15 @@ function findAddExpenseButton() {
   const roots = [findSectionByHeading("Monthly Expenses"), document].filter(Boolean);
   for (const root of roots) {
     const candidates = [
-      ...root.querySelectorAll("button, a, [role='button'], [ng-click], [data-ng-click], span, div")
+      ...root.querySelectorAll("button, a, [role='button'], [ng-click], [data-ng-click], .btn"),
+      ...root.querySelectorAll("span, div")
     ].filter(isVisible);
     for (const element of candidates) {
       if (!normalize(element.innerText || element.textContent || "").includes("add expense")) continue;
-      const clickable = element.closest("button, a, [role='button'], [ng-click], [data-ng-click], [onclick], .btn") || element;
+      const nestedClickable = element.matches("button, a, [role='button'], [ng-click], [data-ng-click], [onclick], .btn")
+        ? null
+        : [...element.querySelectorAll("button, a, [role='button'], [ng-click], [data-ng-click], [onclick], .btn")].filter(isVisible)[0];
+      const clickable = element.closest("button, a, [role='button'], [ng-click], [data-ng-click], [onclick], .btn") || nestedClickable || element;
       if (clickable && isVisible(clickable) && !isDisabled(clickable)) return clickable;
     }
   }
@@ -2109,12 +2144,14 @@ async function saveFinancialsPageAndVerify(rows, result) {
     const amountOk = numericTokens(row.amount).some((token) => tableText.includes(normalize(token)));
     return !typeOk || !amountOk;
   });
-  if (missingRows.length || (Number(expectedTotal) > 0 && Number(actualTotal) === 0)) {
+  const totalMismatch = Number(expectedTotal) > 0 && Number(actualTotal) > 0 && Number(actualTotal) !== Number(expectedTotal);
+  if (missingRows.length || (Number(expectedTotal) > 0 && Number(actualTotal) === 0) || totalMismatch) {
     recordVerificationFailure(result, "financialsExpense", "Monthly Expenses", "Monthly Expenses did not persist after Financials save/recheck", {
       expectedRows: rows.map((row) => ({ type: row.type, amount: row.amount })),
       missingRows: missingRows.map((row) => ({ type: row.type, amount: row.amount })),
       expectedTotal,
       actualTotal,
+      totalMismatch,
       tableText: tableText.slice(0, 1000)
     });
     return false;
@@ -3343,7 +3380,7 @@ async function clickApplicantTabBody(tabItem, result = null, meta = {}) {
   await scrollElementIntoView(tab, "center");
   await sleep(250);
   const { x, y, source } = applicantTabClickPoint(tab, tabItem);
-  for (const type of ["mousemove", "mousedown", "mouseup", "click"]) {
+  for (const type of ["mousemove", "mousedown", "mouseup"]) {
     tab.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
   }
   tab.click?.();
@@ -3360,7 +3397,7 @@ async function clickApplicantTabUntilFormMatches(targetTab, expected, result, ro
     await scrollElementIntoView(target, "center");
     await sleep(180);
     const { x, y, source } = applicantTabClickPoint(target, targetTab);
-    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"]) {
       const EventCtor = type.startsWith("pointer") && typeof PointerEvent !== "undefined" ? PointerEvent : MouseEvent;
       target.dispatchEvent(new EventCtor(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }));
     }
@@ -3500,6 +3537,14 @@ async function freshVerifiedApplicantScope(applicant, result, rowIndex, phase) {
   const actual = readClientNameFields(scope || document);
   const expected = applicantNameParts(applicant);
   const ok = applicantNameFieldsMatch(expected, actual);
+  const allowBlankBeforeFirstFill = phase === "initial-fill" &&
+    activation.activeTabText &&
+    activeTabMatchesApplicant({ text: activation.activeTabText }, expected) &&
+    applicantNameFieldsBlank(actual);
+  if (allowBlankBeforeFirstFill) {
+    result.actions.push({ action: "verify-active-applicant-scope-blank-before-fill", section: "clientDetails", label: fullApplicantName(applicant), rowIndex, phase, actual });
+    return { ok: true, scope, activation, actual, expected, blankBeforeFill: true };
+  }
   if (!ok) {
     recordVerificationFailure(result, "clientDetails", fullApplicantName(applicant), `Applicant form changed or could not be verified before ${phase}. Stopped this applicant block.`, {
       rowIndex,
@@ -4157,18 +4202,37 @@ async function verifyAddressRowNotPlaceholder(addressLabel, parsed, result, appl
     recordVerificationFailure(result, "clientDetails", addressLabel, "Address row still shows placeholder after save", { applicantName, expected: parsed });
     return false;
   }
-  const requiredParts = [parsed.streetNumber, parsed.streetName, parsed.state, parsed.postcode].filter(Boolean).map(normalize);
-  const missingParts = requiredParts.filter((part) => !text.includes(part));
-  if (missingParts.length) {
+  const rowText = normalize(row?.textContent || "");
+  const streetName = normalize(parsed.streetName);
+  const state = normalize(parsed.state);
+  const postcode = normalize(parsed.postcode);
+  const streetNumber = normalize(parsed.streetNumber);
+  const unitNumber = normalize(parsed.unitNumber);
+  const hasLocation = (!state || rowText.includes(state)) && (!postcode || rowText.includes(postcode));
+  const hasStreetName = !streetName || rowText.includes(streetName);
+  const hasStreetNumber = !streetNumber || rowText.includes(streetNumber);
+  const hasStreet = hasStreetName && hasStreetNumber;
+  const hasUnit = !unitNumber || rowText.includes(unitNumber) || rowText.includes(`${unitNumber} /`) || rowText.includes(`${unitNumber}/`);
+  if (!hasLocation || !hasStreetName || !hasStreetNumber) {
     recordVerificationFailure(result, "clientDetails", addressLabel, "Address row saved but does not match expected parsed address", {
       applicantName,
       expected: parsed,
       actual: row?.textContent?.trim() || "",
-      missingParts
+      checks: { hasLocation, hasStreetName, hasStreetNumber, hasStreet, hasUnit }
     });
     return false;
   }
-  result.actions.push({ action: "verify-address-row", section: "clientDetails", label: addressLabel, applicantName });
+  if (!hasUnit) {
+    result.warnings.push({
+      section: "clientDetails",
+      label: addressLabel,
+      message: "Address row saved and contains street/location, but unit format differs from parsed payload.",
+      applicantName,
+      expected: parsed,
+      actual: row?.textContent?.trim() || ""
+    });
+  }
+  result.actions.push({ action: "verify-address-row", section: "clientDetails", label: addressLabel, applicantName, checks: { hasLocation, hasStreetName, hasStreetNumber, hasStreet, hasUnit } });
   return true;
 }
 
@@ -4640,8 +4704,8 @@ async function fillApplicantAddresses(applicant, rawApplicant, result, rowIndex)
   const completeRawAddress = rawAddress && typeof rawAddress === "object" && Object.values(rawAddress).some(Boolean) ? rawAddress : null;
   const completePreparedAddress = preparedAddress && typeof preparedAddress === "object" && Object.values(preparedAddress).some(Boolean) ? preparedAddress : null;
   const currentAddressSource = rawApplicant?.currentAddress || rawAddress.current || rawAddress.fullAddress || applicant?.currentAddress || preparedAddress.current || preparedAddress.fullAddress || completeRawAddress || completePreparedAddress || rawAddress.line1 || preparedAddress.line1 || rawAddress;
-  const postSettlementSource = rawApplicant?.postSettlementAddress || rawAddress.postSettlement || applicant?.postSettlementAddress || preparedAddress.postSettlement || currentAddressSource;
-  const mailingSource = rawApplicant?.mailingAddress || rawAddress.mailing || applicant?.mailingAddress || preparedAddress.mailing || currentAddressSource;
+  const postSettlementSource = rawApplicant?.postSettlementAddress || rawAddress.postSettlement || applicant?.postSettlementAddress || preparedAddress.postSettlement || "";
+  const mailingSource = rawApplicant?.mailingAddress || rawAddress.mailing || applicant?.mailingAddress || preparedAddress.mailing || "";
   const addressRows = [
     ["Current Address", currentAddressSource, true],
     ["Previous Address", rawApplicant?.previousAddress || rawApplicant?.previousResidentialAddress || rawAddress.previous || applicant?.previousAddress || preparedAddress.previous, false],

@@ -246,6 +246,8 @@
         secondDobPersisted: demoState.applicants[1].dateOfBirth === "02/04/1997",
         firstAddressSaved: /79 Crebert/i.test(demoState.addresses[0]["Current Address"] || ""),
         secondAddressSaved: /79 Crebert/i.test(demoState.addresses[1]["Current Address"] || ""),
+        postSettlementLeftBlank: !demoState.addresses.some((rows) => rows["Post Settlement Address"]),
+        mailingLeftBlank: !demoState.addresses.some((rows) => rows["Mailing Address"]),
         housingRenting: demoState.applicants.every((item) => item.currentHousingSituation === "Renting")
       };
       report.textContent = JSON.stringify({ ok: Object.values(checks).every(Boolean), checks, result, finalState }, null, 2);

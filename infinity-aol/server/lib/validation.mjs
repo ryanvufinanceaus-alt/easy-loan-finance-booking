@@ -57,18 +57,6 @@ export function validateInfinityPayload(payload) {
     });
   }
 
-  const preparedExpenses = Array.isArray(valueAt(payload, "infinity.financials.expenses"))
-    ? valueAt(payload, "infinity.financials.expenses")
-    : [];
-  if (hemConfirmed && hemMonthly > 0 && !preparedExpenses.some((row) => row?.expenseType && Number(row?.amount || 0) > 0)) {
-    issues.push({
-      severity: "error",
-      code: "MISSING_PREPARED_EXPENSE_ROWS",
-      path: "infinity.financials.expenses",
-      message: "Prepare HEM monthly expense rows before Infinity Financials autofill. The extension will not create/split HEM rows itself."
-    });
-  }
-
   if (purchasePrice > 0 && loanAmount > purchasePrice) {
     issues.push({
       severity: "error",
