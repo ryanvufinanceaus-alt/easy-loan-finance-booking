@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-tab-diagnostics-v1.8";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-name-rect-click-v1.9";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -2704,6 +2704,45 @@ function looksLikeApplicantTabElement(element, clickable, addRect = null) {
   return true;
 }
 
+function textRectForApplicantName(root, nameText) {
+  const wanted = normalizeLabelText(nameText);
+  if (!root || !wanted) return null;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const text = cleanApplicantTabText(node.nodeValue || "");
+      return normalizeLabelText(text).includes(wanted) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    }
+  });
+  let node = walker.nextNode();
+  while (node) {
+    const range = document.createRange();
+    const raw = node.nodeValue || "";
+    const rawNorm = normalizeLabelText(raw);
+    let start = 0;
+    let end = raw.length;
+    const simpleWanted = String(nameText || "").trim();
+    const exactIndex = raw.toLowerCase().indexOf(simpleWanted.toLowerCase());
+    if (exactIndex >= 0) {
+      start = exactIndex;
+      end = exactIndex + simpleWanted.length;
+    } else if (!rawNorm.includes("add applicants")) {
+      start = 0;
+      end = raw.length;
+    }
+    try {
+      range.setStart(node, start);
+      range.setEnd(node, end);
+      const rect = range.getBoundingClientRect();
+      range.detach?.();
+      if (rect.width > 8 && rect.height > 8) return rect;
+    } catch (_error) {
+      range.detach?.();
+    }
+    node = walker.nextNode();
+  }
+  return null;
+}
+
 function getApplicantTabItems() {
   const bar = findApplicantTabRow();
   if (!bar) return [];
@@ -2721,8 +2760,9 @@ function getApplicantTabItems() {
       if (/(client details|financials|loans|overview|primary applicant|applicant type|entity type|related spouse|home phone|work phone|save changes)/i.test(text)) return null;
       const clickable = getApplicantTabClickable(element);
       if (!clickable) return null;
-      if (!looksLikeApplicantTabElement(element, clickable, addRect)) return null;
+      if (!looksLikeApplicantTabElement(element, clickable, addRect) && !textRectForApplicantName(element, text)) return null;
       const rect = clickable.getBoundingClientRect();
+      const nameRect = textRectForApplicantName(element, text) || textRectForApplicantName(clickable, text);
       const key = `${normalize(text)}::${describeElement(clickable)}`;
       if (seen.has(key)) return null;
       seen.add(key);
@@ -2734,6 +2774,7 @@ function getApplicantTabItems() {
         el: element,
         clickable,
         rect,
+        nameRect,
         selector: describeElement(clickable),
         tagName: clickable.tagName,
         className: clickable.className || "",
@@ -2831,6 +2872,10 @@ function applicantTabClickTargets(tabItem) {
 
   add(tabItem?.clickable, "primary-clickable");
   add(tabItem?.element, "text-element");
+  if (tabItem?.nameRect) {
+    const pointElement = document.elementFromPoint(tabItem.nameRect.left + tabItem.nameRect.width * 0.5, tabItem.nameRect.top + tabItem.nameRect.height * 0.55);
+    add(pointElement, "element-from-name-point");
+  }
   add(tabItem?.element?.querySelector?.("[role='tab'], [ng-click], [data-ng-click], .Tab, .tab, a, button"), "descendant-clickable");
   add(tabItem?.clickable?.querySelector?.("[role='tab'], [ng-click], [data-ng-click], .Tab, .tab, a, button"), "clickable-descendant");
 
@@ -2864,13 +2909,22 @@ function applicantTabClickTargets(tabItem) {
   return targets;
 }
 
-function applicantTabClickPoint(element) {
+function applicantTabClickPoint(element, tabItem = null) {
+  const nameRect = tabItem?.nameRect || textRectForApplicantName(element, tabItem?.text || "");
+  if (nameRect?.width > 8 && nameRect?.height > 8) {
+    return {
+      x: nameRect.left + nameRect.width * 0.5,
+      y: nameRect.top + nameRect.height * 0.55,
+      source: "name-text-rect"
+    };
+  }
   const rect = element.getBoundingClientRect();
   const safeRight = Math.max(rect.left + 8, rect.right - 32);
   const bodyX = rect.left + rect.width * 0.35;
   return {
     x: Math.min(bodyX, safeRight),
-    y: rect.top + rect.height * 0.55
+    y: rect.top + rect.height * 0.55,
+    source: "element-body"
   };
 }
 
@@ -2881,13 +2935,13 @@ async function clickApplicantTabBody(tabItem, result = null, meta = {}) {
   if (!tab) return false;
   await scrollElementIntoView(tab, "center");
   await sleep(250);
-  const { x, y } = applicantTabClickPoint(tab);
+  const { x, y, source } = applicantTabClickPoint(tab, tabItem);
   for (const type of ["mousemove", "mousedown", "mouseup", "click"]) {
     tab.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
   }
   tab.click?.();
   const angularTriggered = angularClickElement(tab);
-  result?.actions?.push?.({ action: "click-applicant-tab-target", section: "clientDetails", selector: entry.selector, reason: entry.reason, targetCount: targets.length, angularTriggered, ...meta });
+  result?.actions?.push?.({ action: "click-applicant-tab-target", section: "clientDetails", selector: entry.selector, reason: entry.reason, clickPointSource: source, targetCount: targets.length, angularTriggered, ...meta });
   return true;
 }
 
@@ -2898,7 +2952,7 @@ async function clickApplicantTabUntilFormMatches(targetTab, expected, result, ro
     const target = entry.target;
     await scrollElementIntoView(target, "center");
     await sleep(180);
-    const { x, y } = applicantTabClickPoint(target);
+    const { x, y, source } = applicantTabClickPoint(target, targetTab);
     for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
       const EventCtor = type.startsWith("pointer") && typeof PointerEvent !== "undefined" ? PointerEvent : MouseEvent;
       target.dispatchEvent(new EventCtor(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }));
@@ -2913,6 +2967,7 @@ async function clickApplicantTabUntilFormMatches(targetTab, expected, result, ro
       selector: entry.selector,
       reason: entry.reason,
       text: entry.text,
+      clickPointSource: source,
       angularTriggered,
       expected
     });

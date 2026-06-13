@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-tab-diagnostics-v1.8";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-name-rect-click-v1.9";
 
 const state = {
   prepared: null,
