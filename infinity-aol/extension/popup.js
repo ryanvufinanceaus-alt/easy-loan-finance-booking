@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-angular-tab-switch-v1.7";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-tab-diagnostics-v1.8";
 
 const state = {
   prepared: null,

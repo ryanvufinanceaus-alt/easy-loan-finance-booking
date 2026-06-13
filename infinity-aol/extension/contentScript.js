@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-angular-tab-switch-v1.7";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-tab-diagnostics-v1.8";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -2672,6 +2672,21 @@ function findAddApplicantsElement() {
     .find((element) => normalizeLabelText(element.innerText || element.textContent || "").includes("add applicants")) || null;
 }
 
+function findApplicantTabRow() {
+  const addApplicants = findAddApplicantsElement();
+  if (!addApplicants) return null;
+  let node = addApplicants.parentElement;
+  while (node && node !== document.body) {
+    const text = normalizeLabelText(node.innerText || node.textContent || "");
+    const rect = node.getBoundingClientRect();
+    const hasAddApplicants = text.includes("add applicants");
+    const hasApplicantClose = text.includes("close") || text.includes("Ã—") || text.includes("×") || text.includes(" x ");
+    if (hasAddApplicants && hasApplicantClose && rect.height <= 220) return node;
+    node = node.parentElement;
+  }
+  return addApplicants.closest(".row, .form-row, .tab-content, .card, .panel, div");
+}
+
 function looksLikeApplicantTabElement(element, clickable, addRect = null) {
   if (!element || !clickable || !isVisible(element) || !isVisible(clickable)) return false;
   const rect = clickable.getBoundingClientRect();
@@ -2690,7 +2705,7 @@ function looksLikeApplicantTabElement(element, clickable, addRect = null) {
 }
 
 function getApplicantTabItems() {
-  const bar = findApplicantTabBar();
+  const bar = findApplicantTabRow();
   if (!bar) return [];
   const addApplicants = findAddApplicantsElement();
   const addRect = addApplicants?.getBoundingClientRect?.() || null;
@@ -2708,16 +2723,21 @@ function getApplicantTabItems() {
       if (!clickable) return null;
       if (!looksLikeApplicantTabElement(element, clickable, addRect)) return null;
       const rect = clickable.getBoundingClientRect();
-      const key = `${normalize(text)}`;
+      const key = `${normalize(text)}::${describeElement(clickable)}`;
       if (seen.has(key)) return null;
       seen.add(key);
       return {
         text,
         textNorm: normalizeLabelText(text),
+        rawText: element.innerText || element.textContent || "",
         element,
+        el: element,
         clickable,
         rect,
         selector: describeElement(clickable),
+        tagName: clickable.tagName,
+        className: clickable.className || "",
+        ngClick: clickable.getAttribute?.("ng-click") || clickable.getAttribute?.("data-ng-click") || "",
         isActive: isApplicantTabActive(clickable)
       };
     })
@@ -2794,25 +2814,54 @@ function activeTabMatchesApplicant(activeTab, expected) {
 }
 
 function applicantTabClickTargets(tabItem) {
-  const raw = [
-    tabItem?.element?.querySelector?.("[role='tab'], [ng-click], [data-ng-click], .Tab, .tab, a, button"),
-    tabItem?.clickable?.querySelector?.("[role='tab'], [ng-click], [data-ng-click], .Tab, .tab, a, button"),
-    tabItem?.element,
-    tabItem?.clickable,
-    tabItem?.element?.closest?.("[ng-click], [data-ng-click], [role='tab'], a, button, li, .nav-link, .tab"),
-    tabItem?.clickable?.parentElement,
-    tabItem?.element?.parentElement,
-    tabItem?.element?.parentElement?.parentElement
-  ].filter(Boolean);
-  const seen = new Set();
-  return raw.filter((element) => {
-    if (!element || seen.has(element) || !isVisible(element)) return false;
-    seen.add(element);
-    const text = normalizeLabelText(element.innerText || element.textContent || "");
-    if (text === "x" || text === "close" || text === "Ã—") return false;
-    if (text.includes("add applicants")) return false;
-    return true;
-  });
+  const targets = [];
+  const add = (target, reason) => {
+    if (!target || !isVisible(target)) return;
+    const text = normalizeLabelText(target.innerText || target.textContent || "");
+    if (text === "x" || text === "close" || text === "Ã—" || text === "×") return;
+    if (text.includes("add applicants")) return;
+    if (targets.some((item) => item.target === target)) return;
+    targets.push({
+      target,
+      reason,
+      selector: describeElement(target),
+      text: cleanApplicantTabText(target.innerText || target.textContent || "")
+    });
+  };
+
+  add(tabItem?.clickable, "primary-clickable");
+  add(tabItem?.element, "text-element");
+  add(tabItem?.element?.querySelector?.("[role='tab'], [ng-click], [data-ng-click], .Tab, .tab, a, button"), "descendant-clickable");
+  add(tabItem?.clickable?.querySelector?.("[role='tab'], [ng-click], [data-ng-click], .Tab, .tab, a, button"), "clickable-descendant");
+
+  const roots = [tabItem?.clickable, tabItem?.element].filter(Boolean);
+  for (const root of roots) {
+    [...(root.querySelectorAll?.("span, div, a, button") || [])]
+      .filter(isVisible)
+      .forEach((child) => {
+        const text = cleanApplicantTabText(child.innerText || child.textContent || "");
+        const norm = normalizeLabelText(text);
+        if (norm && (norm.includes(tabItem.textNorm) || tabItem.textNorm.includes(norm))) {
+          add(child, "descendant-name-text");
+        }
+      });
+  }
+
+  let node = tabItem?.element?.parentElement;
+  while (node && node !== document.body) {
+    if (
+      node.hasAttribute?.("ng-click") ||
+      node.hasAttribute?.("data-ng-click") ||
+      node.getAttribute?.("role") === "tab" ||
+      node.classList?.contains("Tab") ||
+      node.classList?.contains("tab")
+    ) {
+      add(node, "ancestor-clickable");
+    }
+    node = node.parentElement;
+  }
+
+  return targets;
 }
 
 function applicantTabClickPoint(element) {
@@ -2827,7 +2876,8 @@ function applicantTabClickPoint(element) {
 
 async function clickApplicantTabBody(tabItem, result = null, meta = {}) {
   const targets = applicantTabClickTargets(tabItem);
-  const tab = targets[0];
+  const entry = targets[0];
+  const tab = entry?.target;
   if (!tab) return false;
   await scrollElementIntoView(tab, "center");
   await sleep(250);
@@ -2837,13 +2887,15 @@ async function clickApplicantTabBody(tabItem, result = null, meta = {}) {
   }
   tab.click?.();
   const angularTriggered = angularClickElement(tab);
-  result?.actions?.push?.({ action: "click-applicant-tab-target", section: "clientDetails", selector: describeElement(tab), targetCount: targets.length, angularTriggered, ...meta });
+  result?.actions?.push?.({ action: "click-applicant-tab-target", section: "clientDetails", selector: entry.selector, reason: entry.reason, targetCount: targets.length, angularTriggered, ...meta });
   return true;
 }
 
 async function clickApplicantTabUntilFormMatches(targetTab, expected, result, rowIndex) {
   const targets = applicantTabClickTargets(targetTab);
-  for (const [attempt, target] of targets.entries()) {
+  const attempts = [];
+  for (const [attempt, entry] of targets.entries()) {
+    const target = entry.target;
     await scrollElementIntoView(target, "center");
     await sleep(180);
     const { x, y } = applicantTabClickPoint(target);
@@ -2858,15 +2910,19 @@ async function clickApplicantTabUntilFormMatches(targetTab, expected, result, ro
       section: "clientDetails",
       rowIndex,
       attempt: attempt + 1,
-      selector: describeElement(target),
+      selector: entry.selector,
+      reason: entry.reason,
+      text: entry.text,
       angularTriggered,
       expected
     });
     await waitForAngularSettle();
     const switched = await waitForApplicantActiveAndForm(expected, 1800);
-    if (switched?.ok) return { ok: true, switched, selectorUsed: describeElement(target), attempt: attempt + 1 };
+    const formAfter = switched?.current || readClientNameFields(getVisibleClientDetailsFormScope());
+    attempts.push({ selector: entry.selector, reason: entry.reason, text: entry.text, switched: Boolean(switched?.ok), formAfter });
+    if (switched?.ok) return { ok: true, switched, selectorUsed: entry.selector, attempt: attempt + 1, attempts };
   }
-  return { ok: false, attempts: targets.map(describeElement) };
+  return { ok: false, attempts };
 }
 
 async function waitForApplicantActiveAndForm(expected, timeout = 6500) {
@@ -2926,7 +2982,7 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
       expected,
       actual,
       applicantBarTexts: getApplicantTabBarTexts(),
-      visibleApplicantTabs: tabItems.map((tab) => ({ text: tab.text, isActive: tab.isActive, selector: tab.selector })),
+    visibleApplicantTabs: tabItems.map((tab) => ({ text: tab.text, isActive: tab.isActive, selector: tab.selector })),
       reason: "Current visible form does not match payload and no applicant tab text was found."
     });
     return { ok: false, clicked: false, scope: null, expected, actual, visibleApplicantTabs };
@@ -2953,7 +3009,15 @@ async function activateInfinityApplicantTab(applicant, result, rowIndex) {
     activeTabText: activeTab?.text || "",
     activeTabSelector: activeTab?.selector || "",
     applicantBarTexts: getApplicantTabBarTexts(),
-    visibleApplicantTabs: tabItems.map((tab) => ({ text: tab.text, isActive: tab.isActive, selector: tab.selector }))
+    visibleApplicantTabs: tabItems.map((tab) => ({
+      text: tab.text,
+      rawText: tab.rawText,
+      isActive: tab.isActive,
+      selector: tab.selector,
+      tagName: tab.tagName,
+      className: tab.className,
+      ngClick: tab.ngClick
+    }))
   };
 
   if (!ok) {
