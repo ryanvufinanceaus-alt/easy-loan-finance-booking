@@ -2099,8 +2099,12 @@ pre {
 }
 
 .client-intake-card section h2 {
+  align-items: center;
   color: #13201a;
+  display: flex;
+  flex-wrap: wrap;
   font-size: clamp(24px, 3vw, 30px);
+  gap: 10px;
   letter-spacing: 0;
   margin: 0 0 4px;
 }
@@ -2147,6 +2151,38 @@ pre {
   font-size: 14px;
   font-weight: 900;
   gap: 7px;
+  position: relative;
+}
+
+.field-label-text {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.required-mark,
+.client-intake-card label[data-required="true"]::before {
+  color: #dc2626;
+  font-weight: 950;
+}
+
+.client-intake-card label[data-required="true"]::before {
+  content: "*";
+  position: absolute;
+  right: 10px;
+  top: 6px;
+}
+
+.section-error-badge {
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1;
+  padding: 6px 9px;
 }
 
 .field-help,
@@ -2303,9 +2339,10 @@ pre {
 }
 
 .missing-data-report {
-  background: #fff7ed;
-  border-top: 1px solid #fed7aa;
-  color: #7c2d12;
+  background: #fff1f2;
+  border-left: 5px solid #dc2626;
+  border-top: 1px solid #fecdd3;
+  color: #7f1d1d;
   padding: 16px clamp(18px, 3vw, 32px);
 }
 
@@ -2328,7 +2365,7 @@ pre {
 .missing-data-report button {
   background: transparent;
   border: 0;
-  color: #7c2d12;
+  color: #991b1b;
   cursor: pointer;
   font: inherit;
   font-weight: 900;
@@ -2345,6 +2382,27 @@ pre {
 .client-intake-card .field-jump-highlight textarea {
   border-color: #dc2626;
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
+}
+
+.client-intake-card label[data-missing="true"] {
+  background: #fff5f5;
+  border-left: 4px solid #dc2626;
+  border-radius: 8px;
+  margin-left: -8px;
+  padding: 8px;
+}
+
+.client-intake-card label[data-missing="true"]::after {
+  color: #b91c1c;
+  content: attr(data-error);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.field-error-message {
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 900;
 }
 
 .commercial-panel,
