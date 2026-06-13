@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "address-dom-chain-housing-fallback-v2.8";
+const EASYFLOW_EXTENSION_BUILD_ID = "legacy-address-single-save-v2.9";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -2271,7 +2271,7 @@ function canWriteClientDetailsField(applicant, label, result, meta = {}) {
     });
     return false;
   }
-  if (clientDetailsWriteLocks.has(key)) {
+  if (clientDetailsWriteLocks.has(key) && !meta.force) {
     result?.actions?.push?.({
       action: "skip-client-details-duplicate-write",
       section: "clientDetails",
@@ -3728,6 +3728,69 @@ function findEditButtonForAddress(addressLabel) {
   return collectEditButtonsForAddress(addressLabel)[0]?.element || null;
 }
 
+function findEditButtonForAddressLegacy(addressLabel) {
+  const wanted = normalize(addressLabel);
+  const addressSection = findSectionByHeading("Addresses") || document;
+  const addressSectionRect = addressSection === document ? null : addressSection.getBoundingClientRect();
+  const nodes = [...document.querySelectorAll("label, span, div, p, strong, h1, h2, h3, h4, td, th")]
+    .filter(isVisible)
+    .filter((node) => !isEasyFlowOverlayElement(node))
+    .filter((node) => {
+      const text = normalize(node.textContent);
+      return text && text.length <= 180 && (text === wanted || text.includes(wanted));
+    });
+
+  for (const node of nodes) {
+    node.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
+    const labelRect = node.getBoundingClientRect();
+    const visualCandidates = [...document.querySelectorAll("button, a, [role='button'], [ng-click], [data-ng-click], [onclick], span, i")]
+      .filter(isVisible)
+      .filter((item) => !isEasyFlowOverlayElement(item))
+      .map((item) => {
+        const rect = item.getBoundingClientRect();
+        const text = visibleText(item);
+        const marker = normalize(`${item.className || ""} ${item.getAttribute("title") || ""} ${item.getAttribute("aria-label") || ""}`);
+        const editable = text === "edit" || text.includes("edit") || marker.includes("edit") || marker.includes("pencil");
+        if (!editable) return null;
+        if (text.includes("delete") || marker.includes("delete") || marker.includes("remove")) return null;
+        if (addressSectionRect) {
+          const inAddressSection = rect.top >= addressSectionRect.top - 20 && rect.bottom <= addressSectionRect.bottom + 20;
+          if (!inAddressSection) return null;
+        }
+        const sameRow = Math.abs((rect.top + rect.bottom) / 2 - (labelRect.top + labelRect.bottom) / 2) <= 34;
+        const nearBelow = rect.top >= labelRect.top - 12 && rect.top <= labelRect.bottom + 70;
+        const toRightOrNear = rect.left >= labelRect.left - 20 && rect.left <= labelRect.right + 260;
+        if (!((sameRow || nearBelow) && toRightOrNear)) return null;
+        const clickable = closestClickable(item);
+        return {
+          element: clickable,
+          score: Math.abs(rect.top - labelRect.top) + Math.max(0, rect.left - labelRect.right) * 0.2
+        };
+      })
+      .filter(Boolean)
+      .filter((candidate, index, list) => candidate.element && list.findIndex((item) => item.element === candidate.element) === index)
+      .sort((a, b) => a.score - b.score);
+    if (visualCandidates[0]?.element) return visualCandidates[0].element;
+
+    let container = node.parentElement;
+    for (let depth = 0; depth < 8 && container; depth += 1) {
+      const edit = findClickableByText(["Edit"], container);
+      if (edit && !isBadAddressActionTarget(edit)) return edit;
+      const iconEdit = [...container.querySelectorAll("[ng-click], [data-ng-click], [onclick], a, button, span, i")]
+        .filter(isVisible)
+        .find((item) => {
+          const text = visibleText(item);
+          const marker = normalize(`${item.className || ""} ${item.getAttribute("title") || ""} ${item.getAttribute("aria-label") || ""}`);
+          if (text.includes("delete") || marker.includes("delete") || marker.includes("remove")) return false;
+          return text === "edit" || text.includes("edit") || marker.includes("edit") || marker.includes("pencil");
+        });
+      if (iconEdit) return iconEdit;
+      container = container.parentElement;
+    }
+  }
+  return null;
+}
+
 function addressModalFromPage() {
   const current = activeModal();
   if (!current) return null;
@@ -3815,12 +3878,36 @@ async function tryOpenAddressModalFromTarget(target, result, addressLabel, meta 
 }
 
 async function clickAddressEdit(addressLabel, result, meta = {}) {
+  await scrollToText([addressLabel]);
+  const legacyEdit = findEditButtonForAddressLegacy(addressLabel);
+  const before = activeModal();
+  if (legacyEdit) {
+    result.actions.push({
+      action: "click-address-edit-legacy",
+      section: "clientDetails",
+      label: addressLabel,
+      editSelector: describeElement(legacyEdit),
+      editText: visibleText(legacyEdit),
+      editRect: rectJson(legacyEdit.getBoundingClientRect()),
+      ...meta
+    });
+    await clickAtCenter(legacyEdit);
+    const legacyModal = await waitFor(() => {
+      const modal = addressModalFromPage();
+      return modal && modal !== before ? modal : null;
+    }, { timeout: 8000, interval: 180 });
+    if (legacyModal) {
+      result.actions.push({ action: "open-address-edit", section: "clientDetails", label: addressLabel, method: "legacy", ...meta });
+      return legacyModal;
+    }
+  }
+
   const root = findAddressesSectionRoot();
-  await scrollToText([addressLabel], root);
   const candidates = collectEditButtonsForAddress(addressLabel);
   if (!candidates.length) {
     recordFieldSkipped(result, "clientDetails", `${addressLabel} Edit`, "Edit button not visible", {
       ...meta,
+      legacyEditFound: Boolean(legacyEdit),
       addressSectionText: normalize((root || document.body)?.innerText || "").slice(0, 1000),
       visibleActions: collectVisibleButtonsAndLinks(root || document).slice(0, 40)
     });
@@ -4432,7 +4519,7 @@ async function fillDeferredClientDetailsDateFields(applicant, result, rowIndex, 
       });
       continue;
     }
-    if (!canWriteClientDetailsField(applicant, label, result, { rowIndex, phase: "final-date-fill" })) continue;
+    if (!canWriteClientDetailsField(applicant, label, result, { rowIndex, phase: "final-date-fill", force: true })) continue;
     const ok = await fillClientDetailsCriticalDate(scope, applicantName, label, rawValue, result, {
       rowIndex,
       applicantName,
@@ -4551,10 +4638,26 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     await fillClientDetailsDirect(applicant, result, index, scope, payload);
     markApplicantState(applicant, { filled: true });
 
-    active = await freshVerifiedApplicantScope(applicant, result, index, "before-field-save");
+    active = await freshVerifiedApplicantScope(applicant, result, index, "address-fill-before-save");
+    if (!active.ok) {
+      markApplicantState(applicant, { verifiedAfterSave: false });
+      continue;
+    }
+    scope = active.scope;
+    const addressesOk = await fillApplicantAddresses(applicant, rawApplicant || applicant, result, index);
+    if (!addressesOk) {
+      markApplicantState(applicant, { verifiedAfterSave: false });
+      setClientDetailsWriteMode("readonly-verify", `Address failed before final save: ${name}`, result, { rowIndex: index });
+      advanceAutomationProgress(`Client Details address failed: ${name || `Applicant ${index + 1}`}`);
+      continue;
+    }
+
+    active = await freshVerifiedApplicantScope(applicant, result, index, "before-final-save");
     if (!active.ok) continue;
     scope = active.scope;
-    setClientDetailsWriteMode("readonly-verify", `Finished Client Details field fill for ${name}; save before address`, result, { rowIndex: index });
+    setClientDetailsWriteMode("filling-applicant", `Final date refill before save: ${name}`, result, { rowIndex: index });
+    await fillDeferredClientDetailsDateFields(applicant, result, index, scope);
+    setClientDetailsWriteMode("readonly-verify", `Finished Client Details field/address fill for ${name}; final save`, result, { rowIndex: index });
     const beforeSave = await verifyApplicantCriticalFields(applicant, scope, result, "before-save");
     const blockingBeforeSaveFailures = beforeSave.failures.filter(isBlockingClientDetailsFailure);
     if (blockingBeforeSaveFailures.length) {
@@ -4577,30 +4680,7 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
       result.actions.push({ action: "continue-after-optional-client-details-warning", section: "clientDetails", label: name, rowIndex: index, failures: beforeSave.failures });
     }
     markApplicantState(applicant, { verifiedBeforeSave: true });
-    setClientDetailsWriteMode("saving", `Saving fields before address: ${name}`, result, { rowIndex: index });
-    const fieldsSaved = await saveClientDetailsAndVerify(applicant, result, index, payload);
-    markApplicantState(applicant, { saved: fieldsSaved, verifiedAfterSave: fieldsSaved });
-    if (!fieldsSaved) {
-      setClientDetailsWriteMode("readonly-verify", `Field save failed; address not attempted: ${name}`, result, { rowIndex: index });
-      advanceAutomationProgress(`Client Details field save failed: ${name || `Applicant ${index + 1}`}`);
-      continue;
-    }
-
-    active = await freshVerifiedApplicantScope(applicant, result, index, "address-fill-after-save");
-    if (!active.ok) {
-      markApplicantState(applicant, { verifiedAfterSave: false });
-      continue;
-    }
-    scope = active.scope;
-    const addressesOk = await fillApplicantAddresses(applicant, rawApplicant || applicant, result, index);
-    if (!addressesOk) {
-      markApplicantState(applicant, { verifiedAfterSave: false });
-      setClientDetailsWriteMode("readonly-verify", `Address failed after field save: ${name}`, result, { rowIndex: index });
-      advanceAutomationProgress(`Client Details address failed: ${name || `Applicant ${index + 1}`}`);
-      continue;
-    }
-
-    setClientDetailsWriteMode("saving", `Saving applicant after address: ${name}`, result, { rowIndex: index });
+    setClientDetailsWriteMode("saving", `Saving applicant once after fields and address: ${name}`, result, { rowIndex: index });
     const saved = await saveClientDetailsAndVerify(applicant, result, index, payload);
     markApplicantState(applicant, { saved, verifiedAfterSave: saved });
     if (saved) {
