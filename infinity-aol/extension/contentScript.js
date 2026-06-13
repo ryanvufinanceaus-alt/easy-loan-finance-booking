@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-address-tab-safe-v2.4";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-save-before-address-v2.5";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -4368,25 +4368,13 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     setClientDetailsWriteMode("filling-applicant", `Start single fill transaction: ${name}`, result, { rowIndex: index });
     await clearAddressGarbageFromPhoneFields(scope, result, name);
     await cleanupMisfilledClientDetails(result, index, scope);
-    await fillClientDetailsDirect(applicant, result, index, scope, payload, { deferDateFields: true });
+    await fillClientDetailsDirect(applicant, result, index, scope, payload);
     markApplicantState(applicant, { filled: true });
 
-    active = await freshVerifiedApplicantScope(applicant, result, index, "address-fill");
+    active = await freshVerifiedApplicantScope(applicant, result, index, "before-field-save");
     if (!active.ok) continue;
     scope = active.scope;
-    const addressesOk = await fillApplicantAddresses(applicant, rawApplicant || applicant, result, index);
-    if (!addressesOk) {
-      markApplicantState(applicant, { verifiedBeforeSave: false });
-      setClientDetailsWriteMode("readonly-verify", `Address failed; no save for ${name}`, result, { rowIndex: index });
-      advanceAutomationProgress(`Client Details address failed: ${name || `Applicant ${index + 1}`}`);
-      continue;
-    }
-
-    active = await freshVerifiedApplicantScope(applicant, result, index, "final-date-fill");
-    if (!active.ok) continue;
-    scope = active.scope;
-    await fillDeferredClientDetailsDateFields(applicant, result, index, scope);
-    setClientDetailsWriteMode("readonly-verify", `Finished final date fill for ${name}; save next`, result, { rowIndex: index });
+    setClientDetailsWriteMode("readonly-verify", `Finished Client Details field fill for ${name}; save before address`, result, { rowIndex: index });
     const beforeSave = await verifyApplicantCriticalFields(applicant, scope, result, "before-save");
     const blockingBeforeSaveFailures = beforeSave.failures.filter(isBlockingClientDetailsFailure);
     if (blockingBeforeSaveFailures.length) {
@@ -4409,16 +4397,39 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
       result.actions.push({ action: "continue-after-optional-client-details-warning", section: "clientDetails", label: name, rowIndex: index, failures: beforeSave.failures });
     }
     markApplicantState(applicant, { verifiedBeforeSave: true });
-    setClientDetailsWriteMode("saving", `Saving applicant: ${name}`, result, { rowIndex: index });
+    setClientDetailsWriteMode("saving", `Saving fields before address: ${name}`, result, { rowIndex: index });
+    const fieldsSaved = await saveClientDetailsAndVerify(applicant, result, index, payload);
+    markApplicantState(applicant, { saved: fieldsSaved, verifiedAfterSave: fieldsSaved });
+    if (!fieldsSaved) {
+      setClientDetailsWriteMode("readonly-verify", `Field save failed; address not attempted: ${name}`, result, { rowIndex: index });
+      advanceAutomationProgress(`Client Details field save failed: ${name || `Applicant ${index + 1}`}`);
+      continue;
+    }
+
+    active = await freshVerifiedApplicantScope(applicant, result, index, "address-fill-after-save");
+    if (!active.ok) {
+      markApplicantState(applicant, { verifiedAfterSave: false });
+      continue;
+    }
+    scope = active.scope;
+    const addressesOk = await fillApplicantAddresses(applicant, rawApplicant || applicant, result, index);
+    if (!addressesOk) {
+      markApplicantState(applicant, { verifiedAfterSave: false });
+      setClientDetailsWriteMode("readonly-verify", `Address failed after field save: ${name}`, result, { rowIndex: index });
+      advanceAutomationProgress(`Client Details address failed: ${name || `Applicant ${index + 1}`}`);
+      continue;
+    }
+
+    setClientDetailsWriteMode("saving", `Saving applicant after address: ${name}`, result, { rowIndex: index });
     const saved = await saveClientDetailsAndVerify(applicant, result, index, payload);
     markApplicantState(applicant, { saved, verifiedAfterSave: saved });
     if (saved) {
       setClientDetailsWriteMode("completed", `Applicant completed: ${name}`, result, { rowIndex: index });
       markClientDetailsApplicantCompleted(applicant, result, index);
     } else {
-      setClientDetailsWriteMode("readonly-verify", `Save failed; no more Client Details writes: ${name}`, result, { rowIndex: index });
+      setClientDetailsWriteMode("readonly-verify", `Save after address failed; no more Client Details writes: ${name}`, result, { rowIndex: index });
     }
-    advanceAutomationProgress(saved ? `Client Details saved and verified: ${name || `Applicant ${index + 1}`}` : `Client Details save failed: ${name || `Applicant ${index + 1}`}`);
+    advanceAutomationProgress(saved ? `Client Details saved, addressed, and verified: ${name || `Applicant ${index + 1}`}` : `Client Details save after address failed: ${name || `Applicant ${index + 1}`}`);
     await sleep(500);
   }
 
