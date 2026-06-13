@@ -63,6 +63,7 @@ const automationRunState = {
 const filledFieldLocks = new Map();
 const clientDetailsWriteLocks = new Set();
 const completedClientDetailsApplicants = new Set();
+let CLIENT_DETAILS_WRITE_MODE = "idle";
 const CLIENT_DETAILS_CRITICAL_LABELS = new Set([
   "date of birth",
   "gender",
@@ -495,7 +496,7 @@ async function clickModalSave() {
   if (!modal) return false;
   const save = findClickableByText(["Save Changes", "Save", "Done", "Update"], modal);
   if (!save || isUnsafeFinalAction(save)) return false;
-  clickElement(save);
+  await clickAtCenter(save);
   const closed = await waitFor(() => !activeModal(), 5000);
   if (!closed) cleanupStuckModalState();
   return Boolean(closed);
@@ -1664,6 +1665,46 @@ function collectVisibleButtonsAndLinks(root = document) {
     .slice(0, 80);
 }
 
+function rectJson(rect) {
+  return rect ? {
+    left: Math.round(rect.left),
+    top: Math.round(rect.top),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
+    right: Math.round(rect.right),
+    bottom: Math.round(rect.bottom)
+  } : null;
+}
+
+function getVisibleDialogsDebug() {
+  return [
+    ...document.querySelectorAll(".modal, .modal-dialog, .modal-content, [role='dialog'], [aria-modal='true'], .k-window, .bootbox, .popup, .overlay")
+  ]
+    .filter(isVisible)
+    .map((element) => ({
+      selector: describeElement(element),
+      rect: rectJson(element.getBoundingClientRect()),
+      text: normalize(element.innerText || element.textContent || "").slice(0, 350)
+    }))
+    .slice(0, 12);
+}
+
+async function clickAtCenter(element) {
+  if (!element || !isVisible(element)) return false;
+  await scrollElementIntoView(element, "center");
+  const rect = element.getBoundingClientRect();
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  const init = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y };
+  for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+    const EventCtor = type.startsWith("pointer") && typeof PointerEvent !== "undefined" ? PointerEvent : MouseEvent;
+    element.dispatchEvent(new EventCtor(type, init));
+  }
+  element.click?.();
+  await waitForAngularSettle();
+  return true;
+}
+
 function readDropdownDisplay(control) {
   if (!control) return "";
   if (control.tagName === "SELECT") return readFieldValue(control);
@@ -1838,19 +1879,32 @@ function findAddExpenseButton() {
     const candidates = [
       ...root.querySelectorAll("button, a, [role='button'], [ng-click], [data-ng-click], span, div")
     ].filter(isVisible);
-    const found = candidates.find((element) => normalize(element.innerText || element.textContent || "").includes("add expense"));
-    if (found) return closestClickable(found);
+    for (const element of candidates) {
+      if (!normalize(element.innerText || element.textContent || "").includes("add expense")) continue;
+      const clickable = element.closest("button, a, [role='button'], [ng-click], [data-ng-click], [onclick], .btn") || element;
+      if (clickable && isVisible(clickable) && !isDisabled(clickable)) return clickable;
+    }
   }
   return null;
 }
 
 async function waitForExpenseModal() {
   return waitFor(() => {
-    const modal = activeModal();
+    const dialogs = [
+      ...document.querySelectorAll(".modal, .modal-dialog, .modal-content, [role='dialog'], [aria-modal='true'], .k-window, .bootbox, .popup, .overlay")
+    ].filter(isVisible);
+    const modal = dialogs.find((dialog) => {
+      const text = normalize(dialog.innerText || dialog.textContent || "");
+      return text.includes("expense type") ||
+        text.includes("add/edit expense") ||
+        text.includes("add expense") ||
+        text.includes("edit expense") ||
+        (text.includes("expense") && text.includes("frequency") && text.includes("amount"));
+    }) || activeModal();
     if (!modal) return null;
     const text = normalize(modal.innerText || modal.textContent || "");
-    return text.includes("expense") || text.includes("expense type") || text.includes("frequency") ? modal : null;
-  }, { timeout: 7000, interval: 150 });
+    return text.includes("expense type") || (text.includes("frequency") && text.includes("amount")) ? modal : null;
+  }, { timeout: 8000, interval: 200 });
 }
 
 async function selectExpenseFrequency(modal, row, result, selectedType) {
@@ -1900,17 +1954,36 @@ async function upsertExpenseRow(row, payload, result) {
     return false;
   }
   const beforeModal = activeModal();
-  clickElement(addButton);
+  result.actions.push({
+    action: "click-add-expense",
+    section: "financialsExpense",
+    label: row.type,
+    rowType: row.type,
+    buttonSelector: describeElement(addButton),
+    buttonText: visibleText(addButton),
+    buttonRect: rectJson(addButton.getBoundingClientRect())
+  });
+  await clickAtCenter(addButton);
   const modal = await waitForExpenseModal();
   if (!modal) {
     recordError(result, "financialsExpense", "Add Expense", "Expense modal did not open", {
       expenseType: row.type,
       beforeModal: Boolean(beforeModal),
+      addButtonSelector: describeElement(addButton),
+      addButtonText: visibleText(addButton),
+      addButtonRect: rectJson(addButton.getBoundingClientRect()),
+      visibleDialogs: getVisibleDialogsDebug(),
       visibleActions: collectVisibleButtonsAndLinks()
     });
     return false;
   }
-  result.actions.push({ action: "open-expense-modal", section: "financialsExpense", label: row.type });
+  result.actions.push({
+    action: "open-expense-modal",
+    section: "financialsExpense",
+    label: row.type,
+    modalSelector: describeElement(modal),
+    modalRect: rectJson(modal.getBoundingClientRect())
+  });
 
   const selectedType = await selectExpenseTypeWithFallback(row.type, modal, result, row.infinityTypeCandidates);
   if (!selectedType) {
@@ -2087,6 +2160,35 @@ function clientDetailsLockKey(applicant, label) {
 function resetClientDetailsTransactionLocks() {
   clientDetailsWriteLocks.clear();
   completedClientDetailsApplicants.clear();
+  CLIENT_DETAILS_WRITE_MODE = "idle";
+}
+
+function setClientDetailsWriteMode(mode, reason, result = null, meta = {}) {
+  CLIENT_DETAILS_WRITE_MODE = mode;
+  result?.actions?.push?.({
+    action: "client-details-write-mode",
+    section: "clientDetails",
+    mode,
+    reason,
+    timestamp: new Date().toISOString(),
+    ...meta
+  });
+}
+
+function assertCanWriteClientDetails(applicantKey, label, source, result, meta = {}) {
+  if (CLIENT_DETAILS_WRITE_MODE === "filling-applicant") return true;
+  result?.actions?.push?.({
+    action: "blocked-client-details-write",
+    section: "clientDetails",
+    applicantName: applicantKey,
+    label,
+    source,
+    mode: CLIENT_DETAILS_WRITE_MODE,
+    message: `Blocked Client Details write outside fill phase: ${label}`,
+    timestamp: new Date().toISOString(),
+    ...meta
+  });
+  return false;
 }
 
 function canWriteClientDetailsField(applicant, label, result, meta = {}) {
@@ -3711,6 +3813,7 @@ function readClientDetailsCriticalValue(label, scope) {
 
 async function fillClientDetailsCriticalText(scope, applicantKey, label, value, result, meta = {}) {
   if (value === undefined || value === null || value === "") return false;
+  if (!assertCanWriteClientDetails(applicantKey, label, "fillClientDetailsCriticalText", result, meta)) return false;
   const expected = String(value);
   const resolved = resolveClientDetailsControlByVisualLabel(scope, label, "input:not([type='hidden']), textarea");
   if (!resolved.ok) {
@@ -3741,6 +3844,7 @@ async function fillClientDetailsCriticalText(scope, applicantKey, label, value, 
 
 async function fillClientDetailsCriticalDate(scope, applicantKey, label, value, result, meta = {}) {
   if (value === undefined || value === null || value === "") return false;
+  if (!assertCanWriteClientDetails(applicantKey, label, "fillClientDetailsCriticalDate", result, meta)) return false;
   const expected = formatDateValue(value, "au");
   if (["male", "female", "other"].includes(normalizeLabelText(expected))) {
     recordVerificationFailure(result, "clientDetails", label, "Refusing to fill gender-like value into date field", {
@@ -3779,6 +3883,7 @@ async function fillClientDetailsCriticalDate(scope, applicantKey, label, value, 
 
 async function fillClientDetailsCriticalDropdown(scope, applicantKey, label, value, result, meta = {}) {
   if (value === undefined || value === null || value === "") return false;
+  if (!assertCanWriteClientDetails(applicantKey, label, "fillClientDetailsCriticalDropdown", result, meta)) return false;
   const expected = String(value);
   const resolved = resolveClientDetailsControlByVisualLabel(scope, label, "select, [role='combobox'], [aria-haspopup='listbox'], .ui-select-container, .select2-container, input:not([type='hidden'])");
   if (!resolved.ok) {
@@ -4076,6 +4181,7 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
 
     let scope = active.scope;
     traceApplicantClientDetails(result, "after-activation", applicant, scope, { rowIndex: index, payload });
+    setClientDetailsWriteMode("filling-applicant", `Start single fill transaction: ${name}`, result, { rowIndex: index });
     await clearAddressGarbageFromPhoneFields(scope, result, name);
     await cleanupMisfilledClientDetails(result, index, scope);
     await fillClientDetailsDirect(applicant, result, index, scope, payload);
@@ -4085,6 +4191,7 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     if (!active.ok) continue;
     scope = active.scope;
     await fillApplicantAddresses(applicant, rawApplicant || applicant, result, index);
+    setClientDetailsWriteMode("readonly-verify", `Finished fill transaction: ${name}`, result, { rowIndex: index });
 
     active = await freshVerifiedApplicantScope(applicant, result, index, "before-save-verify");
     if (!active.ok) continue;
@@ -4111,9 +4218,15 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
       result.actions.push({ action: "continue-after-optional-client-details-warning", section: "clientDetails", label: name, rowIndex: index, failures: beforeSave.failures });
     }
     markApplicantState(applicant, { verifiedBeforeSave: true });
+    setClientDetailsWriteMode("saving", `Saving applicant: ${name}`, result, { rowIndex: index });
     const saved = await saveClientDetailsAndVerify(applicant, result, index, payload);
     markApplicantState(applicant, { saved, verifiedAfterSave: saved });
-    if (saved) markClientDetailsApplicantCompleted(applicant, result, index);
+    if (saved) {
+      setClientDetailsWriteMode("completed", `Applicant completed: ${name}`, result, { rowIndex: index });
+      markClientDetailsApplicantCompleted(applicant, result, index);
+    } else {
+      setClientDetailsWriteMode("readonly-verify", `Save failed; no more Client Details writes: ${name}`, result, { rowIndex: index });
+    }
     advanceAutomationProgress(saved ? `Client Details saved and verified: ${name || `Applicant ${index + 1}`}` : `Client Details save failed: ${name || `Applicant ${index + 1}`}`);
     await sleep(500);
   }
