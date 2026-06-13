@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "legacy-address-single-save-v2.9";
+const EASYFLOW_EXTENSION_BUILD_ID = "legacy-address-single-save-v2.10";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -757,7 +757,12 @@ async function setFieldValue(element, value) {
     const stringValue = String(value ?? "");
     const wanted = normalize(stringValue);
     const option = [...element.options].find(
-      (item) => item.value === stringValue || normalize(item.textContent) === wanted || normalize(item.textContent).includes(wanted) || wanted.includes(normalize(item.textContent))
+      (item) => {
+        const optionText = normalize(item.textContent);
+        const optionValue = normalize(item.value);
+        if (!optionText && !optionValue) return false;
+        return item.value === stringValue || optionValue === wanted || optionText === wanted || optionText.includes(wanted) || wanted.includes(optionText);
+      }
     );
     if (!option) return false;
     element.value = option.value;
@@ -929,6 +934,15 @@ function findByLabelText(labels, value, root = activeSurfaceRoot()) {
       const text = normalize(node.textContent);
       if (!text || text.length > 180) return false;
       return wanted.some((label) => text === label || text.includes(label));
+    })
+    .sort((a, b) => {
+      const aText = normalize(a.textContent);
+      const bText = normalize(b.textContent);
+      const aExact = wanted.some((label) => aText === label) ? 0 : 1;
+      const bExact = wanted.some((label) => bText === label) ? 0 : 1;
+      const aLabel = a.tagName === "LABEL" ? 0 : 1;
+      const bLabel = b.tagName === "LABEL" ? 0 : 1;
+      return aExact - bExact || aLabel - bLabel || aText.length - bText.length;
     });
 
   for (const node of nodes) {
@@ -1072,7 +1086,11 @@ async function selectDropdownByText(label, value, scope = activeSurfaceRoot(), r
 
 async function clickCheckboxByLabel(label, result, meta = {}) {
   await scrollToText([label]);
-  const node = findTextNode([label]);
+  const wanted = normalize(label);
+  const exactNodes = allTextNodes()
+    .filter((node) => normalize(node.textContent) === wanted)
+    .sort((a, b) => normalize(a.textContent).length - normalize(b.textContent).length);
+  const node = exactNodes[0] || findTextNode([label]);
   if (!node) {
     recordFieldSkipped(result, meta.section || "workflow", label, "checkbox label not found", meta);
     return false;
@@ -1087,7 +1105,13 @@ async function clickCheckboxByLabel(label, result, meta = {}) {
       });
     if (input) {
       const checked = input.checked === true || input.getAttribute("aria-checked") === "true" || normalize(input.className).includes("active") || normalize(input.className).includes("selected");
-      if (!checked) clickElement(input);
+      if (!checked && (input.type === "checkbox" || input.type === "radio")) {
+        input.checked = true;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      } else if (!checked) {
+        clickElement(input);
+      }
       result.actions.push({ action: checked ? "checkbox-already-selected" : "select-checkbox", label, ...meta });
       await waitForAngularSettle();
       return true;
@@ -1106,6 +1130,15 @@ function findAllByLabelText(labels, value, root = activeSurfaceRoot()) {
       const text = normalize(node.textContent);
       if (!text || text.length > 180) return false;
       return wanted.some((label) => text === label || text.includes(label));
+    })
+    .sort((a, b) => {
+      const aText = normalize(a.textContent);
+      const bText = normalize(b.textContent);
+      const aExact = wanted.some((label) => aText === label) ? 0 : 1;
+      const bExact = wanted.some((label) => bText === label) ? 0 : 1;
+      const aLabel = a.tagName === "LABEL" ? 0 : 1;
+      const bLabel = b.tagName === "LABEL" ? 0 : 1;
+      return aExact - bExact || aLabel - bLabel || aText.length - bText.length;
     });
 
   const matches = [];
@@ -4335,6 +4368,65 @@ async function verifyAddressRowNotPlaceholder(addressLabel, parsed, result, appl
   return true;
 }
 
+function addressFingerprint(rawAddress, applicant = {}) {
+  if (!rawAddress || (typeof rawAddress === "object" && !Object.values(rawAddress).some(Boolean))) return "";
+  const parsed = addressPartsFromApplicant({ ...applicant, address: rawAddress }, typeof rawAddress === "string" ? rawAddress : "");
+  return [
+    parsed.unitNumber,
+    parsed.streetNumber,
+    normalize(parsed.streetName),
+    normalize(canonicalStreetType(parsed.streetType)),
+    normalize(parsed.suburb),
+    normalize(parsed.state),
+    parsed.postcode
+  ].filter(Boolean).join("|");
+}
+
+function firstPresentAddress(...candidates) {
+  return candidates.find((candidate) => {
+    if (!candidate) return false;
+    if (typeof candidate === "object") return Object.values(candidate).some(Boolean);
+    return String(candidate).trim();
+  }) || "";
+}
+
+function equivalentAddresses(candidate, current, applicant = {}) {
+  const candidateFingerprint = addressFingerprint(candidate, applicant);
+  const currentFingerprint = addressFingerprint(current, applicant);
+  if (candidateFingerprint && currentFingerprint && candidateFingerprint === currentFingerprint) return true;
+  const candidateText = normalize(typeof candidate === "object" ? Object.values(candidate).filter(Boolean).join(" ") : candidate);
+  const currentText = normalize(typeof current === "object" ? Object.values(current).filter(Boolean).join(" ") : current);
+  return Boolean(candidateText && currentText && (candidateText === currentText || candidateText.includes(currentText) || currentText.includes(candidateText)));
+}
+
+function optionalAddressSource(rawApplicant, applicant, preparedAddress, rawAddress, key) {
+  const direct = firstPresentAddress(
+    rawApplicant?.[`${key}Address`],
+    rawApplicant?.[key],
+    rawAddress?.[`${key}Address`],
+    rawAddress?.[key],
+    applicant?.[`${key}Address`],
+    applicant?.[key],
+    preparedAddress?.[`${key}Address`],
+    preparedAddress?.[key]
+  );
+  if (!direct) return "";
+  const current = firstPresentAddress(
+    rawApplicant?.currentAddress,
+    rawApplicant?.residentialAddress,
+    rawAddress?.current,
+    rawAddress?.fullAddress,
+    applicant?.currentAddress,
+    applicant?.residentialAddress,
+    preparedAddress?.current,
+    preparedAddress?.fullAddress,
+    rawAddress,
+    preparedAddress
+  );
+  if (equivalentAddresses(direct, current, applicant)) return "";
+  return direct;
+}
+
 async function fillAddressForApplicant(addressLabel, applicant, rawAddress, result, meta = {}) {
   if (!rawAddress || (typeof rawAddress === "object" && !Object.values(rawAddress).some(Boolean))) {
     recordFieldSkipped(result, "clientDetails", addressLabel, "address data missing; skipped by rule", meta);
@@ -4349,7 +4441,19 @@ async function fillAddressForApplicant(addressLabel, applicant, rawAddress, resu
   if (!modal) return false;
   await fillAddressModal(parsed, modal, result, meta);
   const saved = await saveModalAndVerifyClosed(result, `Address ${addressLabel}`);
-  if (saved) await verifyAddressRowNotPlaceholder(addressLabel, parsed, result, meta.applicantName);
+  if (saved) {
+    const verified = await verifyAddressRowNotPlaceholder(addressLabel, parsed, result, meta.applicantName);
+    if (!verified && meta.optionalAddress) {
+      const failure = result.verificationFailures.pop();
+      result.warnings.push({
+        ...(failure || {}),
+        section: "clientDetails",
+        label: addressLabel,
+        message: "Optional address did not verify; continuing because the loan form does not require this row."
+      });
+      return true;
+    }
+  }
   return saved;
 }
 
@@ -4803,8 +4907,8 @@ async function fillApplicantAddresses(applicant, rawApplicant, result, rowIndex)
   const completeRawAddress = rawAddress && typeof rawAddress === "object" && Object.values(rawAddress).some(Boolean) ? rawAddress : null;
   const completePreparedAddress = preparedAddress && typeof preparedAddress === "object" && Object.values(preparedAddress).some(Boolean) ? preparedAddress : null;
   const currentAddressSource = rawApplicant?.currentAddress || rawAddress.current || rawAddress.fullAddress || applicant?.currentAddress || preparedAddress.current || preparedAddress.fullAddress || completeRawAddress || completePreparedAddress || rawAddress.line1 || preparedAddress.line1 || rawAddress;
-  const postSettlementSource = rawApplicant?.postSettlementAddress || rawAddress.postSettlement || applicant?.postSettlementAddress || preparedAddress.postSettlement || "";
-  const mailingSource = rawApplicant?.mailingAddress || rawAddress.mailing || applicant?.mailingAddress || preparedAddress.mailing || "";
+  const postSettlementSource = optionalAddressSource(rawApplicant, applicant, preparedAddress, rawAddress, "postSettlement");
+  const mailingSource = optionalAddressSource(rawApplicant, applicant, preparedAddress, rawAddress, "mailing");
   const addressRows = [
     ["Current Address", currentAddressSource, true],
     ["Previous Address", rawApplicant?.previousAddress || rawApplicant?.previousResidentialAddress || rawAddress.previous || applicant?.previousAddress || preparedAddress.previous, false],
@@ -4818,7 +4922,7 @@ async function fillApplicantAddresses(applicant, rawApplicant, result, rowIndex)
       await sleep(150);
       continue;
     }
-    const filled = await fillAddressForApplicant(label, applicant, addressSource, result, { rowIndex, applicantName: fullApplicantName(applicant) });
+    const filled = await fillAddressForApplicant(label, applicant, addressSource, result, { rowIndex, applicantName: fullApplicantName(applicant), optionalAddress: !required });
     if (!filled && required) {
       ok = false;
       recordVerificationFailure(result, "clientDetails", label, "Required address did not open/fill/save; applicant transaction stopped before save", {
@@ -5138,37 +5242,26 @@ async function selectNeedsAnalysisApplicants(payload, result) {
   if (!applicants.length || !pageHasAnyText(["Select Applicant"])) return;
   await scrollToText(["Select Applicant"]);
   for (const name of applicants) {
-    const node = findTextNode([name]);
-    if (!node) {
-      result.fieldsSkipped.push({ section: "needsAnalysis", label: `Select Applicant ${name}`, reason: "applicant toggle label not found" });
-      continue;
-    }
-    let container = node.parentElement;
-    let clicked = false;
-    for (let depth = 0; depth < 5 && container && !clicked; depth += 1) {
-      const toggle = [...container.querySelectorAll("input[type='checkbox'], [role='switch'], [role='checkbox'], .switch, .toggle, button, [ng-click], [data-ng-click]")]
-        .filter(isVisible)
-        .find((item) => {
-          const text = visibleText(item);
-          return !text || text.includes(name.toLowerCase()) || item.getAttribute("aria-checked") !== null || item.type === "checkbox";
-        });
-      if (toggle) {
-        const alreadyOn = toggle.checked === true || toggle.getAttribute("aria-checked") === "true" || normalize(toggle.className).includes("active");
-        if (!alreadyOn) clickElement(toggle);
-        clicked = true;
-        result.actions.push({ action: "select-applicant", section: "needsAnalysis", label: name });
-      }
-      container = container.parentElement;
-    }
+    const clicked = await clickCheckboxByLabel(name, result, { section: "needsAnalysis", label: name });
     if (!clicked) {
       result.fieldsSkipped.push({ section: "needsAnalysis", label: `Select Applicant ${name}`, reason: "toggle control not found" });
+    } else {
+      result.actions.push({ action: "select-applicant", section: "needsAnalysis", label: name });
     }
     await sleep(150);
   }
 }
 
 function isLoansProductsArea() {
-  return isInfinityLoansSummaryPage() || isInfinitySocaPage() || pageHasAnyText(["Loans & Products", "Create Application", "Best Interest Duty"]);
+  return isInfinityLoansSummaryPage() || isInfinitySocaPage() || pageHasAnyText([
+    "Loans & Products",
+    "Create Application",
+    "Best Interest Duty",
+    "Needs Analysis",
+    "Loans, Securities & Commentary",
+    "Preferred Loan Features/Scenarios",
+    "Commissions/Conflict of Interest"
+  ]);
 }
 
 function isNeedsAnalysisVisible() {
@@ -5219,10 +5312,142 @@ async function fillNeedsAnalysis(payload, mapping, result) {
   return filledCount > 0;
 }
 
+async function fillMappedSocaField(sectionId, field, payload, result) {
+  const value = fieldValue(payload, field);
+  const meta = { section: sectionId, payloadPath: field.payloadPath };
+  if ((value === undefined || value === null || value === "") && field.optional) {
+    recordFieldSkipped(result, sectionId, field.label, "optional empty value", meta);
+    return true;
+  }
+  if (value === undefined || value === null || value === "") {
+    recordFieldSkipped(result, sectionId, field.label, "payload value missing", meta);
+    return false;
+  }
+  await scrollToText(fieldLabels(field));
+  if (typeof value === "boolean") {
+    if (!value) {
+      result.actions.push({ action: "skip-false-checkbox", section: sectionId, label: field.label });
+      return true;
+    }
+    return clickCheckboxByLabel(field.label, result, meta);
+  }
+  const found = findElement(field, value);
+  if (!found) {
+    recordFieldSkipped(result, sectionId, field.label, "no visible matching field", meta);
+    return false;
+  }
+  const ok = await setFieldValue(found.element, value);
+  if (ok) {
+    recordFieldFilled(result, sectionId, field.label, value, found, meta);
+    return true;
+  }
+  recordFieldSkipped(result, sectionId, field.label, `control refused value: ${value}`, meta);
+  return false;
+}
+
+async function fillMappedSocaSection(sectionId, mapping, payload, result) {
+  const section = mapping.sections.find((item) => item.id === sectionId);
+  if (!section) {
+    recordFieldSkipped(result, sectionId, sectionId, "mapping section not found");
+    return false;
+  }
+  let filled = 0;
+  let attempted = 0;
+  for (const [index, field] of section.fields.entries()) {
+    throwIfAutomationStopped();
+    setAutomationProgress(index, section.fields.length, `Loans & Products: ${section.label || sectionId} ${index + 1}/${section.fields.length}`);
+    const before = result.fieldsFilled.length;
+    const ok = await fillMappedSocaField(sectionId, field, payload, result);
+    if (ok) attempted += 1;
+    if (result.fieldsFilled.length > before) filled += 1;
+    await sleep(100);
+  }
+  result.actions.push({ action: "fill-soca-section", section: sectionId, label: section.label || sectionId, filled, attempted });
+  return filled > 0 || attempted > 0;
+}
+
+async function saveAndAdvanceSoca(sectionId, nextTabLabel, result) {
+  if (!nextTabLabel) {
+    result.actions.push({ action: "stop-before-client-forms", section: sectionId, label: "Client Forms intentionally left for broker review" });
+    return true;
+  }
+  const saved = await clickPageSaveIfVisible();
+  result.actions.push({ action: saved ? "save-soca-section" : "review-soca-section", section: sectionId, label: saved ? "Saved" : "No safe Save button visible" });
+  await waitForAngularSettle();
+  const clickedNext = await clickPageNextIfVisible();
+  if (clickedNext) {
+    result.actions.push({ action: "next-soca-section", section: sectionId, label: nextTabLabel });
+    await waitForAngularSettle();
+    return true;
+  }
+  const opened = await clickSubTab(nextTabLabel, result);
+  if (opened) await waitForAngularSettle();
+  return opened;
+}
+
+async function chooseRecommendedLender(payload, result) {
+  const lender = getValue(payload, "infinity.recommendation.selectedLender") || getValue(payload, "loan.lender") || getValue(payload, "infinity.recommendation.lender");
+  if (!lender) return true;
+  const wanted = normalize(lender);
+  const card = [...document.querySelectorAll(".lender-card, [data-lender], .recommendation, .loan-card, .product-card, tr, li, div")]
+    .filter(isVisible)
+    .filter((node) => !isEasyFlowOverlayElement(node))
+    .filter((node) => {
+      const text = normalize(node.getAttribute("data-lender") || node.textContent || "");
+      return text === wanted || text.includes(wanted);
+    })
+    .sort((a, b) => {
+      const aScore = (a.classList?.contains("lender-card") ? 0 : 10) + normalize(a.textContent || "").length;
+      const bScore = (b.classList?.contains("lender-card") ? 0 : 10) + normalize(b.textContent || "").length;
+      return aScore - bScore;
+    })[0];
+  if (!card) {
+    recordFieldSkipped(result, "recommendation", "Recommended lender", `lender card not found: ${lender}`);
+    return true;
+  }
+  await scrollElementIntoView(card, "center");
+  clickElement(card);
+  result.actions.push({ action: "select-recommended-lender", section: "recommendation", label: lender, selector: describeElement(card) });
+  await sleep(250);
+  return true;
+}
+
+async function runSocaTab(tabLabel, sectionId, mapping, payload, result, options = {}) {
+  throwIfAutomationStopped();
+  setAutomationProgress(options.progressIndex || 0, options.progressTotal || 1, `Loans & Products: ${tabLabel}`);
+  if (!pageHasAnyText([tabLabel])) {
+    await clickSubTab(tabLabel, result);
+    await waitForAngularSettle();
+  } else {
+    await clickSubTab(tabLabel, result);
+    await waitForAngularSettle();
+  }
+  if (options.beforeFill) await options.beforeFill();
+  const beforeFilled = result.fieldsFilled.length;
+  const handled = await fillMappedSocaSection(sectionId, mapping, payload, result);
+  const filled = result.fieldsFilled.length - beforeFilled;
+  if (!handled || filled === 0) {
+    recordVerificationFailure(result, sectionId, tabLabel, "SOCA tab opened but no mapped fields were filled", {
+      visibleText: pageTextWithoutEasyFlowOverlay().slice(0, 1200)
+    });
+    return false;
+  }
+  if (options.verify) await options.verify();
+  if (options.nextTab !== undefined) await saveAndAdvanceSoca(sectionId, options.nextTab, result);
+  return true;
+}
+
 async function runLoansProductsWorkflow(payload, mapping, apiBase, result) {
   ensureResultShape(result);
   if (!isLoansProductsArea()) return false;
-  setAutomationProgress(0, 5, "Loans & Products: opening Needs Analysis");
+  const socaSteps = [
+    { tab: "Needs Analysis", section: "needsAnalysis", nextTab: "Loans, Securities & Commentary", beforeFill: () => selectNeedsAnalysisApplicants(payload, result) },
+    { tab: "Loans, Securities & Commentary", section: "loansSecuritiesCommentary", nextTab: "Preferred Loan Features/Scenarios" },
+    { tab: "Preferred Loan Features/Scenarios", section: "preferredLoanFeatures", nextTab: "Recommendation" },
+    { tab: "Recommendation", section: "recommendation", nextTab: "Commissions/Conflict of Interest", beforeFill: () => chooseRecommendedLender(payload, result) },
+    { tab: "Commissions/Conflict of Interest", section: "commissionsConflict", nextTab: null }
+  ];
+  setAutomationProgress(0, socaSteps.length, "Loans & Products: opening Needs Analysis");
 
   if (isInfinityLoansSummaryPage() || pageHasAnyText(["Create Application"])) {
     throwIfAutomationStopped();
@@ -5241,20 +5466,26 @@ async function runLoansProductsWorkflow(payload, mapping, apiBase, result) {
     return true;
   }
 
-  const filled = await fillNeedsAnalysis(payload, mapping, result);
-  if (!filled) {
-    recordVerificationFailure(result, "needsAnalysis", "Needs Analysis", "No Needs Analysis fields were filled");
-    return true;
+  const failed = [];
+  for (const [index, step] of socaSteps.entries()) {
+    configureAutomationSegment(index, 1);
+    const ok = await runSocaTab(step.tab, step.section, mapping, payload, result, {
+      ...step,
+      progressIndex: index,
+      progressTotal: socaSteps.length
+    });
+    if (!ok) {
+      failed.push(step.section);
+      break;
+    }
+    advanceAutomationProgress(`Loans & Products saved: ${step.tab}`);
   }
-
-  const saved = await clickPageSaveIfVisible();
-  result.actions.push({ action: saved ? "save-needs-analysis" : "review-needs-analysis", section: "needsAnalysis" });
-  const next = await clickPageNextIfVisible();
-  result.actions.push({
-    action: next ? "next-after-needs-analysis" : "stop-after-needs-analysis",
-    section: "needsAnalysis",
-    label: next ? "Stopped before broker lender selection / later SOCA tabs" : "No next button visible"
-  });
+  configureAutomationSegment(0, 100);
+  if (failed.length) {
+    recordVerificationFailure(result, "loansProducts", "SOCA workflow", "Loans & Products stopped before all required SOCA tabs completed", { failed });
+  } else {
+    result.actions.push({ action: "complete-soca-workflow", section: "loansProducts", label: "Stopped before Client Forms by rule" });
+  }
   return true;
 }
 
@@ -5674,7 +5905,16 @@ async function scanCompare({ mode, payload, mapping }) {
   return result;
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+const easyflowRuntime =
+  (typeof chrome !== "undefined" && chrome?.runtime?.onMessage?.addListener ? chrome.runtime : null) ||
+  window.__easyflowDemoRuntime ||
+  null;
+
+if (window.__easyflowDemoRuntime) {
+  window.__easyflowDemoApi = { autofill, runWorkflow, runAllPages, scanCompare, runDiagnostics };
+}
+
+if (easyflowRuntime?.onMessage?.addListener) easyflowRuntime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "INFINITY_AOL_PING") {
     sendResponse({ ok: true, buildId: EASYFLOW_EXTENSION_BUILD_ID });
     return false;

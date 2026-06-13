@@ -70,7 +70,7 @@
   <pre id="demo-report">Demo pending...</pre>
   <script>
     window.__easyflowListeners = [];
-    window.chrome = { runtime: { onMessage: { addListener(fn) { window.__easyflowListeners.push(fn); } } } };
+    window.__easyflowDemoRuntime = { onMessage: { addListener(fn) { window.__easyflowListeners.push(fn); } } };
     const expenses = [];
     function money(n) { return `$${Number(n || 0).toLocaleString("en-AU")}`; }
     function renderExpenses() {
@@ -121,13 +121,16 @@
     };
     const mapping = { sections: [] };
     async function runDemo() {
-      const listener = window.__easyflowListeners[0];
       const report = document.getElementById("demo-report");
-      if (!listener) {
+      const runner = window.__easyflowDemoApi?.runWorkflow;
+      const listener = window.__easyflowListeners[0];
+      if (!listener && !runner) {
         report.textContent = "FAIL: contentScript listener did not register";
         return;
       }
-      const result = await new Promise((resolve) => listener({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" }, null, resolve));
+      const result = runner
+        ? await runner({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" })
+        : await new Promise((resolve) => listener({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" }, null, resolve));
       const total = expenses.reduce((sum, row) => sum + Number(row.amount || 0), 0);
       const checks = {
         noErrors: !(result.errors || []).length,

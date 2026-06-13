@@ -130,7 +130,7 @@
   <pre id="demo-report">Demo pending...</pre>
   <script>
     window.__easyflowListeners = [];
-    window.chrome = { runtime: { onMessage: { addListener(fn) { window.__easyflowListeners.push(fn); } } } };
+    window.__easyflowDemoRuntime = { onMessage: { addListener(fn) { window.__easyflowListeners.push(fn); } } };
     const demoState = {
       active: 0,
       currentAddressLabel: null,
@@ -225,7 +225,9 @@
           maritalStatus: "Married", relatedSpouse: "Araj Khan", currentHousingSituation: "Renting",
           permanentInAustralia: "Yes", country: "Australia", numberOfDependants: "0",
           driversLicenceNo: "21316568", licenceExpiryDate: "2028-07-31", licenceState: "NSW", licenceClass: "C",
-          address: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" }
+          address: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" },
+          postSettlementAddress: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" },
+          mailingAddress: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" }
         },
         secondary: {
           firstName: "Araj", surname: "Khan", title: "Mrs.", gender: "Female",
@@ -233,20 +235,25 @@
           maritalStatus: "Married", relatedSpouse: "Arsalan Saleem", currentHousingSituation: "Renting",
           permanentInAustralia: "Yes", country: "Australia", numberOfDependants: "0",
           driversLicenceNo: "26172973", licenceExpiryDate: "2031-02-03", licenceState: "NSW", licenceClass: "C",
-          address: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" }
+          address: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" },
+          postSettlementAddress: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" },
+          mailingAddress: { line1: "Unit 1, 79 Crebert St", suburb: "Mayfield", state: "NSW", postcode: "2304", country: "Australia" }
         }
       }
     };
     async function runDemo() {
-      const listener = window.__easyflowListeners[0];
       const report = document.getElementById("demo-report");
-      if (!listener) {
+      const runner = window.__easyflowDemoApi?.runWorkflow;
+      const listener = window.__easyflowListeners[0];
+      if (!listener && !runner) {
         report.textContent = "FAIL: contentScript listener did not register";
         return;
       }
-      const result = await new Promise((resolve) => {
-        listener({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" }, null, resolve);
-      });
+      const result = runner
+        ? await runner({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" })
+        : await new Promise((resolve) => {
+          listener({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" }, null, resolve);
+        });
       const finalState = {
         activeApplicant: demoState.active,
         applicants: demoState.applicants,

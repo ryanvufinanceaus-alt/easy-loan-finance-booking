@@ -1,0 +1,301 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>EasyFlow Loans Products Demo</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; color: #2f3a3d; background: #eef3f5; }
+    .top { height: 54px; background: #008a8d; color: white; display: flex; align-items: center; padding: 0 20px; font-size: 20px; }
+    .card { width: 1180px; margin: 20px auto; background: white; border: 1px solid #d7dee2; box-shadow: 0 2px 8px #0002; padding: 18px 22px 90px; }
+    .tabs { display: grid; grid-template-columns: repeat(6, 1fr); border-bottom: 1px solid #cfd8dc; margin-bottom: 20px; }
+    .tabs button { border: 0; border-left: 1px solid #cfd8dc; background: transparent; padding: 13px 8px; color: #9aa5aa; cursor: pointer; }
+    .tabs button.active { color: #00a889; border-bottom: 3px solid #00a889; font-weight: 700; }
+    .tab-page { display: none; }
+    .tab-page.active { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+    .full { grid-column: 1 / span 2; }
+    .field { margin: 12px 0; }
+    label { display: block; font-size: 14px; margin-bottom: 6px; }
+    input, select, textarea { width: 100%; box-sizing: border-box; border: 1px solid #00b897; background: #effafb; padding: 8px 10px; font-size: 14px; }
+    textarea { min-height: 72px; }
+    .checks label { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
+    .checks input { width: auto; }
+    .lender-card { border: 1px solid #bfc8cc; padding: 16px; margin: 10px 0; cursor: pointer; }
+    .lender-card.selected { border-color: #f58b25; background: #fff8f1; }
+    .savebar { position: fixed; right: 40px; bottom: 24px; display: flex; gap: 10px; }
+    .savebar button { background: #12b894; color: white; border: 0; padding: 12px 18px; border-radius: 4px; cursor: pointer; }
+    #demo-report { white-space: pre-wrap; width: 1180px; margin: 20px auto; background: #0f1d18; color: #d5f5e7; padding: 14px; font-family: Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <div class="top">INFYNITY SOCA DEMO</div>
+  <div class="card">
+    <div class="tabs">
+      <button data-tab="needs" class="active">Needs Analysis</button>
+      <button data-tab="loans">Loans, Securities &amp; Commentary</button>
+      <button data-tab="features">Preferred Loan Features/Scenarios</button>
+      <button data-tab="recommendation">Recommendation</button>
+      <button data-tab="commissions">Commissions/Conflict of Interest</button>
+      <button data-tab="clientForms">Client Forms</button>
+    </div>
+
+    <section class="tab-page active" data-page="needs">
+      <div>
+        <div class="field"><label>Date Credit Guide was Provided to Client</label><input data-field="dateCreditGuideProvided"></div>
+        <div class="field"><label>Date Interview was Conducted</label><input data-field="dateInterviewConducted"></div>
+        <div class="field"><label>Method of Client Interview</label><select data-field="methodClientInterview"><option></option><option>Face to Face</option><option>Phone</option></select></div>
+        <h3>Select Applicant(s) *</h3>
+        <div class="checks"><label><input type="checkbox" data-applicant="Arsalan Saleem">Arsalan Saleem</label><label><input type="checkbox" data-applicant="Araj Khan">Araj Khan</label></div>
+        <h3>Loan Objectives *</h3>
+        <div class="checks">
+          <label><input type="checkbox" data-check="Purchase Owner Occupied Dwelling">Purchase Owner Occupied Dwelling</label>
+          <label><input type="checkbox" data-check="Purchase Investment Property">Purchase Investment Property</label>
+          <label><input type="checkbox" data-check="Refinance">Refinance</label>
+        </div>
+        <div class="field"><label>Loan Objective Explanation</label><textarea data-field="loanObjectiveExplanation"></textarea></div>
+      </div>
+      <div>
+        <div class="field"><label>Method of Document Identification</label><select data-field="methodDocumentIdentification"><option></option><option>Face to Face</option></select></div>
+        <div class="field"><label>Facility Amount</label><input data-field="facilityAmount"></div>
+        <div class="field"><label>Estimated Settlement Date</label><input data-field="estimatedSettlementDate"></div>
+        <h3>Loan Requirements *</h3>
+        <div class="checks">
+          <label><input type="checkbox" data-check="Offset">Offset</label>
+          <label><input type="checkbox" data-check="Redraw">Redraw</label>
+          <label><input type="checkbox" data-check="Variable Rate">Variable Rate</label>
+          <label><input type="checkbox" data-check="P & I Repayments">P &amp; I Repayments</label>
+          <label><input type="checkbox" data-check="Monthly Repayments">Monthly Repayments</label>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab-page" data-page="loans">
+      <div>
+        <div class="field"><label>Loan Purpose</label><select data-field="loanPurpose"><option></option><option>Purchase Owner Occupied Dwelling</option><option>Purchase Investment Property</option></select></div>
+        <div class="field"><label>Facility Amount</label><input data-field="facilityAmount"></div>
+        <div class="checks"><label><input type="checkbox" data-check="Pre-Approval Loan">Pre-Approval Loan</label></div>
+        <div class="field"><label>Opportunity</label><select data-field="opportunity"><option></option><option>Purchase Owner Occupied Dwelling</option></select></div>
+        <div class="field"><label>Name</label><input data-field="opportunityName"></div>
+      </div>
+      <div>
+        <div class="field"><label>Circumstances, Objectives and Priorities</label><textarea data-field="circumstancesObjectivesPriorities"></textarea></div>
+        <div class="field"><label>Any Significant Changes to Circumstances Anticipated?</label><select data-field="anySignificantChangesAnticipated"><option></option><option>No</option><option>Yes</option></select></div>
+        <div class="field"><label>Other Items Discussed</label><input data-field="otherItemsDiscussed"></div>
+        <div class="field"><label>Financial Awareness & Practices</label><textarea data-field="financialAwarenessPractices"></textarea></div>
+      </div>
+    </section>
+
+    <section class="tab-page" data-page="features">
+      <div>
+        <div class="field"><label>Priority 1 Loan Feature</label><select data-field="feature1"><option></option><option>Variable Rate</option></select></div>
+        <div class="field"><label>Reasons for selecting this type</label><textarea data-field="reason1"></textarea></div>
+        <div class="field"><label>Priority 2 Loan Feature</label><select data-field="feature2"><option></option><option>Redraw</option></select></div>
+        <div class="field"><label>Reasons for selecting this type</label><textarea data-field="reason2"></textarea></div>
+        <div class="field"><label>Priority 3 Loan Feature</label><select data-field="feature3"><option></option><option>P & I Repayments</option></select></div>
+        <div class="field"><label>Reasons for selecting this type</label><textarea data-field="reason3"></textarea></div>
+      </div>
+      <div>
+        <div class="field"><label>Priority 4 Loan Feature</label><select data-field="feature4"><option></option><option>Offset</option></select></div>
+        <div class="field"><label>Reasons for selecting this type</label><textarea data-field="reason4"></textarea></div>
+        <div class="field"><label>Priority 5 Loan Feature</label><select data-field="feature5"><option></option><option>Monthly Repayments</option></select></div>
+        <div class="field"><label>Reasons for selecting this type</label><textarea data-field="reason5"></textarea></div>
+        <div class="lender-card">Bankwest<br>Complete Variable ACQUISITION 60% - 90% OO P&I</div>
+        <div class="lender-card">ING<br>Orange Advantage &gt;$150K Owner Occupied P&amp;I</div>
+        <div class="lender-card">CBA<br>HLPT Standard Variable OO P&amp;I</div>
+      </div>
+    </section>
+
+    <section class="tab-page" data-page="recommendation">
+      <div>
+        <div class="lender-card">Bankwest<br>$800000 Complete Variable ACQUISITION</div>
+        <div class="lender-card" data-lender="ING">ING<br>$800000 Orange Advantage &gt;$150K Owner Occupied P&amp;I</div>
+        <div class="lender-card">CBA<br>$800000 HLPT Standard Variable OO P&amp;I</div>
+      </div>
+      <div>
+        <div class="field"><label>Lender</label><textarea data-field="lender"></textarea></div>
+        <div class="field"><label>Loan Amount</label><textarea data-field="loanAmount"></textarea></div>
+        <div class="field"><label>Interest Rate</label><textarea data-field="interestRate"></textarea></div>
+        <div class="field"><label>Loan Structure</label><textarea data-field="loanStructure"></textarea></div>
+        <div class="field"><label>Goals & Objectives</label><textarea data-field="goalsObjectives"></textarea></div>
+        <div class="field"><label>Loan Features</label><textarea data-field="loanFeatures"></textarea></div>
+      </div>
+    </section>
+
+    <section class="tab-page" data-page="commissions">
+      <div class="full">
+        <div class="field"><label>Comments on Commissions/Conflicts of Interest</label><input data-field="comments"></div>
+        <div class="field"><label>Referrer Type</label><select data-field="referrerType"><option></option><option>Single</option></select></div>
+        <div class="field"><label>Referrer Group</label><select data-field="referrerGroup"><option></option><option>None</option></select></div>
+        <div class="field"><label>Referrer</label><select data-field="referrer"><option></option><option>None</option></select></div>
+        <div class="field"><label>Other Upfront Fees (incl. GST)</label><input data-field="otherUpfrontFeesInclGst"></div>
+        <button id="finalise">Finalise Application</button>
+      </div>
+    </section>
+
+    <section class="tab-page" data-page="clientForms"><div class="full"><h2>Client Forms</h2><button>Generate</button></div></section>
+  </div>
+  <div class="savebar"><button id="save-next">Save/Next</button></div>
+  <pre id="demo-report">Demo pending...</pre>
+
+  <script>
+    window.__easyflowDemoRuntime = { onMessage: { addListener(fn) { window.__easyflowListener = fn; } } };
+    const tabOrder = ["needs", "loans", "features", "recommendation", "commissions", "clientForms"];
+    let activeTab = "needs";
+    let finaliseClicked = false;
+    function switchTab(tab) {
+      activeTab = tab;
+      document.querySelectorAll("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
+      document.querySelectorAll("[data-page]").forEach((page) => page.classList.toggle("active", page.dataset.page === tab));
+      history.replaceState(null, "", `/accounts#!/loans/soca/${tab}`);
+    }
+    document.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
+    document.querySelectorAll(".lender-card").forEach((card) => card.addEventListener("click", () => {
+      document.querySelectorAll(".lender-card").forEach((item) => item.classList.remove("selected"));
+      card.classList.add("selected");
+    }));
+    document.getElementById("save-next").addEventListener("click", () => {
+      const index = tabOrder.indexOf(activeTab);
+      if (index >= 0 && index < tabOrder.length - 1) switchTab(tabOrder[index + 1]);
+    });
+    document.getElementById("finalise").addEventListener("click", () => { finaliseClicked = true; switchTab("clientForms"); });
+    switchTab("needs");
+  </script>
+  <script src="/contentScript.js"></script>
+  <script>
+    const mapping = {
+      sections: [
+        { id: "needsAnalysis", label: "Needs Analysis", fields: [
+          { payloadPath: "infinity.needsAnalysis.dateCreditGuideProvided", label: "Date Credit Guide was Provided to Client" },
+          { payloadPath: "infinity.needsAnalysis.dateInterviewConducted", label: "Date Interview was Conducted" },
+          { payloadPath: "infinity.needsAnalysis.methodClientInterview", label: "Method of Client Interview" },
+          { payloadPath: "infinity.needsAnalysis.methodDocumentIdentification", label: "Method of Document Identification" },
+          { payloadPath: "infinity.needsAnalysis.facilityAmount", label: "Facility Amount" },
+          { payloadPath: "infinity.needsAnalysis.estimatedSettlementDate", label: "Estimated Settlement Date" },
+          { payloadPath: "infinity.needsAnalysis.objectives.purchaseOwnerOccupiedDwelling", label: "Purchase Owner Occupied Dwelling" },
+          { payloadPath: "infinity.needsAnalysis.requirements.offset", label: "Offset" },
+          { payloadPath: "infinity.needsAnalysis.requirements.redraw", label: "Redraw" },
+          { payloadPath: "infinity.needsAnalysis.requirements.variableRate", label: "Variable Rate" },
+          { payloadPath: "infinity.needsAnalysis.requirements.principalAndInterest", label: "P & I Repayments" },
+          { payloadPath: "infinity.needsAnalysis.requirements.monthlyRepayments", label: "Monthly Repayments" },
+          { payloadPath: "infinity.needsAnalysis.loanObjectiveExplanation", label: "Loan Objective Explanation" }
+        ] },
+        { id: "loansSecuritiesCommentary", label: "Loans, Securities & Commentary", fields: [
+          { payloadPath: "infinity.loansSecuritiesCommentary.loanPurpose", label: "Loan Purpose" },
+          { payloadPath: "infinity.loansSecuritiesCommentary.facilityAmount", label: "Facility Amount" },
+          { payloadPath: "infinity.loansSecuritiesCommentary.preApprovalLoan", label: "Pre-Approval Loan" },
+          { payloadPath: "infinity.loansSecuritiesCommentary.opportunity", label: "Opportunity" },
+          { payloadPath: "infinity.loansSecuritiesCommentary.opportunityName", label: "Name" },
+          { payloadPath: "infinity.loansSecuritiesCommentary.circumstancesObjectivesPriorities", label: "Circumstances, Objectives and Priorities" },
+          { payloadPath: "infinity.loansSecuritiesCommentary.anySignificantChangesAnticipated", label: "Any Significant Changes to Circumstances Anticipated?" },
+          { payloadPath: "infinity.loansSecuritiesCommentary.otherItemsDiscussed", label: "Other Items Discussed", optional: true },
+          { payloadPath: "infinity.loansSecuritiesCommentary.financialAwarenessPractices", label: "Financial Awareness & Practices" }
+        ] },
+        { id: "preferredLoanFeatures", label: "Preferred Loan Features/Scenarios", fields: [
+          { payloadPath: "infinity.preferredLoanFeatures.0.feature", label: "Priority 1 Loan Feature" },
+          { payloadPath: "infinity.preferredLoanFeatures.0.reason", label: "Reasons for selecting this type", occurrence: 0 },
+          { payloadPath: "infinity.preferredLoanFeatures.1.feature", label: "Priority 2 Loan Feature" },
+          { payloadPath: "infinity.preferredLoanFeatures.1.reason", label: "Reasons for selecting this type", occurrence: 1 },
+          { payloadPath: "infinity.preferredLoanFeatures.2.feature", label: "Priority 3 Loan Feature" },
+          { payloadPath: "infinity.preferredLoanFeatures.2.reason", label: "Reasons for selecting this type", occurrence: 2 },
+          { payloadPath: "infinity.preferredLoanFeatures.3.feature", label: "Priority 4 Loan Feature" },
+          { payloadPath: "infinity.preferredLoanFeatures.3.reason", label: "Reasons for selecting this type", occurrence: 3 },
+          { payloadPath: "infinity.preferredLoanFeatures.4.feature", label: "Priority 5 Loan Feature" },
+          { payloadPath: "infinity.preferredLoanFeatures.4.reason", label: "Reasons for selecting this type", occurrence: 4 }
+        ] },
+        { id: "recommendation", label: "Recommendation", fields: [
+          { payloadPath: "infinity.recommendation.lender", label: "Lender" },
+          { payloadPath: "infinity.recommendation.loanAmount", label: "Loan Amount" },
+          { payloadPath: "infinity.recommendation.interestRate", label: "Interest Rate" },
+          { payloadPath: "infinity.recommendation.loanStructure", label: "Loan Structure" },
+          { payloadPath: "infinity.recommendation.goalsObjectives", label: "Goals & Objectives" },
+          { payloadPath: "infinity.recommendation.loanFeatures", label: "Loan Features" }
+        ] },
+        { id: "commissionsConflict", label: "Commissions/Conflict of Interest", fields: [
+          { payloadPath: "infinity.commissionsConflict.comments", label: "Comments on Commissions/Conflicts of Interest" },
+          { payloadPath: "infinity.commissionsConflict.referrerType", label: "Referrer Type" },
+          { payloadPath: "infinity.commissionsConflict.referrerGroup", label: "Referrer Group" },
+          { payloadPath: "infinity.commissionsConflict.referrer", label: "Referrer" },
+          { payloadPath: "infinity.commissionsConflict.otherUpfrontFeesInclGst", label: "Other Upfront Fees (incl. GST)" }
+        ] }
+      ]
+    };
+    const payload = {
+      meta: { caseId: "DEMO-SOCA", brokerUser: "demo" },
+      applicants: { primary: { firstName: "Arsalan", surname: "Saleem" }, secondary: { firstName: "Araj", surname: "Khan" } },
+      infinity: {
+        applicants: [{ firstName: "Arsalan", surname: "Saleem" }, { firstName: "Araj", surname: "Khan" }],
+        needsAnalysis: {
+          dateCreditGuideProvided: "16/12/2025",
+          dateInterviewConducted: "16/12/2025",
+          methodClientInterview: "Face to Face",
+          methodDocumentIdentification: "Face to Face",
+          facilityAmount: "$800,000",
+          estimatedSettlementDate: "16/01/2026",
+          objectives: { purchaseOwnerOccupiedDwelling: true },
+          requirements: { offset: true, redraw: true, variableRate: true, principalAndInterest: true, monthlyRepayments: true },
+          loanObjectiveExplanation: "Clients are seeking pre-approval to purchase an owner-occupied property to live in."
+        },
+        loansSecuritiesCommentary: {
+          loanPurpose: "Purchase Owner Occupied Dwelling",
+          facilityAmount: "$800,000",
+          preApprovalLoan: true,
+          opportunity: "Purchase Owner Occupied Dwelling",
+          opportunityName: "Purchase Owner Occupied Dwelling",
+          circumstancesObjectivesPriorities: "The clients are looking to purchase an owner-occupied house to live in with deposit saved. They require variable, redraw, offset and principal and interest repayments.",
+          anySignificantChangesAnticipated: "No",
+          otherItemsDiscussed: "",
+          financialAwarenessPractices: "Loan term and key features explained to client. Full understanding achieved."
+        },
+        preferredLoanFeatures: [
+          { feature: "Variable Rate", reason: "The clients choose a variable option to enable flexibility in reducing debt." },
+          { feature: "Redraw", reason: "The clients would like redraw access if required." },
+          { feature: "P & I Repayments", reason: "The clients prefer principal and interest to pay down the loan." },
+          { feature: "Offset", reason: "To save on interest when savings are held in offset." },
+          { feature: "Monthly Repayments", reason: "Monthly repayments are suitable for budgeting." }
+        ],
+        recommendation: {
+          selectedLender: "ING",
+          lender: "ING was chosen because they provide stronger servicing and competitive rates.",
+          loanAmount: "Requested loan amount is affordable and can be serviced using client income.",
+          interestRate: "Variable rate provides flexibility and redraw/offset features.",
+          loanStructure: "Principal and interest over 30 years with variable rate, redraw and offset.",
+          goalsObjectives: "Clients are purchasing their owner-occupied property and require suitable repayment structure.",
+          loanFeatures: "Variable rate, redraw, offset, principal and interest repayments and monthly repayments."
+        },
+        commissionsConflict: {
+          comments: "No conflict of interest has been identified.",
+          referrerType: "Single",
+          referrerGroup: "None",
+          referrer: "None",
+          otherUpfrontFeesInclGst: "$0"
+        }
+      }
+    };
+    async function runDemo() {
+      const report = document.getElementById("demo-report");
+      const runner = window.__easyflowDemoApi?.runWorkflow;
+      const listener = window.__easyflowListener;
+      if (!listener && !runner) {
+        report.textContent = "FAIL: contentScript listener did not register";
+        return;
+      }
+      const result = runner
+        ? await runner({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" })
+        : await new Promise((resolve) => listener({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" }, null, resolve));
+      const values = Object.fromEntries([...document.querySelectorAll("[data-field]")].map((el) => [el.dataset.field, el.value]));
+      const checks = {
+        noErrors: !(result.errors || []).length,
+        noVerificationFailures: !(result.verificationFailures || []).length,
+        applicantsSelected: [...document.querySelectorAll("[data-applicant]")].every((el) => el.checked),
+        needsFilled: values.facilityAmount === "$800,000" && document.querySelector("[data-check='Offset']").checked,
+        securitiesFilled: values.circumstancesObjectivesPriorities.length > 20,
+        featuresFilled: values.feature1 === "Variable Rate" && values.feature5 === "Monthly Repayments",
+        recommendationFilled: values.lender.includes("ING") && document.querySelector("[data-lender='ING']").classList.contains("selected"),
+        commissionsFilled: values.referrerType === "Single" && values.otherUpfrontFeesInclGst === "$0",
+        stoppedBeforeClientForms: activeTab === "commissions" && !finaliseClicked
+      };
+      report.textContent = JSON.stringify({ ok: Object.values(checks).every(Boolean), checks, result, activeTab, values }, null, 2);
+    }
+    setTimeout(runDemo, 500);
+  </script>
+</body>
+</html>
