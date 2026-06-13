@@ -13,6 +13,15 @@ function firstPrimary(caseData) {
   return caseData.applicants.find((applicant) => applicant.role === "primary") || caseData.applicants[0] || {};
 }
 
+function housingSituation(applicant, caseData) {
+  return applicant?.currentHousingSituation ||
+    applicant?.currentResidentialStatus ||
+    applicant?.address?.residentialStatus ||
+    applicant?.address?.currentResidentialStatus ||
+    caseData.clientProfile?.currentHousingSituation ||
+    "";
+}
+
 function loanPurpose(caseData) {
   const purpose = `${caseData.property?.purpose || caseData.loan?.applicationType || ""}`.toLowerCase();
   if (purpose.includes("investment")) return "Investment";
@@ -75,7 +84,7 @@ export function buildAolTemplate(caseData, infinity) {
       mobilePhone: primary.mobile || "",
       email: primary.email || "",
       currentResidentialAddress: formatAddress(primary.address),
-      currentHousingSituation: caseData.clientProfile?.currentHousingSituation || primary.address?.residentialStatus || primary.address?.currentResidentialStatus || "",
+      currentHousingSituation: housingSituation(primary, caseData),
       addressSince: caseData.clientProfile?.addressSince || "",
       employmentName: primary.employment?.employerName || "",
       employmentStatus: primary.employment?.status || "",

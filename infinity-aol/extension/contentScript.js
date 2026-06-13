@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "address-candidates-housing-mapper-v2.7";
+const EASYFLOW_EXTENSION_BUILD_ID = "address-dom-chain-housing-fallback-v2.8";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -2345,8 +2345,10 @@ function resolveCurrentHousingSituation(applicant = {}, canonical = {}, rawAppli
 function resolveLoanFormHousingForApplicant(payload = {}, rowIndex = 0, applicant = {}) {
   const sourceRows = rawApplicantRows(payload);
   const byIndex = sourceRows[rowIndex] || {};
+  const primary = sourceRows[0] || getValue(payload, "applicants.primary") || {};
   const applicantKey = applicantNameKey(applicant);
   const byName = sourceRows.find((row) => applicantNameKey(row) === applicantKey) || {};
+  const payloadClientDetails = getValue(payload, `infinity.applicants.${rowIndex}`) || {};
   return normalizeHousingSituation(nonEmptyValue(
     byIndex.currentResidentialStatus,
     byIndex.currentHousingSituation,
@@ -2355,7 +2357,15 @@ function resolveLoanFormHousingForApplicant(payload = {}, rowIndex = 0, applican
     byName.currentResidentialStatus,
     byName.currentHousingSituation,
     byName.address?.residentialStatus,
-    byName.address?.currentResidentialStatus
+    byName.address?.currentResidentialStatus,
+    payloadClientDetails.currentResidentialStatus,
+    payloadClientDetails.currentHousingSituation,
+    payloadClientDetails.address?.residentialStatus,
+    payloadClientDetails.address?.currentResidentialStatus,
+    rowIndex > 0 ? primary.currentResidentialStatus : "",
+    rowIndex > 0 ? primary.currentHousingSituation : "",
+    rowIndex > 0 ? primary.address?.residentialStatus : "",
+    rowIndex > 0 ? primary.address?.currentResidentialStatus : ""
   ));
 }
 
@@ -3718,6 +3728,92 @@ function findEditButtonForAddress(addressLabel) {
   return collectEditButtonsForAddress(addressLabel)[0]?.element || null;
 }
 
+function addressModalFromPage() {
+  const current = activeModal();
+  if (!current) return null;
+  const text = normalize(current.innerText || current.textContent || "");
+  return text.includes("edit address") ||
+    text.includes("copy address") ||
+    text.includes("address type") ||
+    text.includes("street number") ||
+    text.includes("street name") ||
+    text.includes("suburb/city")
+    ? current
+    : null;
+}
+
+function isBadAddressActionTarget(element) {
+  if (!element) return true;
+  const text = normalize(element.innerText || element.textContent || "");
+  const marker = normalize(`${element.className || ""} ${element.getAttribute?.("title") || ""} ${element.getAttribute?.("aria-label") || ""} ${element.getAttribute?.("ng-click") || ""} ${element.getAttribute?.("data-ng-click") || ""}`);
+  return text.includes("delete") || marker.includes("delete") || marker.includes("remove");
+}
+
+function addressClickTargetChain(element) {
+  const chain = [];
+  const add = (target) => {
+    if (!target || target === document || target === window || !(target instanceof Element)) return;
+    if (isEasyFlowOverlayElement(target) || isBadAddressActionTarget(target)) return;
+    if (!chain.includes(target)) chain.push(target);
+  };
+  add(element);
+  const rect = element?.getBoundingClientRect?.();
+  if (rect && rect.width > 0 && rect.height > 0) {
+    const points = [
+      [rect.left + rect.width / 2, rect.top + rect.height / 2],
+      [rect.left + Math.min(rect.width - 2, 8), rect.top + rect.height / 2],
+      [rect.right - Math.min(rect.width - 2, 8), rect.top + rect.height / 2]
+    ];
+    for (const [x, y] of points) {
+      add(document.elementFromPoint(Math.max(0, x), Math.max(0, y)));
+    }
+  }
+  const baseTargets = [...chain];
+  for (const target of baseTargets) {
+    add(target.closest?.("[ng-click], [data-ng-click], [onclick]"));
+    add(target.closest?.("a, button, [role='button']"));
+    let parent = target.parentElement;
+    for (let depth = 0; depth < 5 && parent; depth += 1) {
+      add(parent.matches?.("[ng-click], [data-ng-click], [onclick], a, button, [role='button']") ? parent : null);
+      parent = parent.parentElement;
+    }
+  }
+  return chain.filter((target) => isVisible(target));
+}
+
+async function tryOpenAddressModalFromTarget(target, result, addressLabel, meta = {}) {
+  const attempted = [];
+  for (const element of addressClickTargetChain(target)) {
+    await scrollElementIntoView(element, "center");
+    const rect = element.getBoundingClientRect();
+    const attempt = {
+      selector: describeElement(element),
+      text: visibleText(element),
+      rect: rectJson(rect),
+      ngClick: element.getAttribute?.("ng-click") || element.getAttribute?.("data-ng-click") || "",
+      onclick: element.getAttribute?.("onclick") || ""
+    };
+    attempted.push(attempt);
+    result.actions.push({
+      action: "click-address-edit-target",
+      section: "clientDetails",
+      label: addressLabel,
+      target: attempt,
+      ...meta
+    });
+
+    clickElement(element);
+    angularClickElement(element);
+    let modal = await waitFor(addressModalFromPage, { timeout: 1000, interval: 100 });
+    if (!modal) {
+      await clickAtCenter(element);
+      modal = await waitFor(addressModalFromPage, { timeout: 1200, interval: 100 });
+    }
+    if (modal) return { modal, attempted };
+  }
+  return { modal: null, attempted };
+}
+
 async function clickAddressEdit(addressLabel, result, meta = {}) {
   const root = findAddressesSectionRoot();
   await scrollToText([addressLabel], root);
@@ -3744,25 +3840,15 @@ async function clickAddressEdit(addressLabel, result, meta = {}) {
       candidate,
       ...meta
     });
-    clickElement(edit);
-    angularClickElement(edit);
-    await sleep(250);
-    let modal = await waitFor(() => {
-      const current = activeModal();
-      if (!current) return null;
-      const text = normalize(current.innerText || current.textContent || "");
-      return text.includes("edit address") || text.includes("address type") || text.includes("street name") ? current : null;
-    }, { timeout: 2500, interval: 150 });
-    if (!modal) {
-      await clickAtCenter(edit);
-      modal = await waitFor(() => {
-        const current = activeModal();
-        if (!current) return null;
-        const text = normalize(current.innerText || current.textContent || "");
-        return text.includes("edit address") || text.includes("address type") || text.includes("street name") ? current : null;
-      }, { timeout: 2500, interval: 150 });
-    }
-    attempts.push({ selector: describeElement(edit), text: visibleText(edit), opened: Boolean(modal), rect: rectJson(edit.getBoundingClientRect()) });
+    const opened = await tryOpenAddressModalFromTarget(edit, result, addressLabel, meta);
+    const modal = opened.modal;
+    attempts.push({
+      selector: describeElement(edit),
+      text: visibleText(edit),
+      opened: Boolean(modal),
+      rect: rectJson(edit.getBoundingClientRect()),
+      targetAttempts: opened.attempted
+    });
     if (modal) {
       result.actions.push({ action: "open-address-edit", section: "clientDetails", label: addressLabel, attempts, ...meta });
       return modal;

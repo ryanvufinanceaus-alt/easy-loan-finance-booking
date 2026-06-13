@@ -12,6 +12,12 @@ function compactApplicant(applicant) {
   if (!applicant) return null;
   const fullName = [applicant.firstName, applicant.middleName, applicant.lastName || applicant.surname].filter(Boolean).join(" ").trim();
   if (!fullName) return null;
+  const currentResidentialStatus =
+    applicant.currentResidentialStatus ||
+    applicant.currentHousingSituation ||
+    applicant.address?.residentialStatus ||
+    applicant.address?.currentResidentialStatus ||
+    "";
 
   return {
     fullName,
@@ -22,8 +28,8 @@ function compactApplicant(applicant) {
     gender: applicant.gender || "",
     dateOfBirth: applicant.dateOfBirth || "",
     maritalStatus: applicant.maritalStatus || "",
-    currentResidentialStatus: applicant.currentResidentialStatus || "",
-    currentHousingSituation: applicant.currentHousingSituation || applicant.currentResidentialStatus || "",
+    currentResidentialStatus,
+    currentHousingSituation: applicant.currentHousingSituation || currentResidentialStatus,
     residencyStatus: applicant.residencyStatus || "",
     dependants: applicant.dependants ?? 0,
     email: applicant.email || "",

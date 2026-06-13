@@ -48,11 +48,19 @@ function clientDetailsForApplicant(applicant, options = {}) {
   };
 }
 
-function currentHousingSituationForApplicant(caseData, applicant) {
+function applicantHousingSituation(applicant) {
   return applicant?.currentHousingSituation ||
     applicant?.currentResidentialStatus ||
     applicant?.address?.residentialStatus ||
     applicant?.address?.currentResidentialStatus ||
+    "";
+}
+
+function currentHousingSituationForApplicant(caseData, applicant) {
+  const primary = caseData.applicants?.find((item) => item.role === "primary") || caseData.applicants?.[0] || {};
+  const primaryFallback = applicant?.role === "secondary" ? applicantHousingSituation(primary) : "";
+  return applicantHousingSituation(applicant) ||
+    primaryFallback ||
     caseData.clientProfile?.currentHousingSituation ||
     "";
 }
