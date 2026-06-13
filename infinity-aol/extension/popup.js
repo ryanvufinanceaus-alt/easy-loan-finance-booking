@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-tab-click-retry-v1.4";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-real-applicant-tabs-v1.5";
 
 const state = {
   prepared: null,

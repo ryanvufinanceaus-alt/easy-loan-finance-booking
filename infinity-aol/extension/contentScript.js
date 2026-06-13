@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-tab-click-retry-v1.4";
+const EASYFLOW_EXTENSION_BUILD_ID = "client-details-real-applicant-tabs-v1.5";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -1986,7 +1986,33 @@ function rawApplicantForIndex(payload, index) {
 }
 
 function rawApplicantRows(payload) {
+  const applicants = getValue(payload, "applicants");
+  if (Array.isArray(applicants)) return applicants.filter(hasApplicantName);
   return [getValue(payload, "applicants.primary"), getValue(payload, "applicants.secondary")].filter(hasApplicantName);
+}
+
+function applicantForRoleOrIndex(payload, role, index) {
+  const applicants = getValue(payload, "applicants");
+  if (Array.isArray(applicants)) {
+    return applicants.find((applicant) => normalize(applicant?.role) === role) || applicants[index];
+  }
+  return rawApplicantForIndex(payload, index);
+}
+
+function secondApplicantSignal(payload) {
+  const values = [
+    getValue(payload, "hasSecondApplicant"),
+    getValue(payload, "meta.hasSecondApplicant"),
+    getValue(payload, "manualIntake.hasSecondApplicant"),
+    getValue(payload, "documentIntake.manualIntake.hasSecondApplicant"),
+    getValue(payload, "documentIntake.assumptions.hasSecondApplicant"),
+    getValue(payload, "serviceability.hasSecondApplicant")
+  ];
+  const explicit = values.find((value) => value !== undefined && value !== null && String(value).trim() !== "");
+  const normalized = normalize(explicit);
+  if (["yes", "true", "1", "y"].includes(normalized)) return "yes";
+  if (["no", "false", "0", "n"].includes(normalized)) return "no";
+  return "";
 }
 
 function nonEmptyValue(...values) {
@@ -2304,6 +2330,53 @@ function applicantNameParts(applicant) {
   };
 }
 
+function applicantMatchesTabItem(applicant, tab) {
+  const { fullName, firstName, surname } = applicantNameParts(applicant);
+  const text = tab?.textNorm || normalizeLabelText(tab?.text || "");
+  const full = normalizeLabelText(fullName);
+  const first = normalizeLabelText(firstName);
+  const last = normalizeLabelText(surname);
+  if (!text || !full) return false;
+  return text === full || (first && last && text.includes(first) && text.includes(last));
+}
+
+function filterClientDetailsApplicantsForCase(applicants, payload, result) {
+  const rows = applicants.filter(hasApplicantName);
+  if (rows.length <= 1) return rows;
+  const tabs = getApplicantTabItems();
+  const tabTexts = tabs.map((tab) => tab.text);
+  const signal = secondApplicantSignal(payload);
+  const primary = rows[0];
+  const secondaryRows = rows.slice(1);
+  let filtered = rows;
+  let reason = "payload";
+
+  if (tabs.length) {
+    const matchingSecondary = secondaryRows.filter((applicant) => tabs.some((tab) => applicantMatchesTabItem(applicant, tab)));
+    filtered = [primary, ...matchingSecondary];
+    reason = "visible-infinity-applicant-tabs";
+  } else if (signal === "no") {
+    filtered = [primary];
+    reason = "hasSecondApplicant-no";
+  } else if (signal === "yes") {
+    filtered = rows.slice(0, 2);
+    reason = "hasSecondApplicant-yes";
+  }
+
+  if (filtered.length < rows.length || tabs.length || signal) {
+    result.actions.push({
+      action: "client-details-applicant-case-gate",
+      section: "clientDetails",
+      reason,
+      secondApplicantSignal: signal || "not-set",
+      visibleApplicantTabs: tabTexts,
+      selectedApplicants: filtered.map(fullApplicantName),
+      droppedApplicants: rows.filter((row) => !filtered.includes(row)).map(fullApplicantName)
+    });
+  }
+  return filtered.length ? filtered : [primary];
+}
+
 function markApplicantState(applicant, patch) {
   const key = fullApplicantName(applicant) || `Applicant ${Object.keys(automationRunState.clientDetails.applicants).length + 1}`;
   automationRunState.clientDetails.applicants[key] = {
@@ -2569,9 +2642,34 @@ function findVisibleApplicantTabElement(fullName) {
   return loose?.element || null;
 }
 
+function findAddApplicantsElement() {
+  return [...document.querySelectorAll("button, a, div, span")]
+    .filter(isVisible)
+    .find((element) => normalizeLabelText(element.innerText || element.textContent || "").includes("add applicants")) || null;
+}
+
+function looksLikeApplicantTabElement(element, clickable, addRect = null) {
+  if (!element || !clickable || !isVisible(element) || !isVisible(clickable)) return false;
+  const rect = clickable.getBoundingClientRect();
+  if (rect.width < 35 || rect.height < 10 || rect.height > 120) return false;
+  const classText = `${element.className || ""} ${clickable.className || ""}`.toLowerCase();
+  const roleText = `${element.getAttribute?.("role") || ""} ${clickable.getAttribute?.("role") || ""}`.toLowerCase();
+  const clickText = `${element.getAttribute?.("ng-click") || ""} ${clickable.getAttribute?.("ng-click") || ""} ${element.getAttribute?.("data-ng-click") || ""} ${clickable.getAttribute?.("data-ng-click") || ""}`.toLowerCase();
+  const structuralTab = classText.includes("tab") || roleText.includes("tab") || clickText.includes("applicant") || clickText.includes("select");
+  if (!structuralTab) return false;
+  if (addRect) {
+    const nearAddApplicantRow = Math.abs(rect.top - addRect.top) <= 95 || Math.abs(rect.bottom - addRect.bottom) <= 95;
+    if (!nearAddApplicantRow) return false;
+    if (rect.left < 240 || rect.left > addRect.left + 30) return false;
+  }
+  return true;
+}
+
 function getApplicantTabItems() {
   const bar = findApplicantTabBar();
   if (!bar) return [];
+  const addApplicants = findAddApplicantsElement();
+  const addRect = addApplicants?.getBoundingClientRect?.() || null;
   const elements = [...bar.querySelectorAll("a, button, li, div, span")]
     .filter(isVisible);
   const seen = new Set();
@@ -2584,9 +2682,9 @@ function getApplicantTabItems() {
       if (/(client details|financials|loans|overview|primary applicant|applicant type|entity type|related spouse|home phone|work phone|save changes)/i.test(text)) return null;
       const clickable = getApplicantTabClickable(element);
       if (!clickable) return null;
+      if (!looksLikeApplicantTabElement(element, clickable, addRect)) return null;
       const rect = clickable.getBoundingClientRect();
-      if (rect.width < 35 || rect.height < 10 || rect.height > 120) return null;
-      const key = `${normalize(text)}:${Math.round(rect.left)}:${Math.round(rect.top)}`;
+      const key = `${normalize(text)}`;
       if (seen.has(key)) return null;
       seen.add(key);
       return {
@@ -2603,9 +2701,7 @@ function getApplicantTabItems() {
 }
 
 function findApplicantTabBar() {
-  const addApplicants = [...document.querySelectorAll("button, a, div, span")]
-    .filter(isVisible)
-    .find((element) => normalizeLabelText(element.innerText || element.textContent || "").includes("add applicants"));
+  const addApplicants = findAddApplicantsElement();
   if (!addApplicants) return null;
   let node = addApplicants.parentElement;
   while (node && node !== document.body) {
@@ -2624,7 +2720,10 @@ function getApplicantTabClickable(element) {
   if (!element) return null;
   const text = normalize(element.innerText || element.textContent || "");
   if (text === "x" || text === "×") return null;
-  const clickable = element.closest("li, a, button, [role='tab'], [ng-click], [data-ng-click], .nav-link, .tab") || element;
+  const preferredChild = element.matches?.("[role='tab'], [ng-click], [data-ng-click], .Tab, .tab, a, button")
+    ? element
+    : element.querySelector?.("[role='tab'], [ng-click], [data-ng-click], .Tab, .tab, a, button");
+  const clickable = preferredChild || element.closest("li, a, button, [role='tab'], [ng-click], [data-ng-click], .nav-link, .Tab, .tab") || element;
   const clickableText = normalize(clickable.innerText || clickable.textContent || "");
   if (clickableText === "x" || clickableText === "×") return null;
   return clickable;
@@ -2671,6 +2770,8 @@ function activeTabMatchesApplicant(activeTab, expected) {
 
 function applicantTabClickTargets(tabItem) {
   const raw = [
+    tabItem?.element?.querySelector?.("[role='tab'], [ng-click], [data-ng-click], .Tab, .tab, a, button"),
+    tabItem?.clickable?.querySelector?.("[role='tab'], [ng-click], [data-ng-click], .Tab, .tab, a, button"),
     tabItem?.element,
     tabItem?.clickable,
     tabItem?.element?.closest?.("[ng-click], [data-ng-click], [role='tab'], a, button, li, .nav-link, .tab"),
@@ -3583,13 +3684,14 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
   if (!section) return false;
   const preparedRows = infinityApplicantRows(payload);
   const rawRows = rawApplicantRows(payload);
-  const applicants = (rawRows.length ? rawRows : preparedRows)
+  let applicants = (rawRows.length ? rawRows : preparedRows)
     .map((sourceApplicant, index) => {
-      const rawApplicant = rawRows.length ? sourceApplicant : rawApplicantForIndex(payload, index);
+      const rawApplicant = rawRows.length ? sourceApplicant : applicantForRoleOrIndex(payload, index === 0 ? "primary" : "secondary", index);
       const preparedApplicant = rawRows.length ? preparedApplicantForRaw(preparedRows, rawApplicant, index) : sourceApplicant;
       return mergeClientDetailsApplicant(preparedApplicant, rawApplicant, result, index, Boolean(rawRows.length));
     })
     .filter(hasApplicantName);
+  applicants = filterClientDetailsApplicantsForCase(applicants, payload, result);
   if (!applicants.length) return false;
   result.actions.push({
     action: "client-details-canonical-applicant-list",
@@ -3607,7 +3709,7 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
   for (let index = 0; index < applicants.length; index += 1) {
     throwIfAutomationStopped();
     const spouse = applicants.length > 1 ? applicants[index === 0 ? 1 : 0] : null;
-    const rawApplicant = rawRows[index] || rawApplicantForIndex(payload, index);
+    const rawApplicant = rawRows[index] || applicantForRoleOrIndex(payload, index === 0 ? "primary" : "secondary", index);
     const applicant = {
       ...applicants[index],
       maritalStatus: applicants.length > 1 ? "Married" : applicants[index].maritalStatus,
