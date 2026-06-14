@@ -1,4 +1,6 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "client-details-name-rect-click-v1.9";
+const EASYFLOW_EXTENSION_BUILD_ID = "address-core-verify-v2.13";
+const REPORT_HISTORY_KEY = "easyflowReportHistory";
+const REPORT_HISTORY_LIMIT = 5;
 
 const state = {
   prepared: null,
@@ -25,13 +27,14 @@ const els = {
 
 if (els.buildId) els.buildId.textContent = `Build: ${EASYFLOW_EXTENSION_BUILD_ID}`;
 
-chrome.storage.local.get(["apiBase", "caseToken"], (stored) => {
+chrome.storage.local.get(["apiBase", "caseToken", REPORT_HISTORY_KEY], (stored) => {
   if (stored.apiBase) {
     els.apiBase.value = stored.apiBase.includes("easy-loan-finance-booking.onrender.com")
       ? "https://booking.easyloanfinance.com.au/infinity-aol"
       : stored.apiBase;
   }
   if (stored.caseToken) els.caseToken.value = stored.caseToken;
+  hydrateLastReport(stored[REPORT_HISTORY_KEY]);
   loadPreparedCases().catch((error) => setStatus(error.message, "error"));
 });
 
@@ -43,6 +46,34 @@ function setStatus(message, type = "muted") {
 function enableAdvanced(enabled) {
   els.fillSection.disabled = !enabled;
   els.compareCase.disabled = !enabled;
+}
+
+function hydrateLastReport(history = []) {
+  const latest = Array.isArray(history) ? history[0] : null;
+  if (!latest?.report) return;
+  if (latest.kind === "diagnostic") {
+    state.lastDiagnostics = latest.report;
+    state.lastResult = latest.report;
+  } else {
+    state.lastDiagnostics = null;
+    state.lastResult = latest.report;
+  }
+  els.copyDiagnostics.disabled = false;
+  setStatus(`Loaded last ${latest.kind || "autofill"} report from ${new Date(latest.savedAt || Date.now()).toLocaleString()}.`, "muted");
+}
+
+function persistReport(kind, report) {
+  if (!report) return;
+  const entry = {
+    kind,
+    savedAt: new Date().toISOString(),
+    caseId: state.prepared?.caseId || report.caseId || report.meta?.caseId || "",
+    report
+  };
+  chrome.storage.local.get([REPORT_HISTORY_KEY], (stored) => {
+    const history = Array.isArray(stored[REPORT_HISTORY_KEY]) ? stored[REPORT_HISTORY_KEY] : [];
+    chrome.storage.local.set({ [REPORT_HISTORY_KEY]: [entry, ...history].slice(0, REPORT_HISTORY_LIMIT) });
+  });
 }
 
 async function readJsonResponse(response, fallbackMessage) {
@@ -328,6 +359,7 @@ async function startAutofill() {
 
     state.lastResult = result;
     state.lastDiagnostics = null;
+    persistReport("autofill", result);
     els.copyDiagnostics.disabled = false;
     const issues = (result.errors?.length || 0) + (result.verificationFailures?.length || 0);
     setStatus(
@@ -356,6 +388,7 @@ async function startAutofill() {
       actions: [],
       createdAt: new Date().toISOString()
     };
+    persistReport("autofill-error", state.lastResult);
     els.copyDiagnostics.disabled = false;
     setStatus(error.message, "error");
     renderReview();
@@ -429,6 +462,7 @@ async function runDiagnostics() {
     });
     state.lastDiagnostics = result;
     state.lastResult = result;
+    persistReport("diagnostic", result);
     els.copyDiagnostics.disabled = false;
     els.copyDiagnostics.disabled = false;
     const summary = result.summary || {};
@@ -458,6 +492,7 @@ async function runDiagnostics() {
       actions: [],
       createdAt: new Date().toISOString()
     };
+    persistReport("diagnostic-error", state.lastResult);
     els.copyDiagnostics.disabled = false;
     setStatus(error.message, "error");
     renderReview();
@@ -467,6 +502,10 @@ async function runDiagnostics() {
 }
 
 async function copyDiagnostics() {
+  if (!state.lastResult && !state.lastDiagnostics) {
+    const stored = await chrome.storage.local.get([REPORT_HISTORY_KEY]);
+    hydrateLastReport(stored[REPORT_HISTORY_KEY]);
+  }
   const text = state.lastDiagnostics ? diagnosticReportText(state.lastDiagnostics) : autofillReportText(state.lastResult);
   if (!text) {
     setStatus("Run Test or Start AutoFill first, then copy the report.", "error");
@@ -486,6 +525,7 @@ async function fillCurrentPopup() {
     apiBase: els.apiBase.value.replace(/\/$/, "")
   });
   state.lastResult = result;
+  persistReport("current-section", result);
   const issueCount = (result.errors?.length || 0) + (result.verificationFailures?.length || 0);
   setStatus(`${result.fieldsFilled.length} filled, ${result.fieldsSkipped.length} skipped, ${issueCount} issue(s).`, issueCount ? "error" : "success");
   renderReview();
@@ -508,6 +548,7 @@ async function checkCurrentPage() {
   });
 
   state.lastResult = result;
+  persistReport("compare-visible", result);
   setStatus(`${result.matched.length} matched, ${result.mismatched.length} mismatched, ${result.missing.length} missing.`, result.mismatched.length || result.missing.length ? "error" : "success");
   renderReview();
 }
@@ -515,6 +556,7 @@ async function checkCurrentPage() {
 async function compareCase() {
   await loadPayload();
   state.lastResult = await fetchComparisonReport();
+  persistReport("compare-case", state.lastResult);
   const count = (state.lastResult?.pageIssues?.length || 0) + (state.lastResult?.crossPlatformMismatches?.length || 0);
   setStatus(
     count ? `${count} issue(s) found between prepared data, Infinity, and AOL.` : "No checked mismatch found so far.",

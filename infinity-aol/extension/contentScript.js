@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "address-core-verify-v2.12";
+const EASYFLOW_EXTENSION_BUILD_ID = "address-core-verify-v2.13";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -730,11 +730,19 @@ function optionAliases(value) {
   const streetTypeAliases = {
     ave: "Avenue",
     blvd: "Boulevard",
+    cct: "Circuit",
+    cir: "Circuit",
+    cl: "Close",
     ct: "Court",
+    cr: "Crescent",
     cres: "Crescent",
     dr: "Drive",
+    drv: "Drive",
+    gr: "Grove",
+    hwy: "Highway",
     ln: "Lane",
     pde: "Parade",
+    pkwy: "Parkway",
     pl: "Place",
     rd: "Road",
     st: "Street",
@@ -752,16 +760,30 @@ function canonicalStreetType(value) {
     avenue: "Avenue",
     blvd: "Boulevard",
     boulevard: "Boulevard",
+    cct: "Circuit",
+    circuit: "Circuit",
+    cir: "Circuit",
+    circle: "Circle",
+    cl: "Close",
+    close: "Close",
     ct: "Court",
     court: "Court",
+    cr: "Crescent",
     cres: "Crescent",
     crescent: "Crescent",
     dr: "Drive",
+    drv: "Drive",
     drive: "Drive",
+    gr: "Grove",
+    grove: "Grove",
+    hwy: "Highway",
+    highway: "Highway",
     ln: "Lane",
     lane: "Lane",
     pde: "Parade",
     parade: "Parade",
+    pkwy: "Parkway",
+    parkway: "Parkway",
     pl: "Place",
     place: "Place",
     rd: "Road",
@@ -4420,6 +4442,47 @@ async function saveModalAndVerifyClosed(result, description) {
   return saved;
 }
 
+function normalizeAddressCore(value) {
+  return normalize(value)
+    .replace(/\b(unit|u|apt|apartment)\s+/g, "")
+    .replace(/\b(avenue|ave|boulevard|blvd|circuit|cct|circle|cir|close|cl|court|ct|crescent|cres|cr|drive|drv|dr|grove|gr|highway|hwy|lane|ln|parade|pde|parkway|pkwy|place|pl|road|rd|street|st|terrace|tce|way)\b\.?/g, "")
+    .replace(/\baustralia\b/g, "")
+    .replace(/[^\w/]+/g, " ")
+    .replace(/\s*\/\s*/g, "/")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function addressExpectedCore(parsed) {
+  return normalizeAddressCore([
+    parsed.unitNumber ? `${parsed.unitNumber}/` : "",
+    parsed.streetNumber,
+    parsed.streetName,
+    parsed.streetType,
+    parsed.suburb,
+    parsed.state,
+    parsed.postcode,
+    parsed.country
+  ].filter(Boolean).join(" "));
+}
+
+function addressCoreMatches(actualText, parsed) {
+  const actualCore = normalizeAddressCore(actualText);
+  const expectedCore = addressExpectedCore(parsed);
+  const expectedTokens = expectedCore.split(/\s+/).filter((token) => token.length > 1);
+  const coreTokensMatch = expectedTokens.length && expectedTokens.every((token) => actualCore.includes(token));
+  const unitNumber = normalize(parsed.unitNumber);
+  const streetNumber = normalize(parsed.streetNumber);
+  const unitOk = !unitNumber || actualCore.includes(`${unitNumber}/${streetNumber}`) || actualCore.includes(unitNumber);
+  return {
+    actualCore,
+    expectedCore,
+    coreTokensMatch,
+    unitOk,
+    ok: coreTokensMatch && unitOk
+  };
+}
+
 async function verifyAddressRowNotPlaceholder(addressLabel, parsed, result, applicantName) {
   await scrollToText([addressLabel]);
   const row = rowForAddressLabel(addressLabel);
@@ -4452,12 +4515,13 @@ async function verifyAddressRowNotPlaceholder(addressLabel, parsed, result, appl
   const hasStreetType = !streetType || rowText.includes(streetType) || optionAliases(parsed.streetType).some((alias) => rowText.includes(normalize(alias)));
   const hasStreet = hasStreetName && hasStreetNumber && hasStreetType;
   const hasUnit = !unitNumber || rowText.includes(unitNumber) || rowText.includes(`${unitNumber} /`) || rowText.includes(`${unitNumber}/`);
-  if (!hasLocation || !hasSuburb || !hasStreetName || !hasStreetNumber) {
+  const coreMatch = addressCoreMatches(actualText, parsed);
+  if ((!hasLocation || !hasSuburb || !hasStreetName || !hasStreetNumber) && !coreMatch.ok) {
     recordVerificationFailure(result, "clientDetails", addressLabel, "Address row saved but does not match expected parsed address", {
       applicantName,
       expected: parsed,
       actual: actualText.trim() || row?.textContent?.trim() || "",
-      checks: { hasLocation, hasSuburb, hasStreetName, hasStreetNumber, hasStreetType, hasStreet, hasUnit, streetNameCore }
+      checks: { hasLocation, hasSuburb, hasStreetName, hasStreetNumber, hasStreetType, hasStreet, hasUnit, streetNameCore, coreMatch }
     });
     return false;
   }
@@ -4469,7 +4533,7 @@ async function verifyAddressRowNotPlaceholder(addressLabel, parsed, result, appl
       applicantName,
       expected: parsed,
       actual: actualText.trim() || row?.textContent?.trim() || "",
-      checks: { hasLocation, hasSuburb, hasStreetName, hasStreetNumber, hasStreetType, hasStreet, hasUnit, streetNameCore }
+      checks: { hasLocation, hasSuburb, hasStreetName, hasStreetNumber, hasStreetType, hasStreet, hasUnit, streetNameCore, coreMatch }
     });
   }
   if (!hasUnit) {
@@ -4482,7 +4546,7 @@ async function verifyAddressRowNotPlaceholder(addressLabel, parsed, result, appl
       actual: actualText.trim() || row?.textContent?.trim() || ""
     });
   }
-  result.actions.push({ action: "verify-address-row", section: "clientDetails", label: addressLabel, applicantName, checks: { hasLocation, hasSuburb, hasStreetName, hasStreetNumber, hasStreetType, hasStreet, hasUnit, streetNameCore } });
+  result.actions.push({ action: "verify-address-row", section: "clientDetails", label: addressLabel, applicantName, checks: { hasLocation, hasSuburb, hasStreetName, hasStreetNumber, hasStreetType, hasStreet, hasUnit, streetNameCore, coreMatch } });
   return true;
 }
 
