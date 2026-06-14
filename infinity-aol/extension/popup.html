@@ -29,12 +29,12 @@
         <input id="caseToken" placeholder="ELF-2026-0148 or token" />
       </label>
 
-      <button id="startAutofill" class="primary-action" type="button">Start AutoFill</button>
-      <div class="button-row">
-        <button id="runDiagnostics" class="secondary-action" type="button">Run Test</button>
-        <button id="copyDiagnostics" class="secondary-action" type="button" disabled>Copy Test Report</button>
+      <div class="button-row start-row">
+        <button id="startInfinityAutofill" class="primary-action" type="button">Start Infinity</button>
+        <button id="startAolAutofill" class="primary-action aol-action" type="button">Start AOL</button>
       </div>
-      <button id="comparePage" class="secondary-action" type="button">Compare Current Page</button>
+      <button id="copyDiagnostics" class="secondary-action copy-main" type="button" disabled>Copy Last Report</button>
+      <button id="comparePage" class="secondary-action" type="button">Compare Infinity/AOL</button>
 
       <details class="advanced">
         <summary>Advanced tools</summary>
@@ -46,6 +46,7 @@
           <button id="fillSection" type="button" disabled>Fill Current Popup</button>
           <button id="compareCase" type="button" disabled>Compare Case</button>
         </div>
+        <button id="runDiagnostics" class="secondary-action diagnostic-row" type="button">Run Diagnostic</button>
       </details>
 
       <section id="status" class="status muted">Prepare the case in the web app, open the real Infinity/AOL page, then start.</section>

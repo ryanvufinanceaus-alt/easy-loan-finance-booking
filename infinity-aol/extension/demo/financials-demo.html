@@ -62,7 +62,7 @@
         <div class="field"><label>Expense Frequency</label><select id="expense-frequency"><option>Monthly</option><option>Annually</option></select></div>
         <div class="field"><label>Continue Post Settlement</label><select id="continue-post"><option>Yes</option><option>No</option></select></div>
         <div class="field"><label>Description</label><input id="description"></div>
-        <div class="field"><label>Ownership</label><input value="50%"><input value="50%"></div>
+        <div class="field"><label>Ownership</label><input type="number" min="0" max="100" value="50"><input type="number" min="0" max="100" value="50"></div>
       </div>
       <div class="modal-actions"><button type="button" id="close-modal">Close</button><button type="button" class="primary" id="save-modal">Save Changes</button></div>
     </div>
@@ -128,18 +128,23 @@
         report.textContent = "FAIL: contentScript listener did not register";
         return;
       }
+      const firstResult = runner
+        ? await runner({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" })
+        : await new Promise((resolve) => listener({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" }, null, resolve));
       const result = runner
         ? await runner({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" })
         : await new Promise((resolve) => listener({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" }, null, resolve));
       const total = expenses.reduce((sum, row) => sum + Number(row.amount || 0), 0);
       const checks = {
+        firstRunNoErrors: !(firstResult.errors || []).length,
         noErrors: !(result.errors || []).length,
         noVerificationFailures: !(result.verificationFailures || []).length,
         generatedRowsFromHem: expenses.length === 9,
         selectedExpenseTypes: ["Groceries", "Vehicle Maintenance & Transport", "Telephone and Internet"].every((type) => expenses.some((row) => row.type === type)),
-        totalMatchesHem: total === 3050
+        totalMatchesHem: total === 3050,
+        secondRunDidNotDuplicate: expenses.length === 9
       };
-      report.textContent = JSON.stringify({ ok: Object.values(checks).every(Boolean), checks, expenses, result }, null, 2);
+      report.textContent = JSON.stringify({ ok: Object.values(checks).every(Boolean), checks, expenses, firstResult, result }, null, 2);
     }
     setTimeout(runDemo, 500);
   </script>

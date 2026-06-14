@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "address-core-verify-v2.13";
+const EASYFLOW_EXTENSION_BUILD_ID = "financials-idempotent-v2.14";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -1909,6 +1909,14 @@ function isExpenseOwnershipInput(input) {
   return normalize(value).includes("%") || value === "" || /^\d+%?$/.test(value);
 }
 
+function formatOwnershipPercentForInput(input, value) {
+  const number = normalizeMoneyValue(value);
+  if (["number", "range"].includes(String(input?.type || "").toLowerCase())) {
+    return String(number || 0);
+  }
+  return String(value).includes("%") ? String(value) : `${number || value}%`;
+}
+
 async function fillExpenseOwnership(modal, payload, result, expenseType, row = {}) {
   if (row.ownership && typeof row.ownership === "object") {
     const inputs = [...modal.querySelectorAll("input:not([type='hidden'])")].filter(isVisible);
@@ -1916,7 +1924,7 @@ async function fillExpenseOwnership(modal, payload, result, expenseType, row = {
     const values = Object.values(row.ownership).filter((value) => value !== undefined && value !== null && value !== "");
     if (values.length && percentInputs.length >= values.length) {
       for (let index = 0; index < values.length; index += 1) {
-        await setFieldValue(percentInputs[index], String(values[index]).includes("%") ? values[index] : `${values[index]}%`);
+        await setFieldValue(percentInputs[index], formatOwnershipPercentForInput(percentInputs[index], values[index]));
       }
       result.actions.push({ action: "set-expense-ownership", section: "financialsExpense", label: expenseType, split: values.join("/") });
       return true;
@@ -1927,8 +1935,8 @@ async function fillExpenseOwnership(modal, payload, result, expenseType, row = {
     const inputs = [...modal.querySelectorAll("input:not([type='hidden'])")].filter(isVisible);
     const percentInputs = inputs.filter(isExpenseOwnershipInput);
     if (percentInputs.length >= 2) {
-      await setFieldValue(percentInputs[0], "50%");
-      await setFieldValue(percentInputs[1], "50%");
+      await setFieldValue(percentInputs[0], formatOwnershipPercentForInput(percentInputs[0], 50));
+      await setFieldValue(percentInputs[1], formatOwnershipPercentForInput(percentInputs[1], 50));
       result.actions.push({ action: "set-expense-ownership", section: "financialsExpense", label: expenseType, split: "50/50" });
       return true;
     }
@@ -2082,6 +2090,34 @@ function getMonthlyExpensesTableText() {
   return tableSectionText("Monthly Expenses");
 }
 
+function monthlyExpenseRowTexts() {
+  const table = findMonthlyExpensesTable();
+  if (table) {
+    return [...table.querySelectorAll("tbody tr, tr")]
+      .map((row) => normalize(row.innerText || row.textContent || ""))
+      .filter((text) => text && !text.includes("nothing to show"));
+  }
+  const section = findSectionByHeading("Monthly Expenses");
+  if (!section) return [];
+  return normalize(section.innerText || section.textContent || "")
+    .split(/\n+/)
+    .map((line) => normalize(line))
+    .filter((line) => line && !line.includes("nothing to show"));
+}
+
+function expenseTypeExistsInMonthlyTable(row) {
+  const candidates = [row.type, canonicalInfinityExpenseType(row.type)]
+    .filter(Boolean)
+    .map(normalizeOptionLabel)
+    .filter((candidate) => candidate && candidate !== "other");
+  const sectionText = normalizeOptionLabel(tableSectionText("Monthly Expenses"));
+  if (candidates.some((candidate) => sectionText.includes(candidate))) return true;
+  return monthlyExpenseRowTexts().some((line) => {
+    const normalizedLine = normalizeOptionLabel(line);
+    return candidates.some((candidate) => candidate && (normalizedLine.includes(candidate) || candidate.includes(normalizedLine)));
+  });
+}
+
 function findAddExpenseButton() {
   const roots = [findSectionByHeading("Monthly Expenses"), document].filter(Boolean);
   for (const root of roots) {
@@ -2152,8 +2188,11 @@ async function upsertExpenseRow(row, payload, result) {
     return false;
   }
   const existingText = getMonthlyExpensesTableText();
-  if (labelsMatchLoose(existingText, row.type) && numericTokens(row.amount).some((token) => existingText.includes(normalize(token)))) {
-    result.actions.push({ action: "skip-existing-expense", section: "financialsExpense", label: row.type, amount: row.amount });
+  if (
+    expenseTypeExistsInMonthlyTable(row) ||
+    (labelsMatchLoose(existingText, row.type) && numericTokens(row.amount).some((token) => existingText.includes(normalize(token))))
+  ) {
+    result.actions.push({ action: "skip-existing-expense", section: "financialsExpense", label: row.type, amount: row.amount, reason: "expense type already exists in Monthly Expenses table" });
     return true;
   }
 

@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "address-core-verify-v2.13";
+const EASYFLOW_EXTENSION_BUILD_ID = "financials-idempotent-v2.14";
 const REPORT_HISTORY_KEY = "easyflowReportHistory";
 const REPORT_HISTORY_LIMIT = 5;
 
@@ -14,7 +14,8 @@ const els = {
   caseToken: document.querySelector("#caseToken"),
   casePicker: document.querySelector("#casePicker"),
   refreshCases: document.querySelector("#refreshCases"),
-  startAutofill: document.querySelector("#startAutofill"),
+  startInfinityAutofill: document.querySelector("#startInfinityAutofill"),
+  startAolAutofill: document.querySelector("#startAolAutofill"),
   runDiagnostics: document.querySelector("#runDiagnostics"),
   copyDiagnostics: document.querySelector("#copyDiagnostics"),
   fillSection: document.querySelector("#fillSection"),
@@ -341,17 +342,23 @@ async function fetchComparisonReport() {
   return response.json();
 }
 
-async function startAutofill() {
+function setStartButtonsDisabled(disabled) {
+  els.startInfinityAutofill.disabled = disabled;
+  els.startAolAutofill.disabled = disabled;
+}
+
+async function startAutofill(targetPlatform = "auto") {
   try {
-    els.startAutofill.disabled = true;
-    setStatus("Loading case and starting AutoFill...", "muted");
+    setStartButtonsDisabled(true);
+    setStatus(`Loading case and starting ${targetPlatform === "aol" ? "AOL" : "Infinity"} AutoFill...`, "muted");
     await loadPayload();
     renderReview();
 
     const apiBase = els.apiBase.value.replace(/\/$/, "");
-    setStatus("AutoFill is running on this Infinity/AOL tab. Review before Push AOL or Submit.", "muted");
+    setStatus(`${targetPlatform === "aol" ? "AOL" : "Infinity"} AutoFill is running on the active tab. Review before Push AOL or Submit.`, "muted");
     const result = await sendToContent({
       type: "INFINITY_AOL_RUN_ALL_PAGES",
+      targetPlatform,
       payload: state.prepared.payload,
       mapping: state.mapping,
       apiBase
@@ -393,7 +400,7 @@ async function startAutofill() {
     setStatus(error.message, "error");
     renderReview();
   } finally {
-    els.startAutofill.disabled = false;
+    setStartButtonsDisabled(false);
   }
 }
 
@@ -565,7 +572,8 @@ async function compareCase() {
   renderReview();
 }
 
-els.startAutofill.addEventListener("click", startAutofill);
+els.startInfinityAutofill.addEventListener("click", () => startAutofill("infinity"));
+els.startAolAutofill.addEventListener("click", () => startAutofill("aol"));
 els.runDiagnostics.addEventListener("click", runDiagnostics);
 els.copyDiagnostics.addEventListener("click", () => copyDiagnostics().catch((error) => setStatus(error.message, "error")));
 els.refreshCases.addEventListener("click", () => loadPreparedCases().catch((error) => setStatus(error.message, "error")));

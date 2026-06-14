@@ -116,6 +116,14 @@ button {
   min-height: 48px;
 }
 
+.start-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.aol-action {
+  background: #0f766e;
+}
+
 .secondary-action {
   background: #fff;
   border: 1px solid #cbd5ce;
@@ -135,6 +143,14 @@ button:disabled {
 #copyDiagnostics {
   border-color: #d5b77a;
   color: #6f5014;
+}
+
+.copy-main {
+  min-height: 40px;
+}
+
+.diagnostic-row {
+  display: none;
 }
 
 .advanced {
