@@ -197,7 +197,8 @@
     function saveAddressModal() {
       const modal = document.getElementById("address-modal");
       const get = (key) => modal.querySelector(`[data-modal-field="${key}"]`)?.value || "";
-      const text = [get("unitNumber") ? `${get("unitNumber")}/` : "", get("streetNumber"), get("streetName"), get("streetType"), get("suburb"), get("state"), get("postcode"), get("country")]
+      const displayStreetType = "";
+      const text = [get("unitNumber") ? `${get("unitNumber")}/` : "", get("streetNumber"), get("streetName"), displayStreetType, get("suburb"), get("state"), get("postcode"), get("country")]
         .join(" ")
         .replace(/\s+\//g, "/")
         .replace(/\s+/g, " ")
@@ -278,8 +279,8 @@
         switchedToSecond: demoState.applicants[1].firstName === "Araj" && demoState.applicants[1].dateOfBirth === "02/04/1997",
         firstDobPersisted: demoState.applicants[0].dateOfBirth === "29/09/1988",
         secondDobPersisted: demoState.applicants[1].dateOfBirth === "02/04/1997",
-        firstAddressSaved: /1\/\s*79 Crebert Street Mayfield NSW 2304 Australia/i.test(demoState.addresses[0]["Current Address"] || ""),
-        secondAddressSaved: /1\/\s*79 Crebert Street Mayfield NSW 2304 Australia/i.test(demoState.addresses[1]["Current Address"] || ""),
+        firstAddressSaved: /1\/\s*79 Crebert(?: Street| St)? Mayfield NSW 2304 Australia/i.test(demoState.addresses[0]["Current Address"] || ""),
+        secondAddressSaved: /1\/\s*79 Crebert(?: Street| St)? Mayfield NSW 2304 Australia/i.test(demoState.addresses[1]["Current Address"] || ""),
         postSettlementLeftBlank: !demoState.addresses.some((rows) => rows["Post Settlement Address"]),
         mailingLeftBlank: !demoState.addresses.some((rows) => rows["Mailing Address"]),
         housingRenting: demoState.applicants.every((item) => item.currentHousingSituation === "Renting")

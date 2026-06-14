@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "clean-save-before-address-v2.11";
+const EASYFLOW_EXTENSION_BUILD_ID = "address-core-verify-v2.12";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -3732,9 +3732,13 @@ function addressPartsFromApplicant(applicant, fallbackAddressText = "") {
   const typeAnywherePattern = new RegExp(`\\b(${streetTypes.join("|")})\\b\\.?`, "i");
   const typeMatch = afterNumber.match(typeAnywherePattern);
   const streetType = typeMatch?.[1] || "";
-  const streetName = streetType ? afterNumber.slice(0, typeMatch.index).trim() : afterNumber;
+  let streetName = streetType ? afterNumber.slice(0, typeMatch.index).trim() : afterNumber;
   const suburbAfterStreet = streetType ? afterNumber.slice((typeMatch.index || 0) + typeMatch[0].length).trim() : "";
   const suburb = cleanSuburbCandidate(address.suburb || splitFullAddress.suburb || suburbAfterStreet || inferSuburb(fullText, stateValue, postcodeValue));
+  if (!streetType && suburb) {
+    const suburbPattern = new RegExp(`\\s+${suburb.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+    streetName = streetName.replace(suburbPattern, "").trim();
+  }
 
   return {
     buildingName: address.buildingName || "",
@@ -4432,20 +4436,41 @@ async function verifyAddressRowNotPlaceholder(addressLabel, parsed, result, appl
   const streetNumber = normalize(parsed.streetNumber);
   const unitNumber = normalize(parsed.unitNumber);
   const streetType = normalize(canonicalStreetType(parsed.streetType));
+  const suburb = normalize(parsed.suburb);
+  const escapedSuburb = String(parsed.suburb || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const streetNameCore = normalize(
+    String(parsed.streetName || "")
+      .replace(escapedSuburb ? new RegExp(`\\b${escapedSuburb}\\b$`, "i") : /$a/, "")
+      .replace(/\b(street|st|road|rd|avenue|ave|boulevard|blvd|court|ct|drive|dr|lane|ln|terrace|tce)\b\.?/ig, "")
+      .trim()
+  ) || streetName;
   const hasLocation = (!state || rowText.includes(state)) && (!postcode || rowText.includes(postcode));
-  const hasStreetName = !streetName || rowText.includes(streetName);
+  const hasSuburb = !suburb || rowText.includes(suburb);
+  const streetNameTokens = streetNameCore.split(/\s+/).filter((token) => token.length > 1);
+  const hasStreetName = !streetNameCore || rowText.includes(streetNameCore) || streetNameTokens.every((token) => rowText.includes(token));
   const hasStreetNumber = !streetNumber || rowText.includes(streetNumber);
   const hasStreetType = !streetType || rowText.includes(streetType) || optionAliases(parsed.streetType).some((alias) => rowText.includes(normalize(alias)));
   const hasStreet = hasStreetName && hasStreetNumber && hasStreetType;
   const hasUnit = !unitNumber || rowText.includes(unitNumber) || rowText.includes(`${unitNumber} /`) || rowText.includes(`${unitNumber}/`);
-  if (!hasLocation || !hasStreetName || !hasStreetNumber || !hasStreetType) {
+  if (!hasLocation || !hasSuburb || !hasStreetName || !hasStreetNumber) {
     recordVerificationFailure(result, "clientDetails", addressLabel, "Address row saved but does not match expected parsed address", {
       applicantName,
       expected: parsed,
       actual: actualText.trim() || row?.textContent?.trim() || "",
-      checks: { hasLocation, hasStreetName, hasStreetNumber, hasStreetType, hasStreet, hasUnit }
+      checks: { hasLocation, hasSuburb, hasStreetName, hasStreetNumber, hasStreetType, hasStreet, hasUnit, streetNameCore }
     });
     return false;
+  }
+  if (!hasStreetType) {
+    result.warnings.push({
+      section: "clientDetails",
+      label: addressLabel,
+      message: "Address core matched, but CRM display did not include the street type; continuing because Infynity can normalise address row text.",
+      applicantName,
+      expected: parsed,
+      actual: actualText.trim() || row?.textContent?.trim() || "",
+      checks: { hasLocation, hasSuburb, hasStreetName, hasStreetNumber, hasStreetType, hasStreet, hasUnit, streetNameCore }
+    });
   }
   if (!hasUnit) {
     result.warnings.push({
@@ -4457,7 +4482,7 @@ async function verifyAddressRowNotPlaceholder(addressLabel, parsed, result, appl
       actual: actualText.trim() || row?.textContent?.trim() || ""
     });
   }
-  result.actions.push({ action: "verify-address-row", section: "clientDetails", label: addressLabel, applicantName, checks: { hasLocation, hasStreetName, hasStreetNumber, hasStreetType, hasStreet, hasUnit } });
+  result.actions.push({ action: "verify-address-row", section: "clientDetails", label: addressLabel, applicantName, checks: { hasLocation, hasSuburb, hasStreetName, hasStreetNumber, hasStreetType, hasStreet, hasUnit, streetNameCore } });
   return true;
 }
 
