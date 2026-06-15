@@ -1976,6 +1976,19 @@ async function clickAtCenter(element) {
   return true;
 }
 
+async function clickAtViewportPoint(x, y) {
+  const target = document.elementFromPoint(x, y);
+  if (!target || isEasyFlowOverlayElement(target)) return false;
+  const init = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y };
+  for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"]) {
+    const EventCtor = type.startsWith("pointer") && typeof PointerEvent !== "undefined" ? PointerEvent : MouseEvent;
+    target.dispatchEvent(new EventCtor(type, init));
+  }
+  target.click?.();
+  await waitForAngularSettle();
+  return true;
+}
+
 function readDropdownDisplay(control) {
   if (!control) return "";
   if (control.tagName === "SELECT") return readFieldValue(control);
@@ -5586,6 +5599,124 @@ async function runFinancialsWorkflow(payload, mapping, apiBase, result) {
   return true;
 }
 
+function exactTextNodeInVerticalBand(label, startText, endTexts = []) {
+  const wanted = normalize(label);
+  const start = findTextNode([startText], document);
+  if (!start) return null;
+  const startLabel = normalize(start.textContent).replace(/\s*\*\s*$/, "");
+  if (normalize(startText) === wanted && (startLabel === wanted || startLabel.includes(wanted))) return start;
+  const startRect = start.getBoundingClientRect();
+  const endTop = allTextNodes(document)
+    .filter((node) => endTexts.some((text) => normalize(node.textContent).includes(normalize(text))))
+    .map((node) => node.getBoundingClientRect().top)
+    .filter((top) => top > startRect.bottom + 4)
+    .sort((a, b) => a - b)[0] || Number.POSITIVE_INFINITY;
+  return allTextNodes(document)
+    .filter((node) => {
+      const text = normalize(node.textContent).replace(/\s*\*\s*$/, "");
+      if (text !== wanted && !text.includes(wanted)) return false;
+      const rect = node.getBoundingClientRect();
+      return rect.top >= startRect.bottom - 8 && rect.top < endTop - 4;
+    })
+    .sort((a, b) => {
+      const aText = normalize(a.textContent);
+      const bText = normalize(b.textContent);
+      const aExact = aText === wanted ? 0 : 1;
+      const bExact = bText === wanted ? 0 : 1;
+      return aExact - bExact || a.getBoundingClientRect().top - b.getBoundingClientRect().top || aText.length - bText.length;
+    })[0] || null;
+}
+
+function controlsNearSocaLabel(node, startText, endTexts = []) {
+  if (!node) return [];
+  const start = findTextNode([startText], document);
+  const startRect = start?.getBoundingClientRect();
+  const endTop = startRect ? allTextNodes(document)
+    .filter((item) => endTexts.some((text) => normalize(item.textContent).includes(normalize(text))))
+    .map((item) => item.getBoundingClientRect().top)
+    .filter((top) => top > startRect.bottom + 4)
+    .sort((a, b) => a - b)[0] || Number.POSITIVE_INFINITY : Number.POSITIVE_INFINITY;
+  const labelRect = node.getBoundingClientRect();
+  const direct = directControlForLabel(node, true);
+  const candidates = direct ? [direct] : [];
+  let container = node.closest("label") || node.parentElement;
+  for (let depth = 0; depth < 5 && container; depth += 1) {
+    candidates.push(...[...container.querySelectorAll("input[type='checkbox'], input[type='radio'], [role='checkbox'], [role='switch'], [aria-checked], .bootstrap-switch, .switch, .toggle, button, [ng-click], [data-ng-click]")]
+      .filter(isVisible));
+    container = container.parentElement;
+  }
+  candidates.push(...[...document.querySelectorAll("input[type='checkbox'], input[type='radio'], [role='checkbox'], [role='switch'], [aria-checked], .bootstrap-switch, .switch, .toggle, button, [ng-click], [data-ng-click]")]
+    .filter(isVisible)
+    .filter((control) => !isEasyFlowOverlayElement(control))
+    .filter((control) => {
+      const rect = control.getBoundingClientRect();
+      const sameBand = !startRect || (rect.top >= startRect.bottom - 12 && rect.top < endTop - 4);
+      const sameRow = Math.abs((rect.top + rect.height / 2) - (labelRect.top + labelRect.height / 2)) < 36;
+      const nearLeftSwitch = rect.right <= labelRect.left + 28 && rect.right >= labelRect.left - 140;
+      const nearWrappedCheckbox = rect.left <= labelRect.right + 280 && rect.right >= labelRect.left - 32;
+      return sameBand && sameRow && (nearLeftSwitch || nearWrappedCheckbox);
+    }));
+  return [...new Set(candidates)].sort((a, b) => {
+    const ar = a.getBoundingClientRect();
+    const br = b.getBoundingClientRect();
+    const aLeftSwitch = ar.right <= labelRect.left + 28 ? 0 : 1;
+    const bLeftSwitch = br.right <= labelRect.left + 28 ? 0 : 1;
+    return aLeftSwitch - bLeftSwitch || Math.abs(ar.top - labelRect.top) - Math.abs(br.top - labelRect.top);
+  });
+}
+
+async function setSocaCheckboxByLabel(label, desired, result, meta = {}, region = {}) {
+  const startText = region.startText || "Needs Analysis";
+  const endTexts = region.endTexts || [];
+  await scrollToText([startText]);
+  const node = exactTextNodeInVerticalBand(label, startText, endTexts);
+  if (!node) {
+    recordFieldSkipped(result, meta.section || "needsAnalysis", label, `SOCA label not found inside ${startText}`, meta);
+    return false;
+  }
+  const desiredChecked = Boolean(desired);
+  const controls = controlsNearSocaLabel(node, startText, endTexts);
+  for (const control of controls) {
+    const before = isToggleChecked(control);
+    if (before !== desiredChecked) {
+      await setToggleControl(control, desiredChecked);
+      await waitForAngularSettle();
+    }
+    const after = isToggleChecked(control);
+    result.actions.push({ action: desiredChecked ? "select-soca-checkbox" : "clear-soca-checkbox", section: meta.section || "needsAnalysis", label, selector: describeElement(control), before, after });
+    if (after === desiredChecked) {
+      recordFieldFilled(result, meta.section || "needsAnalysis", label, desiredChecked, { element: control, selector: describeElement(control) }, meta);
+      return true;
+    }
+  }
+
+  const rect = node.getBoundingClientRect();
+  const y = rect.top + rect.height / 2;
+  const xPositions = [rect.left - 26, rect.left - 42, rect.left - 58].filter((x) => x > 0);
+  for (const x of xPositions) {
+    await clickAtViewportPoint(x, y);
+    await sleep(140);
+    const actual = socaCheckboxStateByLabel(label, region);
+    result.actions.push({ action: "click-soca-checkbox-coordinate", section: meta.section || "needsAnalysis", label, x, y, actual });
+    if (actual === desiredChecked) {
+      recordFieldFilled(result, meta.section || "needsAnalysis", label, desiredChecked, { element: node, selector: `coordinate near ${label}` }, meta);
+      return true;
+    }
+  }
+  recordVerificationFailure(result, meta.section || "needsAnalysis", label, "SOCA checkbox state did not verify after scoped click", { ...meta, expected: desiredChecked, actual: socaCheckboxStateByLabel(label, region) });
+  return false;
+}
+
+function socaCheckboxStateByLabel(label, region = {}) {
+  const startText = region.startText || "Needs Analysis";
+  const endTexts = region.endTexts || [];
+  const node = exactTextNodeInVerticalBand(label, startText, endTexts);
+  if (!node) return null;
+  const controls = controlsNearSocaLabel(node, startText, endTexts);
+  if (controls.length) return isToggleChecked(controls[0]);
+  return null;
+}
+
 async function selectNeedsAnalysisApplicants(payload, result) {
   const explicit = collectionAt(payload, "infinity.needsAnalysis.selectedApplicants").map(String).filter(Boolean);
   const applicants = explicit.length ? explicit : infinityApplicantRows(payload).map(fullApplicantName).filter(Boolean);
@@ -5593,7 +5724,10 @@ async function selectNeedsAnalysisApplicants(payload, result) {
   let selected = 0;
   await scrollToText(["Select Applicant"]);
   for (const name of applicants) {
-    const clicked = await clickCheckboxByLabel(name, result, { section: "needsAnalysis", label: name });
+    const clicked = await setSocaCheckboxByLabel(name, true, result, { section: "needsAnalysis", label: name }, {
+      startText: "Select Applicant",
+      endTexts: ["Loan Objectives"]
+    });
     if (!clicked) {
       result.fieldsSkipped.push({ section: "needsAnalysis", label: `Select Applicant ${name}`, reason: "toggle control not found" });
     } else {
@@ -5863,7 +5997,8 @@ function verifyNeedsAnalysisScreen(payload, result) {
   const failures = [];
   const applicants = expectedNeedsAnalysisApplicants(payload);
   for (const applicant of applicants) {
-    if (checkboxStateByLabel(applicant) !== true) failures.push({ label: applicant, expected: "selected", actual: checkboxStateByLabel(applicant) });
+    const actual = socaCheckboxStateByLabel(applicant, { startText: "Select Applicant", endTexts: ["Loan Objectives"] });
+    if (actual !== true) failures.push({ label: applicant, expected: "selected", actual });
   }
   const requiredTextFields = [
     ["Date Interview was Conducted", needsAnalysisFieldValue(payload, { payloadPath: "infinity.needsAnalysis.dateInterviewConducted", label: "Date Interview was Conducted" })],
@@ -5890,7 +6025,7 @@ function verifyNeedsAnalysisScreen(payload, result) {
     ["Other Purpose", expectedObjectives.otherPurpose]
   ];
   for (const [label, expected] of objectivePairs) {
-    const actual = checkboxStateByLabel(label);
+    const actual = socaCheckboxStateByLabel(label, { startText: "Loan Objectives", endTexts: ["Loan Objective Explanation", "Loan Requirements"] });
     if (expected === true && actual !== true) failures.push({ label, expected: "selected", actual });
     if (expected === false && actual === true) failures.push({ label, expected: "clear", actual: "selected" });
   }
@@ -5902,7 +6037,7 @@ function verifyNeedsAnalysisScreen(payload, result) {
     ["Monthly Repayments", expectedTemplate.requirements.monthlyRepayments]
   ];
   for (const [label, expected] of requirementPairs) {
-    const actual = checkboxStateByLabel(label);
+    const actual = socaCheckboxStateByLabel(label, { startText: "Loan Requirements", endTexts: ["Loan Requirements Explanation", "Is this a refinance application"] });
     if (expected === true && actual !== true) failures.push({ label, expected: "selected", actual });
   }
   const explanation = readDisplayByLabel("Loan Objective Explanation", document);
@@ -5925,6 +6060,24 @@ async function fillNeedsAnalysisField(field, payload, result) {
   }
   const meta = { section: "needsAnalysis", payloadPath: field.payloadPath };
   if (typeof value === "boolean") {
+    if (/^infinity\.needsAnalysis\.objectives\./.test(field.payloadPath || "")) {
+      return setSocaCheckboxByLabel(field.label, value, result, meta, {
+        startText: "Loan Objectives",
+        endTexts: ["Loan Objective Explanation", "Loan Requirements"]
+      });
+    }
+    if (/^infinity\.needsAnalysis\.requirements\./.test(field.payloadPath || "")) {
+      return setSocaCheckboxByLabel(field.label, value, result, meta, {
+        startText: "Loan Requirements",
+        endTexts: ["Loan Requirements Explanation", "Is this a refinance application"]
+      });
+    }
+    if (/^infinity\.needsAnalysis\.isRefinanceApplication\b/.test(field.payloadPath || "")) {
+      return setSocaCheckboxByLabel(field.label, value, result, meta, {
+        startText: "Is this a refinance application",
+        endTexts: ["Save/Next"]
+      });
+    }
     if (!value && /^infinity\.needsAnalysis\.(objectives|requirements|isRefinanceApplication)\b/.test(field.payloadPath || "")) {
       return setCheckboxByLabel(field.label, false, result, meta);
     }
