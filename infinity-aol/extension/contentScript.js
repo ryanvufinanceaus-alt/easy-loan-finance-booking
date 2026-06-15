@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.18";
+const EASYFLOW_EXTENSION_BUILD_ID = "easyflow-v2.19";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -267,11 +267,113 @@ function nativeSetValue(element, value) {
   element.dispatchEvent(new Event("input", { bubbles: true }));
   element.dispatchEvent(new Event("change", { bubbles: true }));
   element.dispatchEvent(new Event("blur", { bubbles: true }));
+  commitAngularControlValue(element, stringValue);
   return true;
 }
 
 function setNativeValue(element, value) {
   return nativeSetValue(element, value);
+}
+
+function commitAngularControlValue(element, value) {
+  if (!element) return false;
+  const stringValue = valueForInputElement(element, value);
+  let committed = false;
+  try {
+    const angular = window.angular;
+    if (angular?.element) {
+      const wrapped = angular.element(element);
+      const controller = wrapped.controller?.("ngModel") || wrapped.controller?.("ngModelController");
+      if (controller?.$setViewValue) {
+        controller.$setViewValue(stringValue);
+        controller.$render?.();
+        controller.$validate?.();
+        committed = true;
+      }
+      wrapped.triggerHandler?.("input");
+      wrapped.triggerHandler?.("change");
+      wrapped.triggerHandler?.("blur");
+      const scope = wrapped.scope?.() || wrapped.isolateScope?.();
+      scope?.$applyAsync?.();
+      if (scope && !scope.$$phase && !scope.$root?.$$phase) {
+        try {
+          scope.$digest?.();
+        } catch (_digestError) {
+          // Some Angular scopes are already digesting; the queued applyAsync is enough.
+        }
+      }
+    }
+  } catch (_angularError) {
+    // DOM events remain the fallback when Angular internals are unavailable.
+  }
+  try {
+    if (window.jQuery) {
+      const $el = window.jQuery(element);
+      $el.val?.(stringValue);
+      $el.trigger?.("input");
+      $el.trigger?.("change");
+      $el.trigger?.("changeDate");
+      $el.trigger?.("dp.change");
+      committed = true;
+    }
+  } catch (_jqueryError) {
+    // jQuery/date-picker hooks are best-effort only.
+  }
+  try {
+    element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: stringValue }));
+  } catch (_inputEventError) {
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  element.dispatchEvent(new Event("change", { bubbles: true }));
+  element.dispatchEvent(new KeyboardEvent("keyup", { key: "Tab", bubbles: true }));
+  element.dispatchEvent(new Event("blur", { bubbles: true }));
+  return committed;
+}
+
+function commitAngularCheckedValue(element, checked) {
+  if (!element) return false;
+  const desiredChecked = Boolean(checked);
+  let committed = false;
+  try {
+    const angular = window.angular;
+    if (angular?.element) {
+      const wrapped = angular.element(element);
+      const controller = wrapped.controller?.("ngModel") || wrapped.controller?.("ngModelController");
+      if (controller?.$setViewValue) {
+        controller.$setViewValue(desiredChecked);
+        controller.$render?.();
+        controller.$validate?.();
+        committed = true;
+      }
+      wrapped.triggerHandler?.("input");
+      wrapped.triggerHandler?.("change");
+      const scope = wrapped.scope?.() || wrapped.isolateScope?.();
+      scope?.$applyAsync?.();
+      if (scope && !scope.$$phase && !scope.$root?.$$phase) {
+        try {
+          scope.$digest?.();
+        } catch (_digestError) {
+          // Some Angular scopes are already digesting; queued applyAsync is enough.
+        }
+      }
+    }
+  } catch (_angularError) {
+    // DOM events remain the fallback when Angular internals are unavailable.
+  }
+  try {
+    if (window.jQuery) {
+      const $el = window.jQuery(element);
+      $el.prop?.("checked", desiredChecked);
+      $el.trigger?.("input");
+      $el.trigger?.("change");
+      committed = true;
+    }
+  } catch (_jqueryError) {
+    // jQuery hooks are best-effort only.
+  }
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+  element.dispatchEvent(new Event("change", { bubbles: true }));
+  return committed;
 }
 
 function clickElement(element) {
@@ -765,24 +867,33 @@ async function setToggleControl(element, desired) {
   const desiredChecked = Boolean(desired);
   if (element.type === "checkbox") {
     if (element.checked !== desiredChecked) {
-      await scrollElementIntoView(element, "center");
-      await clickAtCenter(element);
+      if (isVisible(element)) {
+        await scrollElementIntoView(element, "center");
+        await clickAtCenter(element);
+      }
       await sleep(160);
       if (element.checked !== desiredChecked) {
         element.checked = desiredChecked;
-        element.dispatchEvent(new Event("input", { bubbles: true }));
-        element.dispatchEvent(new Event("change", { bubbles: true }));
+        commitAngularCheckedValue(element, desiredChecked);
       }
     }
+    commitAngularCheckedValue(element, desiredChecked);
     return element.checked === desiredChecked;
   }
   if (element.type === "radio") {
     if (!desiredChecked) return !element.checked;
     if (!element.checked) {
-      await scrollElementIntoView(element, "center");
-      await clickAtCenter(element);
+      if (isVisible(element)) {
+        await scrollElementIntoView(element, "center");
+        await clickAtCenter(element);
+      }
       await sleep(160);
+      if (!element.checked) {
+        element.checked = true;
+        commitAngularCheckedValue(element, true);
+      }
     }
+    commitAngularCheckedValue(element, true);
     return element.checked === true;
   }
   if (isToggleChecked(element) !== desiredChecked) {
@@ -3186,7 +3297,7 @@ async function saveClientDetailsAndVerify(applicant, result, rowIndex, payload =
   }
   await sleep(700);
   const activation = await activateInfinityApplicantTab(applicant, result, rowIndex);
-  const afterSaveScope = activation.ok ? activation.scope : getVisibleClientDetailsFormScope();
+  let afterSaveScope = activation.ok ? activation.scope : getVisibleClientDetailsFormScope();
   if (!activation.ok) {
     result.warnings.push({
       section: "clientDetails",
@@ -3196,6 +3307,8 @@ async function saveClientDetailsAndVerify(applicant, result, rowIndex, payload =
       activation
     });
   }
+  const dateRepair = await repairClientDetailsDatesAfterRender(applicant, result, rowIndex, "after-save", afterSaveScope);
+  afterSaveScope = dateRepair.scope || afterSaveScope;
   const afterSaveGenderResolution = resolveApplicantGender(applicant, afterSaveScope, payload);
   const afterSaveGender = readClientDetailsCriticalValue("Gender", afterSaveScope);
   traceApplicantClientDetails(result, "after-save-strict", applicant, afterSaveScope, {
@@ -4977,13 +5090,14 @@ async function fillClientDetailsCriticalDate(scope, applicantKey, label, value, 
   }
   resolved.control.focus?.();
   nativeSetValue(resolved.control, expected);
+  const committed = commitAngularControlValue(resolved.control, expected);
   resolved.control.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
   resolved.control.dispatchEvent(new Event("input", { bubbles: true }));
   resolved.control.dispatchEvent(new Event("change", { bubbles: true }));
   resolved.control.dispatchEvent(new Event("blur", { bubbles: true }));
   await sleep(550);
   const actual = formatDateValue(readFieldValue(resolved.control), "au");
-  result.fieldsFilled.push({ section: "clientDetails", label, selector: describeElement(resolved.control), expected, actual, nearestLabel: resolved.nearestLabel?.text || "", ...meta });
+  result.fieldsFilled.push({ section: "clientDetails", label, selector: describeElement(resolved.control), expected, actual, nearestLabel: resolved.nearestLabel?.text || "", angularModelCommitted: committed, ...meta });
   if (!valuesMatch(expected, actual)) {
     recordVerificationFailure(result, "clientDetails", label, "Critical date field did not verify after fill", {
       ...meta,
@@ -5245,6 +5359,73 @@ async function fillDeferredClientDetailsDateFields(applicant, result, rowIndex, 
   return filledCount;
 }
 
+async function repairClientDetailsDatesAfterRender(applicant, result, rowIndex, phase, scope = document) {
+  const applicantName = fullApplicantName(applicant);
+  const dateFields = [
+    ["Date of Birth", "dateOfBirth"],
+    ["Licence Expiry Date", "licenceExpiryDate"]
+  ];
+  const previousMode = CLIENT_DETAILS_WRITE_MODE;
+  let repaired = 0;
+  setClientDetailsWriteMode("filling-applicant", `Repair date fields after render: ${applicantName}`, result, { rowIndex, phase });
+  try {
+    for (const [label, key] of dateFields) {
+      const rawValue = applicant?.[key];
+      if (rawValue === undefined || rawValue === null || rawValue === "") continue;
+      const expected = formatDateValue(rawValue, "au");
+      const actual = formatDateValue(readClientDetailsCriticalValue(label, scope || document), "au");
+      if (valuesMatch(expected, actual)) continue;
+      result.actions.push({
+        action: "repair-client-details-date-after-render",
+        section: "clientDetails",
+        label,
+        applicantName,
+        rowIndex,
+        phase,
+        expected,
+        actual
+      });
+      const ok = await fillClientDetailsCriticalDate(scope || document, applicantName, label, rawValue, result, {
+        rowIndex,
+        applicantName,
+        phase: `repair-${phase}`,
+        force: true,
+        repairedFrom: actual
+      });
+      if (ok) {
+        markClientDetailsFieldWritten(applicant, label);
+        repaired += 1;
+      }
+    }
+  } finally {
+    CLIENT_DETAILS_WRITE_MODE = previousMode;
+  }
+  if (!repaired) return { repaired: false, scope };
+  const saveButton = await scrollToSaveChangesButton(document);
+  if (!saveButton || isDisabled(saveButton) || isUnsafeFinalAction(saveButton)) {
+    recordVerificationFailure(result, "clientDetails", "Save Changes", "Date repair filled values but could not safely re-save applicant", {
+      applicantName,
+      rowIndex,
+      phase
+    });
+    return { repaired: true, scope };
+  }
+  result.actions.push({ action: "resave-client-details-after-date-repair", section: "clientDetails", applicantName, rowIndex, phase, repaired });
+  await clickAtCenter(saveButton);
+  const saved = await waitForSaveComplete();
+  if (!saved) {
+    recordVerificationFailure(result, "clientDetails", "Save Changes", "Date repair re-save was clicked but completion was not confirmed", {
+      applicantName,
+      rowIndex,
+      phase
+    });
+    return { repaired: true, scope };
+  }
+  await sleep(500);
+  const active = await activateInfinityApplicantTab(applicant, result, rowIndex);
+  return { repaired: true, scope: active.ok ? active.scope : getVisibleClientDetailsFormScope() };
+}
+
 async function fillApplicantAddresses(applicant, rawApplicant, result, rowIndex) {
   const rawAddress = rawApplicant?.address || {};
   const preparedAddress = applicant?.address || {};
@@ -5419,6 +5600,8 @@ async function runClientDetailsWorkflow(payload, mapping, apiBase, result) {
     await clickPageSaveIfVisible();
     active = await freshVerifiedApplicantScope(applicant, result, index, "after-address-save");
     scope = active.ok ? active.scope : getVisibleClientDetailsFormScope();
+    const addressDateRepair = await repairClientDetailsDatesAfterRender(applicant, result, index, "after-address-save", scope);
+    scope = addressDateRepair.scope || scope;
     const afterAddress = await verifyApplicantCriticalFields(applicant, scope, result, "after-address-save");
     const blockingAfterAddressFailures = afterAddress.failures.filter(isBlockingClientDetailsFailure);
     const completed = !blockingAfterAddressFailures.length;
@@ -5627,6 +5810,43 @@ function exactTextNodeInVerticalBand(label, startText, endTexts = []) {
     })[0] || null;
 }
 
+function directToggleControlForLabel(node) {
+  if (!node) return null;
+  const root = node.getRootNode?.() || document;
+  const label = node.tagName === "LABEL" ? node : node.closest?.("label");
+  if (label) {
+    const forId = label.getAttribute("for");
+    if (forId) {
+      const byFor = root.getElementById?.(forId) || document.getElementById(forId);
+      if (byFor && /^(checkbox|radio)$/i.test(byFor.type || "")) return byFor;
+    }
+    const nested = label.querySelector("input[type='checkbox'], input[type='radio'], [role='checkbox'], [role='switch'], [aria-checked]");
+    if (nested) return nested;
+  }
+  const ariaLabel = node.getAttribute?.("aria-label");
+  if (ariaLabel) {
+    const byAria = [...document.querySelectorAll("input[type='checkbox'], input[type='radio'], [role='checkbox'], [role='switch'], [aria-checked]")]
+      .find((control) => normalize(control.getAttribute("aria-label")) === normalize(ariaLabel));
+    if (byAria) return byAria;
+  }
+  return null;
+}
+
+function isToggleCandidate(element) {
+  if (!element) return false;
+  const type = String(element.type || "").toLowerCase();
+  const role = element.getAttribute?.("role");
+  const marker = normalize(`${element.className || ""} ${element.getAttribute?.("class") || ""}`);
+  return type === "checkbox" ||
+    type === "radio" ||
+    role === "checkbox" ||
+    role === "switch" ||
+    element.hasAttribute?.("aria-checked") ||
+    marker.includes("bootstrap-switch") ||
+    marker.includes("switch") ||
+    marker.includes("toggle");
+}
+
 function controlsNearSocaLabel(node, startText, endTexts = []) {
   if (!node) return [];
   const start = findTextNode([startText], document);
@@ -5637,19 +5857,28 @@ function controlsNearSocaLabel(node, startText, endTexts = []) {
     .filter((top) => top > startRect.bottom + 4)
     .sort((a, b) => a - b)[0] || Number.POSITIVE_INFINITY : Number.POSITIVE_INFINITY;
   const labelRect = node.getBoundingClientRect();
-  const direct = directControlForLabel(node, true);
-  const candidates = direct ? [direct] : [];
+  const candidates = [];
+  const direct = directToggleControlForLabel(node) || directControlForLabel(node, true);
+  if (direct) candidates.push(direct);
   let container = node.closest("label") || node.parentElement;
   for (let depth = 0; depth < 5 && container; depth += 1) {
-    candidates.push(...[...container.querySelectorAll("input[type='checkbox'], input[type='radio'], [role='checkbox'], [role='switch'], [aria-checked], .bootstrap-switch, .switch, .toggle, button, [ng-click], [data-ng-click]")]
-      .filter(isVisible));
+    candidates.push(...[...container.querySelectorAll("input[type='checkbox'], input[type='radio'], [role='checkbox'], [role='switch'], [aria-checked], .bootstrap-switch, .bootstrap-switch-wrapper, .bootstrap-switch-container, .switch, .toggle, button, [ng-click], [data-ng-click]")]
+      .filter((control) => isToggleCandidate(control) || isVisible(control)));
     container = container.parentElement;
   }
-  candidates.push(...[...document.querySelectorAll("input[type='checkbox'], input[type='radio'], [role='checkbox'], [role='switch'], [aria-checked], .bootstrap-switch, .switch, .toggle, button, [ng-click], [data-ng-click]")]
-    .filter(isVisible)
+  candidates.push(...[...document.querySelectorAll("input[type='checkbox'], input[type='radio'], [role='checkbox'], [role='switch'], [aria-checked], .bootstrap-switch, .bootstrap-switch-wrapper, .bootstrap-switch-container, .switch, .toggle, button, [ng-click], [data-ng-click]")]
+    .filter((control) => isVisible(control) || /^(checkbox|radio)$/i.test(control.type || ""))
     .filter((control) => !isEasyFlowOverlayElement(control))
     .filter((control) => {
       const rect = control.getBoundingClientRect();
+      if ((rect.width <= 0 || rect.height <= 0) && /^(checkbox|radio)$/i.test(control.type || "")) {
+        const wrappedLabel = control.closest("label") || (control.id ? document.querySelector(`label[for='${CSS.escape(control.id)}']`) : null);
+        if (!wrappedLabel) return false;
+        const wrappedRect = wrappedLabel.getBoundingClientRect();
+        const sameWrappedRow = Math.abs((wrappedRect.top + wrappedRect.height / 2) - (labelRect.top + labelRect.height / 2)) < 36;
+        const sameWrappedText = normalize(wrappedLabel.textContent).includes(normalize(node.textContent));
+        return sameWrappedRow && sameWrappedText;
+      }
       const sameBand = !startRect || (rect.top >= startRect.bottom - 12 && rect.top < endTop - 4);
       const sameRow = Math.abs((rect.top + rect.height / 2) - (labelRect.top + labelRect.height / 2)) < 36;
       const nearLeftSwitch = rect.right <= labelRect.left + 28 && rect.right >= labelRect.left - 140;
@@ -5659,9 +5888,11 @@ function controlsNearSocaLabel(node, startText, endTexts = []) {
   return [...new Set(candidates)].sort((a, b) => {
     const ar = a.getBoundingClientRect();
     const br = b.getBoundingClientRect();
+    const aDirect = a === direct ? 0 : 1;
+    const bDirect = b === direct ? 0 : 1;
     const aLeftSwitch = ar.right <= labelRect.left + 28 ? 0 : 1;
     const bLeftSwitch = br.right <= labelRect.left + 28 ? 0 : 1;
-    return aLeftSwitch - bLeftSwitch || Math.abs(ar.top - labelRect.top) - Math.abs(br.top - labelRect.top);
+    return aDirect - bDirect || aLeftSwitch - bLeftSwitch || Math.abs(ar.top - labelRect.top) - Math.abs(br.top - labelRect.top);
   });
 }
 
@@ -5671,10 +5902,12 @@ async function setSocaCheckboxByLabel(label, desired, result, meta = {}, region 
   await scrollToText([startText]);
   const node = exactTextNodeInVerticalBand(label, startText, endTexts);
   if (!node) {
-    recordFieldSkipped(result, meta.section || "needsAnalysis", label, `SOCA label not found inside ${startText}`, meta);
+    recordFieldSkipped(result, meta.section || "needsAnalysis", label, `Infinity Loans & Products label not found inside ${startText}`, meta);
     return false;
   }
   const desiredChecked = Boolean(desired);
+  await scrollElementIntoView(node, "center");
+  await sleep(80);
   const controls = controlsNearSocaLabel(node, startText, endTexts);
   for (const control of controls) {
     const before = isToggleChecked(control);
@@ -5683,27 +5916,42 @@ async function setSocaCheckboxByLabel(label, desired, result, meta = {}, region 
       await waitForAngularSettle();
     }
     const after = isToggleChecked(control);
-    result.actions.push({ action: desiredChecked ? "select-soca-checkbox" : "clear-soca-checkbox", section: meta.section || "needsAnalysis", label, selector: describeElement(control), before, after });
+    result.actions.push({ action: desiredChecked ? "select-loans-products-checkbox" : "clear-loans-products-checkbox", section: meta.section || "needsAnalysis", label, selector: describeElement(control), before, after });
     if (after === desiredChecked) {
       recordFieldFilled(result, meta.section || "needsAnalysis", label, desiredChecked, { element: control, selector: describeElement(control) }, meta);
       return true;
     }
   }
 
+  const labelElement = node.tagName === "LABEL" ? node : node.closest?.("label");
+  if (labelElement && isVisible(labelElement)) {
+    const before = socaCheckboxStateByLabel(label, region);
+    if (before !== desiredChecked) {
+      await clickAtCenter(labelElement);
+      await sleep(180);
+    }
+    const actual = socaCheckboxStateByLabel(label, region);
+    result.actions.push({ action: "click-loans-products-label", section: meta.section || "needsAnalysis", label, selector: describeElement(labelElement), before, actual });
+    if (actual === desiredChecked) {
+      recordFieldFilled(result, meta.section || "needsAnalysis", label, desiredChecked, { element: labelElement, selector: describeElement(labelElement) }, meta);
+      return true;
+    }
+  }
+
   const rect = node.getBoundingClientRect();
   const y = rect.top + rect.height / 2;
-  const xPositions = [rect.left - 26, rect.left - 42, rect.left - 58].filter((x) => x > 0);
+  const xPositions = [rect.left + 8, rect.left - 10, rect.left - 26, rect.left - 42, rect.left - 58, rect.left - 76].filter((x) => x > 0);
   for (const x of xPositions) {
     await clickAtViewportPoint(x, y);
     await sleep(140);
     const actual = socaCheckboxStateByLabel(label, region);
-    result.actions.push({ action: "click-soca-checkbox-coordinate", section: meta.section || "needsAnalysis", label, x, y, actual });
+    result.actions.push({ action: "click-loans-products-checkbox-coordinate", section: meta.section || "needsAnalysis", label, x, y, actual });
     if (actual === desiredChecked) {
       recordFieldFilled(result, meta.section || "needsAnalysis", label, desiredChecked, { element: node, selector: `coordinate near ${label}` }, meta);
       return true;
     }
   }
-  recordVerificationFailure(result, meta.section || "needsAnalysis", label, "SOCA checkbox state did not verify after scoped click", { ...meta, expected: desiredChecked, actual: socaCheckboxStateByLabel(label, region) });
+  recordVerificationFailure(result, meta.section || "needsAnalysis", label, "Infinity Loans & Products checkbox state did not verify after scoped click", { ...meta, expected: desiredChecked, actual: socaCheckboxStateByLabel(label, region) });
   return false;
 }
 
@@ -5947,7 +6195,7 @@ async function openAndVerifySocaTab(tabLabel, sectionId, result) {
   if (opened) await waitForAngularSettle();
   const visible = await waitFor(() => socaTabContentVisible(sectionId), { timeout: 4500, interval: 150 }).catch(() => false);
   if (!visible) {
-    recordVerificationFailure(result, sectionId, tabLabel, "SOCA tab could not be verified after click; stopped before filling", {
+    recordVerificationFailure(result, sectionId, tabLabel, "Infinity Loans & Products tab could not be verified after click; stopped before filling", {
       visibleText: pageTextWithoutEasyFlowOverlay().slice(0, 1200)
     });
   }
@@ -6167,7 +6415,7 @@ async function fillMappedSocaSection(sectionId, mapping, payload, result) {
     if (result.fieldsFilled.length > before) filled += 1;
     await sleep(100);
   }
-  result.actions.push({ action: "fill-soca-section", section: sectionId, label: section.label || sectionId, filled, attempted });
+  result.actions.push({ action: "fill-loans-products-section", section: sectionId, label: section.label || sectionId, filled, attempted });
   return filled > 0 || attempted > 0;
 }
 
@@ -6178,19 +6426,19 @@ async function saveAndAdvanceSoca(sectionId, nextTabLabel, result, nextSectionId
   }
   const expectedSave = pageHasSaveControl();
   const saved = await clickPageSaveIfVisible();
-  result.actions.push({ action: saved ? "save-soca-section" : "review-soca-section", section: sectionId, label: saved ? "Saved" : "No safe Save button visible" });
+  result.actions.push({ action: saved ? "save-loans-products-section" : "review-loans-products-section", section: sectionId, label: saved ? "Saved" : "No safe Save button visible" });
   if (expectedSave && !saved) {
     recordVerificationFailure(result, sectionId, "Save/Next", "Loans & Products tab had a save control but it could not be clicked safely; stopped before next tab");
     return false;
   }
   await waitForAngularSettle();
   if (nextSectionId && socaTabContentVisible(nextSectionId)) {
-    result.actions.push({ action: "next-soca-section", section: sectionId, label: nextTabLabel, via: "save-next" });
+    result.actions.push({ action: "next-loans-products-section", section: sectionId, label: nextTabLabel, via: "save-next" });
     return true;
   }
   const clickedNext = await clickPageNextIfVisible();
   if (clickedNext) {
-    result.actions.push({ action: "next-soca-section", section: sectionId, label: nextTabLabel });
+    result.actions.push({ action: "next-loans-products-section", section: sectionId, label: nextTabLabel });
     await waitForAngularSettle();
     if (nextSectionId && !socaTabContentVisible(nextSectionId)) {
       const opened = await clickSubTab(nextTabLabel, result);
@@ -6244,14 +6492,14 @@ async function runSocaTab(tabLabel, sectionId, mapping, payload, result, options
   if (!handled) {
     const existingFailure = (result.verificationFailures || []).some((failure) => failure.section === sectionId);
     if (!existingFailure) {
-      recordVerificationFailure(result, sectionId, tabLabel, filled > 0 ? "SOCA tab fields were filled but section verification failed" : "SOCA tab opened but no mapped fields were filled", {
+      recordVerificationFailure(result, sectionId, tabLabel, filled > 0 ? "Infinity Loans & Products tab fields were filled but section verification failed" : "Infinity Loans & Products tab opened but no mapped fields were filled", {
         visibleText: pageTextWithoutEasyFlowOverlay().slice(0, 1200)
       });
     }
     return false;
   }
   if (filled === 0) {
-    recordVerificationFailure(result, sectionId, tabLabel, "SOCA tab opened but no mapped fields were filled", {
+    recordVerificationFailure(result, sectionId, tabLabel, "Infinity Loans & Products tab opened but no mapped fields were filled", {
       visibleText: pageTextWithoutEasyFlowOverlay().slice(0, 1200)
     });
     return false;
@@ -6309,9 +6557,9 @@ async function runLoansProductsWorkflow(payload, mapping, apiBase, result) {
   }
   configureAutomationSegment(0, 100);
   if (failed.length) {
-    recordVerificationFailure(result, "loansProducts", "SOCA workflow", "Loans & Products stopped before all required SOCA tabs completed", { failed });
+    recordVerificationFailure(result, "loansProducts", "Infinity Loans & Products workflow", "Loans & Products stopped before all required Infinity Loans & Products tabs completed", { failed });
   } else {
-    result.actions.push({ action: "complete-soca-workflow", section: "loansProducts", label: "Stopped before Client Forms by rule" });
+    result.actions.push({ action: "complete-loans-products-workflow", section: "loansProducts", label: "Stopped before Client Forms by rule" });
   }
   return true;
 }

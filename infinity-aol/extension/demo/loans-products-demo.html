@@ -17,8 +17,10 @@
     label { display: block; font-size: 14px; margin-bottom: 6px; }
     input, select, textarea { width: 100%; box-sizing: border-box; border: 1px solid #00b897; background: #effafb; padding: 8px 10px; font-size: 14px; }
     textarea { min-height: 72px; }
-    .checks label { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
-    .checks input { width: auto; }
+    .checks label { display: flex; gap: 8px; align-items: center; margin: 10px 0; cursor: pointer; }
+    .checks input { display: none; }
+    .checks label::before { content: ""; width: 16px; height: 16px; border: 1px solid #aeb8bd; background: #fff; border-radius: 3px; box-sizing: border-box; }
+    .checks label:has(input:checked)::before { background: #12b894; border-color: #12b894; box-shadow: inset 0 0 0 3px #fff; }
     .lender-card { border: 1px solid #bfc8cc; padding: 16px; margin: 10px 0; cursor: pointer; }
     .lender-card.selected { border-color: #f58b25; background: #fff8f1; }
     .savebar { position: fixed; right: 40px; bottom: 24px; display: flex; gap: 10px; }
@@ -27,7 +29,7 @@
   </style>
 </head>
 <body>
-  <div class="top">INFYNITY SOCA DEMO</div>
+  <div class="top">INFYNITY LOANS &amp; PRODUCTS DEMO</div>
   <div class="card">
     <div class="tabs">
       <button data-tab="needs" class="active">Needs Analysis</button>
@@ -221,7 +223,7 @@
       ]
     };
     const payload = {
-      meta: { caseId: "DEMO-SOCA", brokerUser: "demo" },
+      meta: { caseId: "DEMO-LOANS-PRODUCTS", brokerUser: "demo" },
       applicants: { primary: { firstName: "Arsalan", surname: "Saleem" }, secondary: { firstName: "Araj", surname: "Khan" } },
       loan: {
         applicationType: "Owner occupied purchase",

@@ -131,6 +131,37 @@
   <script>
     window.__easyflowListeners = [];
     window.__easyflowDemoRuntime = { onMessage: { addListener(fn) { window.__easyflowListeners.push(fn); } } };
+    const ngModelControllers = new WeakMap();
+    window.angular = {
+      element(el) {
+        return {
+          controller(name) {
+            if (name !== "ngModel" && name !== "ngModelController") return null;
+            if (!ngModelControllers.has(el)) {
+              ngModelControllers.set(el, {
+                $setViewValue(value) {
+                  el.dataset.modelCommitted = value ?? "";
+                },
+                $render() {},
+                $validate() {}
+              });
+            }
+            return ngModelControllers.get(el);
+          },
+          triggerHandler(eventName) {
+            if (eventName && eventName !== "click") {
+              el.dispatchEvent(new Event(eventName, { bubbles: true }));
+            }
+          },
+          scope() {
+            return { $applyAsync() {}, $digest() {}, $root: {} };
+          },
+          isolateScope() {
+            return null;
+          }
+        };
+      }
+    };
     const demoState = {
       active: 0,
       dirty: false,
@@ -163,12 +194,16 @@
         if (key in applicant) el.value = applicant[key] ?? "";
         else if (el.tagName === "SELECT" && !el.value) el.selectedIndex = 0;
         else if (el.tagName !== "SELECT") el.value = "";
+        el.dataset.modelCommitted = el.value || "";
       });
       renderAddresses();
     }
     function saveApplicant() {
       const applicant = demoState.applicants[demoState.active];
-      fieldEls().forEach((el) => { applicant[el.dataset.field] = el.value; });
+      fieldEls().forEach((el) => {
+        const key = el.dataset.field;
+        applicant[key] = ["dateOfBirth", "licenceExpiryDate"].includes(key) ? (el.dataset.modelCommitted || "") : el.value;
+      });
       demoState.dirty = false;
       const toast = document.getElementById("toast");
       toast.classList.add("show");
