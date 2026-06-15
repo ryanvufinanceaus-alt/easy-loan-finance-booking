@@ -79,35 +79,63 @@ function pronouns(applicants) {
 }
 
 function loanPurposeText(caseData) {
-  const purpose = `${caseData.property?.purpose || caseData.loan?.applicationType || ""}`.toLowerCase();
-  if (purpose.includes("investment")) return "Purchase Investment Property";
-  if (purpose.includes("owner")) return "Purchase Owner Occupied Dwelling";
-  if (purpose.includes("refinance")) return "Refinance";
-  return caseData.property?.purpose || caseData.loan?.applicationType || "Purchase";
+  const purpose = `${caseData.property?.purpose || ""} ${caseData.property?.occupancy || ""} ${caseData.loan?.purpose || ""} ${caseData.loan?.loanPurpose || ""} ${caseData.loan?.applicationType || ""} ${caseData.loan?.opportunityName || ""} ${caseData.selectedTemplate?.id || ""} ${caseData.selectedTemplate?.title || ""}`.toLowerCase();
+  if (purpose.includes("refinance") || /\brefi\b/.test(purpose)) return "Refinance";
+  if (purpose.includes("vacant land")) return "Purchase Vacant Land";
+  if (purpose.includes("investment") || /\binv\b/.test(purpose) || purpose.includes("rental")) return "Purchase Investment Property";
+  if (purpose.includes("owner") || purpose.includes("ooc") || purpose.includes("live in") || !purpose.trim()) return "Purchase Owner Occupied Dwelling";
+  return caseData.property?.purpose || caseData.loan?.applicationType || "Purchase Owner Occupied Dwelling";
 }
 
 function isRefinance(caseData) {
-  return /refinance/i.test(`${caseData.property?.purpose || ""} ${caseData.loan?.applicationType || ""} ${caseData.loan?.opportunityName || ""}`);
+  return /refinance|\brefi\b/i.test(`${caseData.property?.purpose || ""} ${caseData.loan?.purpose || ""} ${caseData.loan?.loanPurpose || ""} ${caseData.loan?.applicationType || ""} ${caseData.loan?.opportunityName || ""} ${caseData.selectedTemplate?.id || ""} ${caseData.selectedTemplate?.title || ""}`);
+}
+
+function dateToAu(value) {
+  if (!value) return "";
+  const text = String(value).trim();
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  const au = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (au) return `${au[1].padStart(2, "0")}/${au[2].padStart(2, "0")}/${au[3]}`;
+  return text;
+}
+
+function addDaysAu(days) {
+  const date = new Date();
+  date.setDate(date.getDate() + Number(days || 0));
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
+}
+
+function firstPresent(...values) {
+  return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "");
+}
+
+function isPreApproval(caseData) {
+  return caseData.loan?.preApproval === true || /pre[- ]?approval/i.test(`${caseData.brokerNotes || ""} ${caseData.loan?.applicationType || ""} ${caseData.selectedTemplate?.title || ""}`);
 }
 
 function selectedObjectives(caseData) {
   const purpose = loanPurposeText(caseData);
+  const refi = isRefinance(caseData);
+  const construct = Boolean(caseData.loan?.constructOwnerOccupied || caseData.loan?.constructInvestment);
+  const cashOut = Boolean(caseData.loan?.cashOut || /cash[ -]?out|equity release|release equity/i.test(`${caseData.loan?.purpose || ""} ${caseData.loan?.opportunityName || ""}`));
   return {
     bridging: Boolean(caseData.loan?.bridging),
     constructRenovateOwnerOccupiedDwelling: Boolean(caseData.loan?.constructOwnerOccupied),
     constructRenovateInvestmentProperty: Boolean(caseData.loan?.constructInvestment),
     debtConsolidation: Boolean(caseData.loan?.debtConsolidation),
-    purchaseInvestmentProperty: purpose === "Purchase Investment Property",
-    purchaseOwnerOccupiedDwelling: purpose === "Purchase Owner Occupied Dwelling",
+    purchaseInvestmentProperty: purpose === "Purchase Investment Property" && !refi && !construct,
+    purchaseOwnerOccupiedDwelling: purpose === "Purchase Owner Occupied Dwelling" && !refi && !construct,
     purchaseVacantLand: /vacant land/i.test(purpose),
-    refinance: isRefinance(caseData),
+    refinance: refi,
     reverseMortgage: Boolean(caseData.loan?.reverseMortgage),
-    otherPurpose: Boolean(caseData.loan?.otherPurpose),
+    otherPurpose: Boolean(caseData.loan?.otherPurpose || (refi && cashOut)),
     consumerConstruction: Boolean(caseData.loan?.consumerConstruction),
     leisurePurchase: Boolean(caseData.loan?.leisurePurchase),
     medicalPurchase: Boolean(caseData.loan?.medicalPurchase),
     vehiclePurchase: Boolean(caseData.loan?.vehiclePurchase),
-    consumerOtherPurpose: Boolean(caseData.loan?.consumerOtherPurpose)
+    consumerOtherPurpose: Boolean(caseData.loan?.consumerOtherPurpose || (!refi && cashOut))
   };
 }
 
@@ -119,7 +147,7 @@ function selectedRequirements(caseData) {
     extraRepayments: Boolean(caseData.loan?.extraRepayments ?? true),
     lineOfCredit: Boolean(caseData.loan?.lineOfCredit),
     nonConformingLoan: Boolean(caseData.loan?.nonConformingLoan),
-    offset: Boolean(caseData.loan?.offsetRequested),
+    offset: caseData.loan?.offsetRequested !== false,
     rateLock: Boolean(caseData.loan?.rateLock),
     redraw: Boolean(caseData.loan?.redrawRequested ?? true),
     reverseMortgage: Boolean(caseData.loan?.reverseMortgage),
@@ -130,7 +158,7 @@ function selectedRequirements(caseData) {
     fixedVariableRate: /fixed.*variable|variable.*fixed/i.test(product),
     interestOnly: /interest only/i.test(repayment),
     balloonRepayments: Boolean(caseData.loan?.balloonRepayments),
-    principalAndInterest: /principal|p\s*&\s*i/i.test(repayment),
+    principalAndInterest: !/interest only|balloon/i.test(repayment),
     weeklyRepayments: /weekly/i.test(caseData.loan?.repaymentFrequency || ""),
     fortnightlyRepayments: /fortnight/i.test(caseData.loan?.repaymentFrequency || ""),
     monthlyRepayments: !/weekly|fortnight/i.test(caseData.loan?.repaymentFrequency || "")
@@ -162,11 +190,22 @@ function buildNarrative(caseData, applicants) {
   const product = caseData.loan?.productPreference || "Variable";
   const repayment = caseData.loan?.repaymentType || "Principal and Interest";
   const objective = `${who} would like to buy ${p.possessive} ${purpose.includes("investment") ? "investment" : "owner occupied"} property.`;
+  const refi = isRefinance(caseData);
+  const objectiveText = refi
+    ? `${who} would like to refinance ${p.possessive} existing home loan.`
+    : purpose.includes("investment")
+      ? `${who} would like to buy an investment property.`
+      : purpose.includes("vacant land")
+        ? `${who} would like to buy vacant land.`
+        : objective;
 
-  const longStructure = `${who} ${p.be} seeking pre-approval to purchase ${purpose.includes("investment") ? "an investment" : "a"} property. ${p.subject[0].toUpperCase()}${p.subject.slice(1)} ${p.be} looking to have the loan for ${loanTerm} years; however ${p.subject} may be able to pay down sooner in the future if ${p.subject} ${p.be} in a position to. The applicant ${p.be} working and earning good income. The applicant does not foresee any changes to ${p.possessive} financial position that may affect ${p.possessive} ability to repay the home loan.\n\n${who} chooses a variable option to enable flexibility in reducing debt if ${p.subject} accumulates extra funds during this period. Also, ${who.toLowerCase()} would like to use the redraw option if ${p.subject} needs to gain access to the funds. ${who} prefers a ${repayment} option because ${p.subject} would like to pay down the loan over the period of ${loanTerm} years to reduce the debt. The monthly repayment is more suitable for ${who.toLowerCase()} to budget.`;
+  const purposeSentence = refi
+    ? `${who} ${p.be} seeking finance to refinance the existing home loan.`
+    : `${who} ${p.be} seeking pre-approval to purchase ${purpose.includes("investment") ? "an investment" : "an owner-occupied"} property.`;
+  const longStructure = `${purposeSentence} ${p.subject[0].toUpperCase()}${p.subject.slice(1)} ${p.be} looking to have the loan for ${loanTerm} years; however ${p.subject} may be able to pay down sooner in the future if ${p.subject} ${p.be} in a position to. The applicant ${p.be} working and earning good income. The applicant does not foresee any changes to ${p.possessive} financial position that may affect ${p.possessive} ability to repay the home loan.\n\n${who} chooses a variable option to enable flexibility in reducing debt if ${p.subject} accumulates extra funds during this period. Also, ${who.toLowerCase()} would like to use the redraw option if ${p.subject} needs to gain access to the funds. ${who} prefers a ${repayment} option because ${p.subject} would like to pay down the loan over the period of ${loanTerm} years to reduce the debt. The monthly repayment is more suitable for ${who.toLowerCase()} to budget.`;
 
   return {
-    loanObjectiveExplanation: objective,
+    loanObjectiveExplanation: objectiveText,
     circumstancesObjectivesPriorities: `${longStructure}\n${lender} was chosen because they provide stronger servicing and offer competitive rates.`,
     financialAwarenessPractices: `${who} already has experience with mortgage products. Loan terms and key features have been fully explained and understood.\n${who} has a good record of saving and ${p.be} living within ${p.possessive} means.`,
     lender: `${lender} was chosen because they provide a stronger service and better interest rate for the client. Other lenders do not provide enough borrowing capacity and better interest rate for the client to purchase the property they want.`,
@@ -335,12 +374,12 @@ export function buildInfinityTemplate(caseData) {
       monthlyExpenses: caseData.expenses || {}
     },
     needsAnalysis: {
-      dateCreditGuideProvided: caseData.factFind?.dateCreditGuideProvided || "",
-      dateInterviewConducted: caseData.factFind?.dateInterviewConducted || "",
+      dateCreditGuideProvided: dateToAu(firstPresent(caseData.factFind?.dateCreditGuideProvided, caseData.loan?.dateCreditGuideProvided, caseData.createdAt, addDaysAu(0))),
+      dateInterviewConducted: dateToAu(firstPresent(caseData.factFind?.dateInterviewConducted, caseData.loan?.dateInterviewConducted, caseData.interviewDate, caseData.createdAt, addDaysAu(0))),
       methodClientInterview: caseData.factFind?.methodClientInterview || "Face to Face",
       methodDocumentIdentification: caseData.factFind?.methodDocumentIdentification || "Face to Face",
       facilityAmount,
-      estimatedSettlementDate: caseData.loan?.estimatedSettlementDate || "",
+      estimatedSettlementDate: dateToAu(firstPresent(caseData.loan?.estimatedSettlementDate, caseData.loan?.settlementDate, caseData.property?.settlementDate, addDaysAu(isPreApproval(caseData) ? 90 : 45))),
       selectedApplicants: applicants.map(fullName),
       objectives: {
         ...selectedObjectives(caseData)
@@ -348,7 +387,8 @@ export function buildInfinityTemplate(caseData) {
       requirements: {
         ...selectedRequirements(caseData)
       },
-      loanObjectiveExplanation: narrative.loanObjectiveExplanation
+      loanObjectiveExplanation: narrative.loanObjectiveExplanation,
+      isRefinanceApplication: isRefinance(caseData)
     },
     loansSecuritiesCommentary: {
       loanPurpose,

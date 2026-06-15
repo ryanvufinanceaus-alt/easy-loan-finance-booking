@@ -54,7 +54,7 @@
         <div class="field"><label>Loan Objective Explanation</label><textarea data-field="loanObjectiveExplanation"></textarea></div>
       </div>
       <div>
-        <div class="field"><label>Method of Document Identification</label><select data-field="methodDocumentIdentification"><option></option><option>Face to Face</option></select></div>
+        <div class="field"><label>Method of Document Identification</label><select data-field="methodDocumentIdentification"><option></option><option>VOI</option><option>Face to Face</option></select></div>
         <div class="field"><label>Facility Amount</label><input data-field="facilityAmount"></div>
         <div class="field"><label>Estimated Settlement Date</label><input data-field="estimatedSettlementDate"></div>
         <h3>Loan Requirements *</h3>
@@ -65,6 +65,7 @@
           <label><input type="checkbox" data-check="P & I Repayments">P &amp; I Repayments</label>
           <label><input type="checkbox" data-check="Monthly Repayments">Monthly Repayments</label>
         </div>
+        <div class="checks"><label><input type="checkbox" data-check="Is this a refinance application">Is this a refinance application</label></div>
       </div>
     </section>
 
@@ -176,7 +177,8 @@
           { payloadPath: "infinity.needsAnalysis.requirements.variableRate", label: "Variable Rate" },
           { payloadPath: "infinity.needsAnalysis.requirements.principalAndInterest", label: "P & I Repayments" },
           { payloadPath: "infinity.needsAnalysis.requirements.monthlyRepayments", label: "Monthly Repayments" },
-          { payloadPath: "infinity.needsAnalysis.loanObjectiveExplanation", label: "Loan Objective Explanation" }
+          { payloadPath: "infinity.needsAnalysis.loanObjectiveExplanation", label: "Loan Objective Explanation" },
+          { payloadPath: "infinity.needsAnalysis.isRefinanceApplication", label: "Is this a refinance application", optional: true }
         ] },
         { id: "loansSecuritiesCommentary", label: "Loans, Securities & Commentary", fields: [
           { payloadPath: "infinity.loansSecuritiesCommentary.loanPurpose", label: "Loan Purpose" },
@@ -221,18 +223,28 @@
     const payload = {
       meta: { caseId: "DEMO-SOCA", brokerUser: "demo" },
       applicants: { primary: { firstName: "Arsalan", surname: "Saleem" }, secondary: { firstName: "Araj", surname: "Khan" } },
+      loan: {
+        applicationType: "Owner occupied purchase",
+        purpose: "OOC purchase",
+        productPreference: "Variable Rate",
+        repaymentType: "Principal and Interest",
+        repaymentFrequency: "Monthly",
+        loanAmount: "$800,000",
+        preApproval: true
+      },
+      property: { purpose: "Owner Occupied" },
       infinity: {
         applicants: [{ firstName: "Arsalan", surname: "Saleem" }, { firstName: "Araj", surname: "Khan" }],
         needsAnalysis: {
-          dateCreditGuideProvided: "16/12/2025",
-          dateInterviewConducted: "16/12/2025",
+          dateCreditGuideProvided: "",
+          dateInterviewConducted: "",
           methodClientInterview: "Face to Face",
           methodDocumentIdentification: "Face to Face",
           facilityAmount: "$800,000",
-          estimatedSettlementDate: "16/01/2026",
-          objectives: { purchaseOwnerOccupiedDwelling: true },
-          requirements: { offset: true, redraw: true, variableRate: true, principalAndInterest: true, monthlyRepayments: true },
-          loanObjectiveExplanation: "Clients are seeking pre-approval to purchase an owner-occupied property to live in."
+          estimatedSettlementDate: "",
+          objectives: {},
+          requirements: {},
+          loanObjectiveExplanation: "The clients would like to buy their investment property."
         },
         loansSecuritiesCommentary: {
           loanPurpose: "Purchase Owner Occupied Dwelling",
@@ -282,11 +294,19 @@
         ? await runner({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" })
         : await new Promise((resolve) => listener({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" }, null, resolve));
       const values = Object.fromEntries([...document.querySelectorAll("[data-field]")].map((el) => [el.dataset.field, el.value]));
+      const needsValue = (field) => document.querySelector(`[data-page='needs'] [data-field='${field}']`)?.value || "";
+      const needsActions = result.actions || [];
+      const needsSelected = (label) => document.querySelector(`[data-page='needs'] [data-check='${label}']`)?.checked === true;
       const checks = {
         noErrors: !(result.errors || []).length,
         noVerificationFailures: !(result.verificationFailures || []).length,
         applicantsSelected: [...document.querySelectorAll("[data-applicant]")].every((el) => el.checked),
-        needsFilled: values.facilityAmount === "$800,000" && document.querySelector("[data-check='Offset']").checked,
+        interviewDateFilled: Boolean(needsValue("dateInterviewConducted")),
+        settlementDateFilled: Boolean(needsValue("estimatedSettlementDate")),
+        documentIdentificationVoi: needsValue("methodDocumentIdentification") === "VOI",
+        needsFilled: needsValue("facilityAmount") === "$800,000" && needsSelected("Offset") && needsSelected("Redraw") && needsSelected("Variable Rate") && needsSelected("P & I Repayments") && needsSelected("Monthly Repayments"),
+        oocObjectiveOnly: needsSelected("Purchase Owner Occupied Dwelling") && !needsSelected("Purchase Investment Property") && !needsSelected("Refinance") && !/investment property/i.test(needsValue("loanObjectiveExplanation") || ""),
+        refinanceToggleOff: !document.querySelector("[data-check='Is this a refinance application']").checked,
         securitiesFilled: values.circumstancesObjectivesPriorities.length > 20,
         featuresFilled: values.feature1 === "Variable Rate" && values.feature5 === "Monthly Repayments",
         recommendationFilled: values.lender.includes("ING") && document.querySelector("[data-lender='ING']").classList.contains("selected"),

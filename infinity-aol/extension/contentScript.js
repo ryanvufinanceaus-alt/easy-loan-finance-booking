@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.15";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.18";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -228,22 +228,50 @@ function cleanupStuckModalState() {
   }
 }
 
+function auDateToIso(value) {
+  const text = String(value ?? "").trim();
+  const au = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (au) return `${au[3]}-${au[2].padStart(2, "0")}-${au[1].padStart(2, "0")}`;
+  return text;
+}
+
+function valueForInputElement(element, value) {
+  const raw = value === undefined || value === null ? "" : String(value).trim();
+  if (!(element instanceof HTMLInputElement)) return raw;
+  const type = normalize(element.type || "");
+  if (type === "date") return auDateToIso(raw);
+  if (["number", "range"].includes(type)) {
+    const numeric = raw.replace(/[$,%\s]/g, "").replace(/,/g, "");
+    return numeric || raw;
+  }
+  return raw;
+}
+
 function nativeSetValue(element, value) {
-  const stringValue = value === undefined || value === null ? "" : String(value);
+  const stringValue = valueForInputElement(element, value);
   const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
-  if (descriptor?.set) {
-    descriptor.set.call(element, stringValue);
-  } else {
-    element.value = stringValue;
+  try {
+    if (descriptor?.set) {
+      descriptor.set.call(element, stringValue);
+    } else {
+      element.value = stringValue;
+    }
+  } catch (error) {
+    try {
+      element.value = stringValue;
+    } catch {
+      return false;
+    }
   }
   element.dispatchEvent(new Event("input", { bubbles: true }));
   element.dispatchEvent(new Event("change", { bubbles: true }));
   element.dispatchEvent(new Event("blur", { bubbles: true }));
+  return true;
 }
 
 function setNativeValue(element, value) {
-  nativeSetValue(element, value);
+  return nativeSetValue(element, value);
 }
 
 function clickElement(element) {
@@ -326,6 +354,7 @@ function ensureResultShape(result) {
   result.actions = result.actions || [];
   result.verificationFailures = result.verificationFailures || [];
   result.warnings = result.warnings || [];
+  result.workflowSteps = result.workflowSteps || [];
   return result;
 }
 
@@ -520,11 +549,16 @@ async function clickModalSave() {
 
 async function clickPageSaveIfVisible() {
   if (activeModal()) return false;
-  const save = await scrollToSaveChangesButton(document) || findClickableByText(["Save Changes", "Save", "Done", "Update"], document);
+  const save = await scrollToSaveChangesButton(document) || findClickableByText(["Save/Next", "Save Changes", "Save", "Done", "Update"], document);
   if (!save || isUnsafeFinalAction(save)) return false;
   await clickAtCenter(save);
   await sleep(900);
   return true;
+}
+
+function pageHasSaveControl() {
+  if (activeModal()) return false;
+  return Boolean(findClickableByText(["Save/Next", "Save Changes", "Save", "Done", "Update"], document));
 }
 
 async function saveVisibleClientDetailsBeforeSwitch(result, meta = {}) {
@@ -714,6 +748,52 @@ function setAriaChecked(element, value) {
   return true;
 }
 
+function isToggleChecked(element) {
+  if (!element) return false;
+  const classText = normalize(element.className || "");
+  const aria = element.getAttribute?.("aria-checked");
+  if (element.type === "checkbox" || element.type === "radio") return element.checked === true;
+  if (aria === "true") return true;
+  if (aria === "false") return false;
+  if (classText.includes("active") || classText.includes("selected") || classText.includes("checked")) return true;
+  if (classText.includes("off")) return false;
+  const checkedChild = element.querySelector?.("input[type='checkbox']:checked, input[type='radio']:checked, [aria-checked='true'], .active, .selected, .checked");
+  return Boolean(checkedChild);
+}
+
+async function setToggleControl(element, desired) {
+  const desiredChecked = Boolean(desired);
+  if (element.type === "checkbox") {
+    if (element.checked !== desiredChecked) {
+      await scrollElementIntoView(element, "center");
+      await clickAtCenter(element);
+      await sleep(160);
+      if (element.checked !== desiredChecked) {
+        element.checked = desiredChecked;
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }
+    return element.checked === desiredChecked;
+  }
+  if (element.type === "radio") {
+    if (!desiredChecked) return !element.checked;
+    if (!element.checked) {
+      await scrollElementIntoView(element, "center");
+      await clickAtCenter(element);
+      await sleep(160);
+    }
+    return element.checked === true;
+  }
+  if (isToggleChecked(element) !== desiredChecked) {
+    await scrollElementIntoView(element, "center");
+    await clickAtCenter(element);
+    await sleep(160);
+  }
+  element.dispatchEvent?.(new Event("change", { bubbles: true }));
+  return isToggleChecked(element) === desiredChecked;
+}
+
 function looksLikeChoiceControl(element) {
   const role = element.getAttribute("role");
   const popup = element.getAttribute("aria-haspopup");
@@ -727,6 +807,8 @@ function optionAliases(value) {
   const normalized = normalize(text);
   if (normalized === "groceries") aliases.push("Food & Groceries");
   if (normalized === "monthly") aliases.push("Monthly");
+  if (normalized === "voi") aliases.push("VOI", "Verified Online Identification", "Verification of Identity", "Video / Online Identification", "Face to Face");
+  if (normalized === "face to face") aliases.push("Face-to-Face", "In Person", "In-person");
   const streetTypeAliases = {
     ave: "Avenue",
     blvd: "Boulevard",
@@ -829,17 +911,11 @@ async function setFieldValue(element, value) {
   }
 
   if (element.type === "checkbox") {
-    element.checked = Boolean(value);
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
-    return true;
+    return setToggleControl(element, value);
   }
 
   if (element.type === "radio") {
-    if (!element.checked) clickElement(element);
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
-    return true;
+    return setToggleControl(element, true);
   }
 
   if (element.getAttribute("role") === "switch" || element.getAttribute("role") === "checkbox" || element.hasAttribute("aria-checked")) {
@@ -865,8 +941,7 @@ async function setFieldValue(element, value) {
   }
 
   if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-    nativeSetValue(element, value);
-    return true;
+    return nativeSetValue(element, value);
   }
 
   if (element.isContentEditable || element.getAttribute("role") === "textbox") {
@@ -894,7 +969,7 @@ function fieldLabels(field) {
 }
 
 const controlSelector =
-  "input:not([type='hidden']), textarea, select, [contenteditable='true'], [role='textbox'], [role='combobox'], [aria-haspopup='listbox']";
+  "input:not([type='hidden']), textarea, select, [contenteditable='true'], [role='textbox'], [role='combobox'], [role='checkbox'], [role='switch'], [aria-checked], [aria-haspopup='listbox'], .bootstrap-switch, .switch, .toggle";
 
 function candidateControls(container, value) {
   const controls = [...container.querySelectorAll(controlSelector)].filter(isVisible);
@@ -1143,39 +1218,74 @@ async function selectDropdownByText(label, value, scope = activeSurfaceRoot(), r
 }
 
 async function clickCheckboxByLabel(label, result, meta = {}) {
+  return setCheckboxByLabel(label, true, result, meta);
+}
+
+async function setCheckboxByLabel(label, desired, result, meta = {}) {
   await scrollToText([label]);
   const wanted = normalize(label);
   const exactNodes = allTextNodes()
     .filter((node) => normalize(node.textContent) === wanted)
-    .sort((a, b) => normalize(a.textContent).length - normalize(b.textContent).length);
+    .sort((a, b) => (a.tagName === "LABEL" ? 0 : 1) - (b.tagName === "LABEL" ? 0 : 1) || normalize(a.textContent).length - normalize(b.textContent).length);
   const node = exactNodes[0] || findTextNode([label]);
   if (!node) {
     recordFieldSkipped(result, meta.section || "workflow", label, "checkbox label not found", meta);
     return false;
   }
+  const desiredChecked = Boolean(desired);
+  const applyControl = async (control, actionSuffix) => {
+    const checked = isToggleChecked(control);
+    if (checked === desiredChecked) {
+      result.actions.push({ action: desiredChecked ? "checkbox-already-selected" : "checkbox-already-clear", label, ...meta });
+      await waitForAngularSettle();
+      recordFieldFilled(result, meta.section || "workflow", label, desiredChecked, { element: control, selector: describeElement(control) }, meta);
+      return true;
+    }
+    const ok = await setToggleControl(control, desiredChecked);
+    result.actions.push({
+      action: desiredChecked ? `select-checkbox${actionSuffix}` : `clear-checkbox${actionSuffix}`,
+      label,
+      ...meta,
+      selector: describeElement(control)
+    });
+    await waitForAngularSettle();
+    const actual = isToggleChecked(control);
+    if (ok && actual === desiredChecked) {
+      recordFieldFilled(result, meta.section || "workflow", label, desiredChecked, { element: control, selector: describeElement(control) }, meta);
+      return true;
+    }
+    recordVerificationFailure(result, meta.section || "workflow", label, "Checkbox state did not verify after click", {
+      ...meta,
+      expected: desiredChecked,
+      actual
+    });
+    return false;
+  };
+
+  const direct = directControlForLabel(node, true);
+  if (direct) return applyControl(direct, "");
+
   let container = node.closest("label") || node.parentElement;
   for (let depth = 0; depth < 6 && container; depth += 1) {
-    const input = [...container.querySelectorAll("input[type='checkbox'], input[type='radio'], [role='checkbox'], [aria-checked], button, [ng-click], [data-ng-click]")]
+    const input = [...container.querySelectorAll("input[type='checkbox'], input[type='radio'], [role='checkbox'], [role='switch'], [aria-checked], .bootstrap-switch, .switch, .toggle, button, [ng-click], [data-ng-click]")]
       .filter(isVisible)
       .find((item) => {
         const text = visibleText(item);
-        return item.type === "checkbox" || item.type === "radio" || item.hasAttribute("aria-checked") || !text || text.includes(normalize(label));
+        return item.type === "checkbox" || item.type === "radio" || item.hasAttribute("aria-checked") || item.getAttribute("role") === "checkbox" || item.getAttribute("role") === "switch" || !text || text.includes(normalize(label));
       });
-    if (input) {
-      const checked = input.checked === true || input.getAttribute("aria-checked") === "true" || normalize(input.className).includes("active") || normalize(input.className).includes("selected");
-      if (!checked && (input.type === "checkbox" || input.type === "radio")) {
-        input.checked = true;
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-        input.dispatchEvent(new Event("change", { bubbles: true }));
-      } else if (!checked) {
-        clickElement(input);
-      }
-      result.actions.push({ action: checked ? "checkbox-already-selected" : "select-checkbox", label, ...meta });
-      await waitForAngularSettle();
-      return true;
-    }
+    if (input) return applyControl(input, "");
     container = container.parentElement;
   }
+
+  const labelRect = node.getBoundingClientRect();
+  const nearControl = [...document.querySelectorAll("input[type='checkbox'], input[type='radio'], [role='checkbox'], [role='switch'], [aria-checked], .bootstrap-switch, .switch, .toggle")]
+    .filter(isVisible)
+    .filter((control) => !isEasyFlowOverlayElement(control))
+    .map((control) => ({ control, rect: control.getBoundingClientRect() }))
+    .filter(({ rect }) => Math.abs((rect.top + rect.height / 2) - (labelRect.top + labelRect.height / 2)) < 32)
+    .filter(({ rect }) => rect.right <= labelRect.left + 16 || rect.left <= labelRect.right + 240)
+    .sort((a, b) => Math.abs(a.rect.left - labelRect.left) - Math.abs(b.rect.left - labelRect.left))[0]?.control;
+  if (nearControl) return applyControl(nearControl, "-near-label");
   recordFieldSkipped(result, meta.section || "workflow", label, "checkbox control not found", meta);
   return false;
 }
@@ -5477,28 +5587,206 @@ async function runFinancialsWorkflow(payload, mapping, apiBase, result) {
 }
 
 async function selectNeedsAnalysisApplicants(payload, result) {
-  const applicants = infinityApplicantRows(payload).map(fullApplicantName).filter(Boolean);
-  if (!applicants.length || !pageHasAnyText(["Select Applicant"])) return;
+  const explicit = collectionAt(payload, "infinity.needsAnalysis.selectedApplicants").map(String).filter(Boolean);
+  const applicants = explicit.length ? explicit : infinityApplicantRows(payload).map(fullApplicantName).filter(Boolean);
+  if (!applicants.length || !pageHasAnyText(["Select Applicant"])) return false;
+  let selected = 0;
   await scrollToText(["Select Applicant"]);
   for (const name of applicants) {
     const clicked = await clickCheckboxByLabel(name, result, { section: "needsAnalysis", label: name });
     if (!clicked) {
       result.fieldsSkipped.push({ section: "needsAnalysis", label: `Select Applicant ${name}`, reason: "toggle control not found" });
     } else {
+      selected += 1;
       result.actions.push({ action: "select-applicant", section: "needsAnalysis", label: name });
     }
     await sleep(150);
   }
+  return selected === applicants.length;
+}
+
+function todayAuDate() {
+  const date = new Date();
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
+}
+
+function futureAuDate(days) {
+  const date = new Date();
+  date.setDate(date.getDate() + Number(days || 0));
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
+}
+
+function firstPresent(...values) {
+  return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "");
+}
+
+function loanCaseWords(payload) {
+  return normalize([
+    getValue(payload, "infinity.loansSecuritiesCommentary.loanPurpose"),
+    getValue(payload, "infinity.loansSecuritiesCommentary.opportunity"),
+    getValue(payload, "infinity.loansSecuritiesCommentary.opportunityName"),
+    getValue(payload, "loan.purpose"),
+    getValue(payload, "loan.loanPurpose"),
+    getValue(payload, "loan.applicationType"),
+    getValue(payload, "loan.opportunityName"),
+    getValue(payload, "property.purpose"),
+    getValue(payload, "property.occupancy")
+  ].filter(Boolean).join(" "));
+}
+
+function derivedNeedsAnalysisTemplate(payload) {
+  const text = loanCaseWords(payload);
+  const priorityText = normalize([
+    getValue(payload, "loan.loanScenario"),
+    getValue(payload, "loan.scenario"),
+    getValue(payload, "loan.loanType"),
+    getValue(payload, "loan.applicationType"),
+    getValue(payload, "loan.loanPurpose"),
+    getValue(payload, "loan.purpose"),
+    getValue(payload, "loan.occupancy"),
+    getValue(payload, "loan.occupancyType"),
+    getValue(payload, "property.purpose"),
+    getValue(payload, "property.occupancy"),
+    getValue(payload, "infinity.loansSecuritiesCommentary.loanPurpose"),
+    getValue(payload, "infinity.loansSecuritiesCommentary.opportunity"),
+    getValue(payload, "infinity.loansSecuritiesCommentary.opportunityName")
+  ].filter(Boolean).join(" "));
+  const refi = /\b(refi|refinance|refinancing)\b/.test(text);
+  const priorityOwnerOccupied = /\b(ooc|owner occupied|owner-occupied|owner occupied purchase|purchase owner occupied|live in|to live in|principal place|home to live)\b/.test(priorityText);
+  const priorityInvestment = /\b(inv|investment|investor|rental|purchase investment)\b/.test(priorityText);
+  let investment = /\b(inv|investment|investor|rental)\b/.test(text);
+  if (priorityOwnerOccupied) investment = false;
+  if (priorityInvestment && !priorityOwnerOccupied) investment = true;
+  const ownerOccupied = priorityOwnerOccupied || (/\b(ooc|owner occupied|owner-occupied|live in|principal place|home to live)\b/.test(text) && !investment) || (!investment && !refi);
+  const vacantLand = /vacant land|land only/.test(text);
+  const construction = /construct|construction|renovat/.test(text);
+  const debtConsolidation = /debt consolidation|consolidat/.test(text) || Boolean(getValue(payload, "loan.debtConsolidation"));
+  const cashOut = /cash[ -]?out|equity release|release equity/.test(text) || Boolean(getValue(payload, "loan.cashOut"));
+  const product = normalize(firstPresent(
+    getValue(payload, "loan.productPreference"),
+    getValue(payload, "infinity.loansSecuritiesCommentary.product"),
+    getValue(payload, "aol.loans.product")
+  ) || "");
+  const repayment = normalize(firstPresent(
+    getValue(payload, "loan.repaymentType"),
+    getValue(payload, "aol.loans.repaymentType")
+  ) || "");
+  const frequency = normalize(firstPresent(
+    getValue(payload, "loan.repaymentFrequency"),
+    getValue(payload, "aol.loans.repaymentFrequency")
+  ) || "");
+  const who = infinityApplicantRows(payload).length > 1 ? "Clients are" : "Client is";
+  let loanObjectiveExplanation = `${who} seeking finance to purchase an owner-occupied property to live in.`;
+  if (investment) loanObjectiveExplanation = `${who} seeking finance to purchase an investment property for investment purposes.`;
+  if (refi) loanObjectiveExplanation = `${who} seeking finance to refinance the existing home loan${cashOut ? " and access equity/cash out for the stated purpose" : ""}.`;
+  if (construction && ownerOccupied) loanObjectiveExplanation = `${who} seeking finance to construct or renovate an owner-occupied dwelling.`;
+  if (construction && investment) loanObjectiveExplanation = `${who} seeking finance to construct or renovate an investment property.`;
+  if (vacantLand) loanObjectiveExplanation = `${who} seeking finance to purchase vacant land.`;
+
+  return {
+    infinity: {
+      needsAnalysis: {
+        dateCreditGuideProvided: firstPresent(
+          getValue(payload, "infinity.needsAnalysis.dateCreditGuideProvided"),
+          getValue(payload, "factFind.dateCreditGuideProvided"),
+          getValue(payload, "loan.dateCreditGuideProvided"),
+          getValue(payload, "createdAt"),
+          todayAuDate()
+        ),
+        dateInterviewConducted: firstPresent(
+          getValue(payload, "infinity.needsAnalysis.dateInterviewConducted"),
+          getValue(payload, "factFind.dateInterviewConducted"),
+          getValue(payload, "loan.dateInterviewConducted"),
+          getValue(payload, "interviewDate"),
+          getValue(payload, "createdAt"),
+          todayAuDate()
+        ),
+        methodClientInterview: firstPresent(getValue(payload, "infinity.needsAnalysis.methodClientInterview"), getValue(payload, "factFind.methodClientInterview"), "Face to Face"),
+        methodDocumentIdentification: "VOI",
+        facilityAmount: firstPresent(getValue(payload, "infinity.needsAnalysis.facilityAmount"), getValue(payload, "loan.loanAmount"), getValue(payload, "loan.amount")),
+        estimatedSettlementDate: firstPresent(
+          getValue(payload, "infinity.needsAnalysis.estimatedSettlementDate"),
+          getValue(payload, "loan.estimatedSettlementDate"),
+          getValue(payload, "loan.settlementDate"),
+          getValue(payload, "property.settlementDate"),
+          getValue(payload, "aol.loans.estimatedSettlementDate"),
+          futureAuDate(getValue(payload, "loan.preApproval") === true || /pre[- ]?approval/.test(text) ? 90 : 45)
+        ),
+        selectedApplicants: collectionAt(payload, "infinity.needsAnalysis.selectedApplicants").length
+          ? collectionAt(payload, "infinity.needsAnalysis.selectedApplicants")
+          : infinityApplicantRows(payload).map(fullApplicantName).filter(Boolean),
+        objectives: {
+          bridging: Boolean(getValue(payload, "loan.bridging")),
+          constructRenovateOwnerOccupiedDwelling: construction && ownerOccupied,
+          constructRenovateInvestmentProperty: construction && investment,
+          debtConsolidation,
+          purchaseInvestmentProperty: investment && !refi && !construction && !vacantLand,
+          purchaseOwnerOccupiedDwelling: ownerOccupied && !refi && !construction && !vacantLand,
+          purchaseVacantLand: vacantLand,
+          refinance: refi,
+          reverseMortgage: /reverse mortgage/.test(text),
+          otherPurpose: cashOut && refi,
+          consumerConstruction: false,
+          leisurePurchase: /leisure|holiday|travel/.test(text),
+          medicalPurchase: /medical/.test(text),
+          vehiclePurchase: /vehicle|car/.test(text),
+          consumerOtherPurpose: cashOut && !refi
+        },
+        requirements: {
+          bridgingFinance: Boolean(getValue(payload, "loan.bridging")),
+          extraRepayments: getValue(payload, "loan.extraRepayments") !== false,
+          lineOfCredit: Boolean(getValue(payload, "loan.lineOfCredit")),
+          nonConformingLoan: Boolean(getValue(payload, "loan.nonConformingLoan")),
+          offset: getValue(payload, "loan.offsetRequested") !== false,
+          rateLock: Boolean(getValue(payload, "loan.rateLock")),
+          redraw: getValue(payload, "loan.redrawRequested") !== false,
+          reverseMortgage: /reverse mortgage/.test(text),
+          otherRequirements: Boolean(getValue(payload, "loan.otherRequirements")),
+          noEarlyRepaymentPenalty: Boolean(getValue(payload, "loan.noEarlyRepaymentPenalty")),
+          fixedRate: /fixed/.test(product) && !/variable/.test(product),
+          variableRate: /variable/.test(product) || !/fixed/.test(product),
+          fixedVariableRate: /fixed.*variable|variable.*fixed/.test(product),
+          interestOnly: /interest only/.test(repayment),
+          balloonRepayments: /balloon/.test(repayment),
+          principalAndInterest: !/interest only|balloon/.test(repayment),
+          weeklyRepayments: /weekly/.test(frequency),
+          fortnightlyRepayments: /fortnight/.test(frequency),
+          monthlyRepayments: !/weekly|fortnight/.test(frequency)
+        },
+        loanObjectiveExplanation,
+        isRefinanceApplication: refi
+      }
+    }
+  };
+}
+
+function needsAnalysisFieldValue(payload, field) {
+  const derived = fieldValue(derivedNeedsAnalysisTemplate(payload), field);
+  const labelText = normalize(field.label || "");
+  if (/methodDocumentIdentification/i.test(field.payloadPath || "") || labelText.includes("method of document identification")) {
+    return "VOI";
+  }
+  if (labelText.includes("loan objective explanation")) {
+    return derived || fieldValue(payload, field);
+  }
+  if (/^infinity\.needsAnalysis\.(objectives|requirements|isRefinanceApplication)\b/.test(field.payloadPath || "") && derived !== undefined && derived !== null && derived !== "") {
+    return derived;
+  }
+  const existing = fieldValue(payload, field);
+  if (existing !== undefined && existing !== null && existing !== "") return existing;
+  return derived;
 }
 
 function isLoansProductsArea() {
   return isInfinityLoansSummaryPage() || isInfinitySocaPage() || pageHasAnyText([
-    "Loans & Products",
     "Create Application",
     "Best Interest Duty",
     "Needs Analysis",
+    "Loan Requirements",
+    "Loan Objectives",
     "Loans, Securities & Commentary",
     "Preferred Loan Features/Scenarios",
+    "Recommendation",
     "Commissions/Conflict of Interest"
   ]);
 }
@@ -5507,19 +5795,144 @@ function isNeedsAnalysisVisible() {
   return pageHasAnyText(["Needs Analysis", "Loan Requirements", "Loan Objectives", "Select Applicant"]);
 }
 
+function socaTabContentVisible(sectionId) {
+  const labelsBySection = {
+    needsAnalysis: ["Select Applicant", "Loan Objectives", "Loan Requirements"],
+    loansSecuritiesCommentary: ["Circumstances, Objectives and Priorities", "Financial Awareness & Practices"],
+    preferredLoanFeatures: ["Priority 1 Loan Feature", "Loan Scenario Comparison"],
+    recommendation: ["Recommendations", "Loan Structure", "Goals & Objectives"],
+    commissionsConflict: ["Comments on Commissions/Conflicts of Interest", "Other fees", "Referrer Type"]
+  };
+  const labels = labelsBySection[sectionId] || [];
+  return labels.some((label) => Boolean(findTextNode([label], document)));
+}
+
+async function openAndVerifySocaTab(tabLabel, sectionId, result) {
+  if (socaTabContentVisible(sectionId)) return true;
+  const opened = await clickSubTab(tabLabel, result);
+  if (opened) await waitForAngularSettle();
+  const visible = await waitFor(() => socaTabContentVisible(sectionId), { timeout: 4500, interval: 150 }).catch(() => false);
+  if (!visible) {
+    recordVerificationFailure(result, sectionId, tabLabel, "SOCA tab could not be verified after click; stopped before filling", {
+      visibleText: pageTextWithoutEasyFlowOverlay().slice(0, 1200)
+    });
+  }
+  return Boolean(visible);
+}
+
+function checkboxStateByLabel(label) {
+  const wanted = normalize(label);
+  const exactNodes = allTextNodes()
+    .filter((node) => normalize(node.textContent) === wanted)
+    .sort((a, b) => (a.tagName === "LABEL" ? 0 : 1) - (b.tagName === "LABEL" ? 0 : 1) || normalize(a.textContent).length - normalize(b.textContent).length);
+  const node = exactNodes[0] || findTextNode([label]);
+  if (!node) return null;
+  const direct = directControlForLabel(node, true);
+  if (direct) return isToggleChecked(direct);
+  let container = node.closest("label") || node.parentElement;
+  for (let depth = 0; depth < 6 && container; depth += 1) {
+    const input = [...container.querySelectorAll("input[type='checkbox'], input[type='radio'], [role='checkbox'], [role='switch'], [aria-checked], .bootstrap-switch, .switch, .toggle")]
+      .filter(isVisible)
+      .find((item) => {
+        const text = visibleText(item);
+        return item.type === "checkbox" || item.type === "radio" || item.hasAttribute("aria-checked") || item.getAttribute("role") === "checkbox" || item.getAttribute("role") === "switch" || !text || text.includes(wanted);
+      });
+    if (input) return isToggleChecked(input);
+    container = container.parentElement;
+  }
+  const labelRect = node.getBoundingClientRect();
+  const nearControl = [...document.querySelectorAll("input[type='checkbox'], input[type='radio'], [role='checkbox'], [role='switch'], [aria-checked], .bootstrap-switch, .switch, .toggle")]
+    .filter(isVisible)
+    .filter((control) => !isEasyFlowOverlayElement(control))
+    .map((control) => ({ control, rect: control.getBoundingClientRect() }))
+    .filter(({ rect }) => Math.abs((rect.top + rect.height / 2) - (labelRect.top + labelRect.height / 2)) < 32)
+    .filter(({ rect }) => rect.right <= labelRect.left + 16 || rect.left <= labelRect.right + 240)
+    .sort((a, b) => Math.abs(a.rect.left - labelRect.left) - Math.abs(b.rect.left - labelRect.left))[0]?.control;
+  if (nearControl) return isToggleChecked(nearControl);
+  const found = findByLabelText([label], true, document);
+  if (found?.element) return isToggleChecked(found.element);
+  return null;
+}
+
+function expectedNeedsAnalysisApplicants(payload) {
+  const explicit = collectionAt(payload, "infinity.needsAnalysis.selectedApplicants").map(String).filter(Boolean);
+  return explicit.length ? explicit : infinityApplicantRows(payload).map(fullApplicantName).filter(Boolean);
+}
+
+function verifyNeedsAnalysisScreen(payload, result) {
+  const failures = [];
+  const applicants = expectedNeedsAnalysisApplicants(payload);
+  for (const applicant of applicants) {
+    if (checkboxStateByLabel(applicant) !== true) failures.push({ label: applicant, expected: "selected", actual: checkboxStateByLabel(applicant) });
+  }
+  const requiredTextFields = [
+    ["Date Interview was Conducted", needsAnalysisFieldValue(payload, { payloadPath: "infinity.needsAnalysis.dateInterviewConducted", label: "Date Interview was Conducted" })],
+    ["Estimated Settlement Date", needsAnalysisFieldValue(payload, { payloadPath: "infinity.needsAnalysis.estimatedSettlementDate", label: "Estimated Settlement Date" })],
+    ["Method of Client Interview", "Face to Face"],
+    ["Method of Document Identification", "VOI"]
+  ];
+  for (const [label, expected] of requiredTextFields) {
+    const actual = readDisplayByLabel(label, document);
+    if (expected && !valuesMatch(expected, actual)) {
+      if (label === "Method of Document Identification" && normalize(actual).includes("face to face")) {
+        failures.push({ label, expected, actual });
+      } else if (!actual) {
+        failures.push({ label, expected, actual });
+      }
+    }
+  }
+  const expectedTemplate = derivedNeedsAnalysisTemplate(payload).infinity.needsAnalysis;
+  const expectedObjectives = expectedTemplate.objectives || {};
+  const objectivePairs = [
+    ["Purchase Owner Occupied Dwelling", expectedObjectives.purchaseOwnerOccupiedDwelling],
+    ["Purchase Investment Property", expectedObjectives.purchaseInvestmentProperty],
+    ["Refinance", expectedObjectives.refinance],
+    ["Other Purpose", expectedObjectives.otherPurpose]
+  ];
+  for (const [label, expected] of objectivePairs) {
+    const actual = checkboxStateByLabel(label);
+    if (expected === true && actual !== true) failures.push({ label, expected: "selected", actual });
+    if (expected === false && actual === true) failures.push({ label, expected: "clear", actual: "selected" });
+  }
+  const requirementPairs = [
+    ["Offset", expectedTemplate.requirements.offset],
+    ["Redraw", expectedTemplate.requirements.redraw],
+    ["Variable Rate", expectedTemplate.requirements.variableRate],
+    ["P & I Repayments", expectedTemplate.requirements.principalAndInterest],
+    ["Monthly Repayments", expectedTemplate.requirements.monthlyRepayments]
+  ];
+  for (const [label, expected] of requirementPairs) {
+    const actual = checkboxStateByLabel(label);
+    if (expected === true && actual !== true) failures.push({ label, expected: "selected", actual });
+  }
+  const explanation = readDisplayByLabel("Loan Objective Explanation", document);
+  if (expectedObjectives.purchaseOwnerOccupiedDwelling && /investment property/i.test(explanation || "")) {
+    failures.push({ label: "Loan Objective Explanation", expected: "owner occupied wording", actual: explanation });
+  }
+  if (failures.length) {
+    recordVerificationFailure(result, "needsAnalysis", "Needs Analysis", "Needs Analysis did not verify; stopped before Save/Next", { failures });
+    return false;
+  }
+  result.actions.push({ action: "verify-needs-analysis", section: "needsAnalysis", label: "Needs Analysis verified before Save/Next" });
+  return true;
+}
+
 async function fillNeedsAnalysisField(field, payload, result) {
-  const value = fieldValue(payload, field);
+  const value = needsAnalysisFieldValue(payload, field);
   if (value === undefined || value === null || value === "") {
     if (!field.optional) recordFieldSkipped(result, "needsAnalysis", field.label, "payload value missing");
     return false;
   }
   const meta = { section: "needsAnalysis", payloadPath: field.payloadPath };
   if (typeof value === "boolean") {
+    if (!value && /^infinity\.needsAnalysis\.(objectives|requirements|isRefinanceApplication)\b/.test(field.payloadPath || "")) {
+      return setCheckboxByLabel(field.label, false, result, meta);
+    }
     if (!value) {
       result.actions.push({ action: "skip-false-checkbox", section: "needsAnalysis", label: field.label });
       return true;
     }
-    return clickCheckboxByLabel(field.label, result, meta);
+    return setCheckboxByLabel(field.label, true, result, meta);
   }
   if (field.dateFormat === "au" || /date/i.test(field.label)) {
     return fillDateByLabel(field.label, value, document, result, meta);
@@ -5548,7 +5961,7 @@ async function fillNeedsAnalysis(payload, mapping, result) {
     await sleep(90);
   }
   result.actions.push({ action: "fill-needs-analysis", section: "needsAnalysis", filled: filledCount });
-  return filledCount > 0;
+  return filledCount > 0 && verifyNeedsAnalysisScreen(payload, result);
 }
 
 async function fillMappedSocaField(sectionId, field, payload, result) {
@@ -5605,18 +6018,31 @@ async function fillMappedSocaSection(sectionId, mapping, payload, result) {
   return filled > 0 || attempted > 0;
 }
 
-async function saveAndAdvanceSoca(sectionId, nextTabLabel, result) {
+async function saveAndAdvanceSoca(sectionId, nextTabLabel, result, nextSectionId) {
   if (!nextTabLabel) {
     result.actions.push({ action: "stop-before-client-forms", section: sectionId, label: "Client Forms intentionally left for broker review" });
     return true;
   }
+  const expectedSave = pageHasSaveControl();
   const saved = await clickPageSaveIfVisible();
   result.actions.push({ action: saved ? "save-soca-section" : "review-soca-section", section: sectionId, label: saved ? "Saved" : "No safe Save button visible" });
+  if (expectedSave && !saved) {
+    recordVerificationFailure(result, sectionId, "Save/Next", "Loans & Products tab had a save control but it could not be clicked safely; stopped before next tab");
+    return false;
+  }
   await waitForAngularSettle();
+  if (nextSectionId && socaTabContentVisible(nextSectionId)) {
+    result.actions.push({ action: "next-soca-section", section: sectionId, label: nextTabLabel, via: "save-next" });
+    return true;
+  }
   const clickedNext = await clickPageNextIfVisible();
   if (clickedNext) {
     result.actions.push({ action: "next-soca-section", section: sectionId, label: nextTabLabel });
     await waitForAngularSettle();
+    if (nextSectionId && !socaTabContentVisible(nextSectionId)) {
+      const opened = await clickSubTab(nextTabLabel, result);
+      if (opened) await waitForAngularSettle();
+    }
     return true;
   }
   const opened = await clickSubTab(nextTabLabel, result);
@@ -5654,25 +6080,34 @@ async function chooseRecommendedLender(payload, result) {
 async function runSocaTab(tabLabel, sectionId, mapping, payload, result, options = {}) {
   throwIfAutomationStopped();
   setAutomationProgress(options.progressIndex || 0, options.progressTotal || 1, `Loans & Products: ${tabLabel}`);
-  if (!pageHasAnyText([tabLabel])) {
-    await clickSubTab(tabLabel, result);
-    await waitForAngularSettle();
-  } else {
-    await clickSubTab(tabLabel, result);
-    await waitForAngularSettle();
-  }
+  const active = await openAndVerifySocaTab(tabLabel, sectionId, result);
+  if (!active) return false;
   if (options.beforeFill) await options.beforeFill();
   const beforeFilled = result.fieldsFilled.length;
-  const handled = await fillMappedSocaSection(sectionId, mapping, payload, result);
+  const handled = sectionId === "needsAnalysis"
+    ? await fillNeedsAnalysis(payload, mapping, result)
+    : await fillMappedSocaSection(sectionId, mapping, payload, result);
   const filled = result.fieldsFilled.length - beforeFilled;
-  if (!handled || filled === 0) {
+  if (!handled) {
+    const existingFailure = (result.verificationFailures || []).some((failure) => failure.section === sectionId);
+    if (!existingFailure) {
+      recordVerificationFailure(result, sectionId, tabLabel, filled > 0 ? "SOCA tab fields were filled but section verification failed" : "SOCA tab opened but no mapped fields were filled", {
+        visibleText: pageTextWithoutEasyFlowOverlay().slice(0, 1200)
+      });
+    }
+    return false;
+  }
+  if (filled === 0) {
     recordVerificationFailure(result, sectionId, tabLabel, "SOCA tab opened but no mapped fields were filled", {
       visibleText: pageTextWithoutEasyFlowOverlay().slice(0, 1200)
     });
     return false;
   }
   if (options.verify) await options.verify();
-  if (options.nextTab !== undefined) await saveAndAdvanceSoca(sectionId, options.nextTab, result);
+  if (options.nextTab !== undefined) {
+    const advanced = await saveAndAdvanceSoca(sectionId, options.nextTab, result, options.nextSection);
+    if (!advanced) return false;
+  }
   return true;
 }
 
@@ -5680,10 +6115,10 @@ async function runLoansProductsWorkflow(payload, mapping, apiBase, result) {
   ensureResultShape(result);
   if (!isLoansProductsArea()) return false;
   const socaSteps = [
-    { tab: "Needs Analysis", section: "needsAnalysis", nextTab: "Loans, Securities & Commentary", beforeFill: () => selectNeedsAnalysisApplicants(payload, result) },
-    { tab: "Loans, Securities & Commentary", section: "loansSecuritiesCommentary", nextTab: "Preferred Loan Features/Scenarios" },
-    { tab: "Preferred Loan Features/Scenarios", section: "preferredLoanFeatures", nextTab: "Recommendation" },
-    { tab: "Recommendation", section: "recommendation", nextTab: "Commissions/Conflict of Interest", beforeFill: () => chooseRecommendedLender(payload, result) },
+    { tab: "Needs Analysis", section: "needsAnalysis", nextTab: "Loans, Securities & Commentary", nextSection: "loansSecuritiesCommentary" },
+    { tab: "Loans, Securities & Commentary", section: "loansSecuritiesCommentary", nextTab: "Preferred Loan Features/Scenarios", nextSection: "preferredLoanFeatures" },
+    { tab: "Preferred Loan Features/Scenarios", section: "preferredLoanFeatures", nextTab: "Recommendation", nextSection: "recommendation" },
+    { tab: "Recommendation", section: "recommendation", nextTab: "Commissions/Conflict of Interest", nextSection: "commissionsConflict", beforeFill: () => chooseRecommendedLender(payload, result) },
     { tab: "Commissions/Conflict of Interest", section: "commissionsConflict", nextTab: null }
   ];
   setAutomationProgress(0, socaSteps.length, "Loans & Products: opening Needs Analysis");
@@ -5835,6 +6270,38 @@ function seriousIssueCount(result) {
   return (result.errors || []).length + (result.verificationFailures || []).length;
 }
 
+function infinityTransactionStepDefinitions() {
+  return [
+    { id: "clientDetails", labels: ["Client Details"], isVisible: isClientDetailsPage, run: runClientDetailsWorkflow, blockedAt: "Client Details" },
+    { id: "financials", labels: ["Financials"], isVisible: isInfinityFinancialsPage, run: runFinancialsWorkflow, blockedAt: "Financials" },
+    { id: "loansProducts", labels: ["Loans & Products", "Loans and Products"], isVisible: isLoansProductsArea, run: runLoansProductsWorkflow, blockedAt: "Loans & Products" }
+  ];
+}
+
+function initWorkflowSteps(result, platform, steps) {
+  ensureResultShape(result);
+  result.workflowSteps = steps.map((step, index) => ({
+    id: step.id,
+    label: step.blockedAt || step.labels?.[0] || step.id,
+    platform,
+    order: index + 1,
+    status: "pending",
+    canRetry: true
+  }));
+  return result.workflowSteps;
+}
+
+function updateWorkflowStep(result, stepId, patch) {
+  ensureResultShape(result);
+  let item = result.workflowSteps.find((step) => step.id === stepId);
+  if (!item) {
+    item = { id: stepId, label: stepId, status: "pending", canRetry: true };
+    result.workflowSteps.push(item);
+  }
+  Object.assign(item, patch);
+  return item;
+}
+
 async function openInfinityStep(step, isAlreadyVisible, result, pageIndex, totalSteps) {
   configureAutomationSegment((pageIndex / totalSteps) * 100, 100 / totalSteps);
   setAutomationProgress(0, 1, `Opening ${step.labels[0]}...`);
@@ -5851,35 +6318,109 @@ async function openInfinityStep(step, isAlreadyVisible, result, pageIndex, total
 }
 
 async function runInfinityTransactionPages({ payload, mapping, apiBase, result }) {
-  const steps = [
-    { id: "clientDetails", labels: ["Client Details"], isVisible: isClientDetailsPage, run: runClientDetailsWorkflow, blockedAt: "Client Details" },
-    { id: "financials", labels: ["Financials"], isVisible: isInfinityFinancialsPage, run: runFinancialsWorkflow, blockedAt: "Financials" },
-    { id: "loansProducts", labels: ["Loans & Products", "Loans and Products"], isVisible: isLoansProductsArea, run: runLoansProductsWorkflow, blockedAt: "Loans & Products" }
-  ];
+  const steps = infinityTransactionStepDefinitions();
+  initWorkflowSteps(result, "infinity", steps);
 
   for (const [index, step] of steps.entries()) {
     throwIfAutomationStopped();
+    updateWorkflowStep(result, step.id, { status: "running", message: `Opening ${step.blockedAt}` });
     const opened = await openInfinityStep(step, step.isVisible, result, index, steps.length);
     if (!opened) {
       result.status = "partial_failed";
       result.blockedAt = step.blockedAt;
       result.message = `${step.blockedAt} was not opened; later tabs were not started.`;
+      updateWorkflowStep(result, step.id, { status: "error", message: result.message });
       return result;
     }
     const beforeIssues = seriousIssueCount(result);
+    updateWorkflowStep(result, step.id, { status: "running", message: `Filling ${step.blockedAt}` });
     const ok = await step.run(payload, mapping, apiBase, result);
     const afterIssues = seriousIssueCount(result);
     if (!ok || afterIssues > beforeIssues) {
       result.status = "partial_failed";
       result.blockedAt = step.blockedAt;
       result.message = `${step.blockedAt} failed save/verification gate. Later tabs were not started.`;
+      updateWorkflowStep(result, step.id, { status: "error", message: result.message, issuesAdded: Math.max(0, afterIssues - beforeIssues) });
       showAutomationStatus(`${result.message}`, "error", { final: true, autoHideMs: 10000 });
       return result;
     }
+    updateWorkflowStep(result, step.id, { status: "done", message: `Completed ${step.blockedAt}` });
     setAutomationProgress(1, 1, `Completed ${step.labels[0]}`);
   }
 
   result.status = "success";
+  return result;
+}
+
+async function runInfinityStepById({ payload, mapping, apiBase, stepId }) {
+  resetAutomationRun(100);
+  const steps = infinityTransactionStepDefinitions();
+  const step = steps.find((item) => item.id === stepId || normalize(item.blockedAt) === normalize(stepId));
+  const result = ensureResultShape({
+    sectionId: "retry-step",
+    fieldsFilled: [],
+    fieldsSkipped: [],
+    errors: [],
+    actions: [],
+    verificationFailures: [],
+    pages: [],
+    platform: "infinity",
+    retryStepId: stepId
+  });
+  initWorkflowSteps(result, "infinity", steps);
+
+  if (!step) {
+    result.status = "failed";
+    result.blockedAt = stepId || "unknown";
+    result.message = `Unknown Infinity step: ${stepId || "blank"}`;
+    result.errors.push({ section: "retry", label: "Step", message: result.message });
+    await logAutofill(apiBase, payload, result);
+    return result;
+  }
+
+  try {
+    updateWorkflowStep(result, step.id, { status: "running", message: `Retrying ${step.blockedAt}` });
+    const opened = await openInfinityStep(step, step.isVisible, result, Math.max(0, steps.indexOf(step)), steps.length);
+    if (!opened) {
+      result.status = "partial_failed";
+      result.blockedAt = step.blockedAt;
+      result.message = `${step.blockedAt} was not opened during retry.`;
+      updateWorkflowStep(result, step.id, { status: "error", message: result.message });
+    } else {
+      const beforeIssues = seriousIssueCount(result);
+      const ok = await step.run(payload, mapping, apiBase, result);
+      const afterIssues = seriousIssueCount(result);
+      if (!ok || afterIssues > beforeIssues) {
+        result.status = "partial_failed";
+        result.blockedAt = step.blockedAt;
+        result.message = `${step.blockedAt} retry failed save/verification gate.`;
+        updateWorkflowStep(result, step.id, { status: "error", message: result.message, issuesAdded: Math.max(0, afterIssues - beforeIssues) });
+      } else {
+        result.status = "success";
+        result.message = `${step.blockedAt} retry completed.`;
+        updateWorkflowStep(result, step.id, { status: "done", message: result.message });
+      }
+    }
+  } catch (error) {
+    if (/stopped by user/i.test(error.message || "")) {
+      result.status = "stopped";
+      result.message = error.message;
+      updateWorkflowStep(result, step.id, { status: "error", message: error.message });
+    } else {
+      result.status = "failed";
+      result.blockedAt = step.blockedAt;
+      result.message = error.message || String(error);
+      result.errors.push({ section: step.id, label: step.blockedAt, message: result.message, stack: error.stack || "" });
+      updateWorkflowStep(result, step.id, { status: "error", message: result.message });
+    }
+  }
+
+  showAutomationStatus(result.message || "Step retry finished.", result.status === "success" ? "success" : "error", {
+    final: true,
+    progress: result.status === "success" ? 100 : undefined,
+    autoHideMs: 10000
+  });
+  await logAutofill(apiBase, payload, result);
   return result;
 }
 
@@ -6212,22 +6753,29 @@ async function runAolCurrentWorkflow(payload, mapping, apiBase, result) {
 
 async function runAolTransactionPages({ payload, mapping, apiBase, result }) {
   const steps = [
-    { id: "application", labels: ["Application"], run: runAolApplicationWorkflow },
-    { id: "applicants", labels: ["Applicants"], run: runAolApplicantsWorkflow },
-    { id: "loans", labels: ["Loans"], run: runAolLoansWorkflow },
-    { id: "securities", labels: ["Securities"], run: runAolSecuritiesWorkflow },
-    { id: "financials", labels: ["Financials"], run: runAolFinancialsWorkflow },
-    { id: "compliance", labels: ["Compliance"], run: runAolComplianceWorkflow }
+    { id: "application", labels: ["Application"], run: runAolApplicationWorkflow, blockedAt: "Application" },
+    { id: "applicants", labels: ["Applicants"], run: runAolApplicantsWorkflow, blockedAt: "Applicants" },
+    { id: "loans", labels: ["Loans"], run: runAolLoansWorkflow, blockedAt: "Loans" },
+    { id: "securities", labels: ["Securities"], run: runAolSecuritiesWorkflow, blockedAt: "Securities" },
+    { id: "financials", labels: ["Financials"], run: runAolFinancialsWorkflow, blockedAt: "Financials" },
+    { id: "compliance", labels: ["Compliance"], run: runAolComplianceWorkflow, blockedAt: "Compliance" }
   ];
+  initWorkflowSteps(result, "aol", steps);
   for (const [index, step] of steps.entries()) {
     throwIfAutomationStopped();
     const pageSpan = 100 / steps.length;
     configureAutomationSegment(index * pageSpan, pageSpan);
     setAutomationProgress(0, 1, `Opening AOL ${step.labels[0]}...`);
+    updateWorkflowStep(result, step.id, { status: "running", message: `Opening AOL ${step.labels[0]}` });
     const navigated = await aolClickNav(step.labels, result, step.id);
     result.pages.push({ id: step.id, labels: step.labels, navigated });
-    if (!navigated) continue;
-    await step.run(payload, mapping, apiBase, result);
+    if (!navigated) {
+      updateWorkflowStep(result, step.id, { status: "error", message: `AOL ${step.labels[0]} navigation failed` });
+      continue;
+    }
+    updateWorkflowStep(result, step.id, { status: "running", message: `Filling AOL ${step.labels[0]}` });
+    const ok = await step.run(payload, mapping, apiBase, result);
+    updateWorkflowStep(result, step.id, { status: ok === false ? "error" : "done", message: ok === false ? `AOL ${step.labels[0]} needs review` : `Completed AOL ${step.labels[0]}` });
     result.actions.push({ action: "aol-page-complete", section: step.id });
     setAutomationProgress(1, 1, `Completed AOL ${step.labels[0]}`);
   }
@@ -6259,7 +6807,7 @@ async function runAllPages({ payload, mapping, apiBase, targetPlatform = "auto" 
   if (platform === "infinity") {
     await runInfinityTransactionPages({ payload, mapping, apiBase, result });
     await logAutofill(apiBase, payload, result);
-    const issueCount = result.errors.length + result.fieldsSkipped.length + result.verificationFailures.length;
+    const issueCount = result.errors.length + result.verificationFailures.length;
     showAutomationStatus(
       issueCount
         ? `${result.message || `EasyFlow AI stopped with ${issueCount} item(s) to review.`}`
@@ -6577,7 +7125,7 @@ const easyflowRuntime =
   null;
 
 if (window.__easyflowDemoRuntime) {
-  window.__easyflowDemoApi = { autofill, runWorkflow, runAllPages, scanCompare, runDiagnostics };
+  window.__easyflowDemoApi = { autofill, runWorkflow, runAllPages, runInfinityStepById, scanCompare, runDiagnostics };
 }
 
 if (easyflowRuntime?.onMessage?.addListener) easyflowRuntime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -6614,6 +7162,24 @@ if (easyflowRuntime?.onMessage?.addListener) easyflowRuntime.onMessage.addListen
           verificationFailures: [],
           actions: [],
           pages: []
+        })
+      );
+    return true;
+  }
+
+  if (message.type === "INFINITY_AOL_RETRY_STEP") {
+    runInfinityStepById(message)
+      .then(sendResponse)
+      .catch((error) =>
+        sendResponse({
+          sectionId: "retry-step",
+          status: "failed",
+          fieldsFilled: [],
+          fieldsSkipped: [],
+          errors: [{ message: error.message, stack: error.stack || "" }],
+          verificationFailures: [],
+          actions: [],
+          workflowSteps: []
         })
       );
     return true;

@@ -873,6 +873,36 @@ const emptyCallNote = {
   preferredLanguage: "Vietnamese / English",
   sourceChannel: "",
   bestTimeToContact: "",
+  loanCategory: "Residential Home Loan",
+  loanAction: "Purchase",
+  occupancy: "Owner occupied",
+  scenarioTags: [],
+  borrowerType: "Individual",
+  securityType: "Residential property",
+  depositOrEquity: "",
+  existingLoanBalance: "",
+  loanUseDescription: "",
+  settlementDate: "",
+  commercialAction: "Purchase",
+  businessPurpose: "Working capital",
+  assetType: "Car",
+  assetCondition: "Used",
+  sellerType: "Dealer",
+  businessUsePercent: "",
+  privatePurpose: "Private mortgage",
+  propertyAddress: "",
+  estimatedValue: "",
+  rentalLeaseIncome: "",
+  leaseRemainingTerm: "",
+  businessName: "",
+  abnAcn: "",
+  tradingHistory: "",
+  monthlyTurnover: "",
+  gstRegistered: "No",
+  purposeOfFunds: "",
+  existingBusinessDebts: "",
+  exitStrategy: "",
+  urgency: "",
   loanType: "Home loan",
   loanPurpose: "Purchase owner occupied dwelling",
   loanAmount: "",
@@ -924,7 +954,59 @@ const redFlagOptions = [
   "Self-employed",
   "Visa/residency",
   "Credit issue",
-  "Urgent settlement"
+  "Urgent settlement",
+  "Complex structure",
+  "Commercial",
+  "Low doc"
+];
+
+const loanCategoryOptions = [
+  "Residential Home Loan",
+  "Commercial Property Loan",
+  "Business Finance",
+  "Asset / Car / Equipment Finance",
+  "Personal Loan",
+  "Private Lending / Specialist Lending",
+  "Not Sure / Need Broker Advice"
+];
+
+const residentialLoanActionOptions = [
+  "Purchase",
+  "Refinance",
+  "Pre-approval",
+  "Construction",
+  "Cash out / equity release",
+  "Debt consolidation"
+];
+
+const occupancyOptions = ["Owner occupied", "Investment"];
+const borrowerTypeOptions = ["Individual", "Company", "Trust", "SMSF", "Sole trader", "Partnership"];
+const securityTypeOptions = ["Residential property", "Commercial property", "Business asset", "Vehicle/equipment", "No security yet"];
+const commercialActionOptions = [
+  "Purchase",
+  "Refinance",
+  "Cash out / equity release",
+  "Lease doc",
+  "SMSF commercial",
+  "Owner occupied business premises",
+  "Commercial investment",
+  "Development / construction",
+  "Other"
+];
+const assetActionOptions = ["Purchase", "Refinance", "Upgrade / replacement", "Other"];
+const privatePurposeOptions = ["Private mortgage", "Bridging", "Urgent settlement", "Credit impaired", "Low doc", "Other"];
+const scenarioTagOptions = [
+  "First home buyer",
+  "Low deposit",
+  "LMI likely",
+  "Guarantor",
+  "Self-employed",
+  "Visa/residency",
+  "Credit issue",
+  "Urgent settlement",
+  "Complex structure",
+  "Commercial",
+  "Low doc"
 ];
 
 const homeLoanPurposeOptions = [
@@ -964,11 +1046,12 @@ function deriveLoanScenario(loanType = "", loanPurpose = "") {
   if (/first home|fhb/.test(text)) return "First home buyer";
   if (/pre-approval|pre approval/.test(text) && /invest/.test(text)) return "Pre-approval investment";
   if (/pre-approval|pre approval/.test(text)) return "Pre-approval owner occupied";
+  if (/refinance/.test(text) && /cash|equity|top.?up/.test(text)) return "Cash out";
+  if (/cash/.test(text)) return "Cash out";
   if (/refinance/.test(text) && /invest/.test(text)) return "Refinance investment";
   if (/refinance/.test(text)) return "Refinance owner occupied";
   if (/construction/.test(text)) return "Construction";
   if (/debt/.test(text)) return "Debt consolidation";
-  if (/cash/.test(text)) return "Cash out";
   if (/commercial/.test(text)) return "Commercial property";
   if (/business/.test(text)) return "Business loan";
   if (/car|vehicle/.test(text)) return "Car loan";
@@ -976,6 +1059,197 @@ function deriveLoanScenario(loanType = "", loanPurpose = "") {
   if (/invest/.test(text)) return "Investment purchase";
   if (/owner|occupied|home loan/.test(text)) return "Owner occupied purchase";
   return "";
+}
+
+function ensureArray(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === "string") return value.split(",").map((item) => item.trim()).filter(Boolean);
+  return [];
+}
+
+function defaultLoanActionForCategory(category) {
+  if (category === "Residential Home Loan") return "Purchase";
+  if (category === "Commercial Property Loan") return "Purchase";
+  if (category === "Business Finance") return "Working capital";
+  if (category === "Asset / Car / Equipment Finance") return "Purchase";
+  if (category === "Personal Loan") return "Debt consolidation";
+  if (category === "Private Lending / Specialist Lending") return "Private mortgage";
+  return "Broker advice";
+}
+
+function actionOptionsForCategory(category) {
+  if (category === "Residential Home Loan") return residentialLoanActionOptions;
+  if (category === "Commercial Property Loan") return commercialActionOptions;
+  if (category === "Business Finance") return businessPurposeOptions;
+  if (category === "Asset / Car / Equipment Finance") return assetActionOptions;
+  if (category === "Personal Loan") return personalPurposeOptions;
+  if (category === "Private Lending / Specialist Lending") return privatePurposeOptions;
+  return ["Broker advice"];
+}
+
+function inferCanonicalLoan(values = {}) {
+  const legacyText = [
+    values.loanCategory,
+    values.loanAction,
+    values.occupancy,
+    values.loanType,
+    values.loanPurpose,
+    values.loanScenario,
+    values.loanUseDescription
+  ].join(" ").toLowerCase();
+  let loanCategory = values.loanCategory || "";
+  if (!loanCategory) {
+    if (/commercial/.test(legacyText)) loanCategory = "Commercial Property Loan";
+    else if (/business|working capital|cash flow|tax debt/.test(legacyText)) loanCategory = "Business Finance";
+    else if (/car|vehicle|asset|equipment/.test(legacyText)) loanCategory = "Asset / Car / Equipment Finance";
+    else if (/private|bridging|specialist/.test(legacyText)) loanCategory = "Private Lending / Specialist Lending";
+    else if (/personal/.test(legacyText)) loanCategory = "Personal Loan";
+    else loanCategory = "Residential Home Loan";
+  }
+
+  let loanAction = values.loanAction || "";
+  if (!loanAction) {
+    if (/pre-approval|pre approval/.test(legacyText)) loanAction = "Pre-approval";
+    else if (/refinance/.test(legacyText)) loanAction = "Refinance";
+    else if (/cash|equity|top.?up/.test(legacyText)) loanAction = "Cash out / equity release";
+    else if (/debt/.test(legacyText)) loanAction = "Debt consolidation";
+    else if (/construction|renovat/.test(legacyText)) loanAction = "Construction";
+    else if (/purchase|buy/.test(legacyText)) loanAction = "Purchase";
+    else loanAction = defaultLoanActionForCategory(loanCategory);
+  }
+
+  let occupancy = values.occupancy || "";
+  if (!occupancy) occupancy = /invest|rental/.test(legacyText) ? "Investment" : "Owner occupied";
+
+  return { loanCategory, loanAction, occupancy };
+}
+
+function mapCanonicalLoan(values = {}) {
+  const inferred = inferCanonicalLoan(values);
+  const category = inferred.loanCategory;
+  const action = inferred.loanAction;
+  const occupancy = inferred.occupancy;
+  let loanType = values.loanType || "";
+  let loanPurpose = values.loanPurpose || "";
+  let loanScenario = values.loanScenario || "";
+
+  if (category === "Residential Home Loan") {
+    if (action === "Purchase") {
+      loanType = "Home loan";
+      loanPurpose = occupancy === "Investment" ? "Purchase investment property" : "Purchase owner occupied dwelling";
+      loanScenario = occupancy === "Investment" ? "Investment purchase" : "Owner occupied purchase";
+    } else if (action === "Pre-approval") {
+      loanType = "Home loan";
+      loanPurpose = occupancy === "Investment" ? "Pre-approval - investment" : "Pre-approval - owner occupied";
+      loanScenario = occupancy === "Investment" ? "Pre-approval investment" : "Pre-approval owner occupied";
+    } else if (action === "Refinance") {
+      loanType = "Refinance";
+      loanPurpose = "Refinance existing home loan";
+      loanScenario = occupancy === "Investment" ? "Refinance investment" : "Refinance owner occupied";
+    } else if (action === "Cash out / equity release") {
+      loanType = "Refinance";
+      loanPurpose = "Refinance and cash out";
+      loanScenario = "Cash out";
+    } else if (action === "Debt consolidation") {
+      loanType = "Refinance";
+      loanPurpose = "Personal loan - debt consolidation";
+      loanScenario = "Debt consolidation";
+    } else if (action === "Construction") {
+      loanType = "Home loan";
+      loanPurpose = "Construction";
+      loanScenario = "Construction";
+    }
+  } else if (category === "Commercial Property Loan") {
+    loanType = "Commercial loan";
+    loanPurpose = action === "Refinance" ? "Commercial refinance" : action === "Cash out / equity release" ? "Commercial cash out" : "Commercial property purchase";
+    loanScenario = "Commercial property";
+  } else if (category === "Business Finance") {
+    loanType = "Business loan";
+    loanPurpose = action || "Working capital";
+    loanScenario = "Business loan";
+  } else if (category === "Asset / Car / Equipment Finance") {
+    loanType = /car|vehicle/i.test(values.assetType || "") ? "Car loan" : "Business loan";
+    loanPurpose = /car|vehicle/i.test(values.assetType || "") ? "Car loan - purchase" : "Equipment purchase";
+    loanScenario = /car|vehicle/i.test(values.assetType || "") ? "Car loan" : "Business loan";
+  } else if (category === "Personal Loan") {
+    loanType = "Personal loan";
+    loanPurpose = action || "Personal loan - other";
+    loanScenario = action === "Debt consolidation" ? "Debt consolidation" : "Personal loan";
+  } else if (category === "Private Lending / Specialist Lending") {
+    loanType = "Private lending";
+    loanPurpose = action || values.privatePurpose || "Other purpose";
+    loanScenario = "Other";
+  }
+
+  loanScenario = loanScenario || deriveLoanScenario(loanType, loanPurpose) || values.loanScenario || "";
+  return { ...inferred, loanType, loanPurpose, loanScenario };
+}
+
+function normalizeCallNote(values = {}) {
+  const mapped = mapCanonicalLoan(values);
+  const scenarioTags = ensureArray(values.scenarioTags);
+  const depositOrEquity = values.depositOrEquity || values.depositEquity || "";
+  const depositEquity = values.depositEquity || values.depositOrEquity || "";
+  const estimatedValue = values.estimatedValue || values.propertyValue || "";
+  const propertyValue = values.propertyValue || values.estimatedValue || "";
+  return {
+    ...values,
+    ...mapped,
+    scenarioTags,
+    depositOrEquity,
+    depositEquity,
+    estimatedValue,
+    propertyValue
+  };
+}
+
+function dynamicMissingInfo(values = {}) {
+  const normalized = normalizeCallNote(values);
+  const missing = [];
+  if (!composeLegalName(normalized.firstName, "", normalized.surname, normalized.clientName).trim()) missing.push("client name");
+  if (!String(normalized.mobile || normalized.email || "").trim()) missing.push("mobile or email");
+  if (!normalized.loanCategory) missing.push("loan category");
+  if (normalized.loanCategory !== "Not Sure / Need Broker Advice" && !normalized.loanAction) missing.push("loan action");
+  if (normalized.loanCategory === "Residential Home Loan" && !normalized.occupancy) missing.push("occupancy");
+  if (["Residential Home Loan", "Commercial Property Loan", "Private Lending / Specialist Lending"].includes(normalized.loanCategory) && !String(normalized.propertyValue || normalized.estimatedValue || "").trim()) missing.push("property value");
+  if (!String(normalized.loanAmount || "").trim()) missing.push("loan amount");
+  return missing;
+}
+
+function callPathProfile(values = {}) {
+  const normalized = normalizeCallNote(values);
+  const category = normalized.loanCategory || "Residential Home Loan";
+  const action = normalized.loanAction || "";
+  const residential = category === "Residential Home Loan";
+  const commercial = category === "Commercial Property Loan";
+  const business = category === "Business Finance";
+  const asset = category === "Asset / Car / Equipment Finance";
+  const personal = category === "Personal Loan";
+  const specialist = category === "Private Lending / Specialist Lending";
+  const unsure = category === "Not Sure / Need Broker Advice";
+  const refinanceLike = /refinance|cash out|debt consolidation/i.test(action);
+  const purchaseLike = /purchase|pre-approval|construction|commercial investment|owner occupied business premises/i.test(action);
+  const securedProperty = residential || commercial || specialist;
+  return {
+    residential,
+    commercial,
+    business,
+    asset,
+    personal,
+    specialist,
+    unsure,
+    refinanceLike,
+    purchaseLike,
+    showOccupancy: residential,
+    showLoanAmount: !unsure,
+    showPropertyValue: securedProperty || refinanceLike,
+    showDepositEquity: residential && (purchaseLike || refinanceLike),
+    showExistingLoanBalance: refinanceLike || commercial,
+    showPropertyLocation: residential || commercial || specialist,
+    showTimeline: true,
+    showUseOfFunds: !unsure,
+    showScenarioTags: residential || commercial || specialist
+  };
 }
 
 function composeLegalName(firstName, middleName, surname, fallback = "") {
@@ -1378,6 +1652,57 @@ function currentLoanTypeKey(loanType = "") {
   return loanTypeKeys[loanType] || "homeLoan";
 }
 
+function loanScenarioKey(formOrType = {}, maybePurpose = "", maybeScenario = "") {
+  const input = typeof formOrType === "object" && formOrType !== null
+    ? formOrType
+    : { loanType: formOrType, loanPurpose: maybePurpose, loanScenario: maybeScenario };
+  const text = `${input.loanType || ""} ${input.loanPurpose || ""} ${input.loanScenario || ""}`.toLowerCase();
+  if (/commercial/.test(text)) return "commercial";
+  if (/business/.test(text)) return "business";
+  if (/car|vehicle/.test(text)) return "car";
+  if (/personal/.test(text)) return "personal";
+  if (/refinance/.test(text) && /cash|cash.?out|equity|top.?up/.test(text)) return "refinanceCashOut";
+  if (/cash.?out/.test(text)) return "refinanceCashOut";
+  if (/refinance/.test(text)) return /invest/.test(text) ? "refinanceInvestment" : "refinanceOoc";
+  if (/construction/.test(text)) return "construction";
+  if (/vacant land/.test(text)) return "vacantLand";
+  if (/pre-approval|pre approval/.test(text)) return /invest/.test(text) ? "preApprovalInvestment" : "preApprovalOoc";
+  if (/invest/.test(text)) return "investmentPurchase";
+  return "oocPurchase";
+}
+
+function dynamicLoanTypeKeyForScenario(form) {
+  const scenario = loanScenarioKey(form);
+  if (scenario === "commercial") return "commercialLoan";
+  if (scenario === "business") return "businessLoan";
+  if (scenario === "car") return "carLoan";
+  if (scenario === "personal") return "personalLoan";
+  if (scenario === "refinanceCashOut" || scenario === "refinanceInvestment" || scenario === "refinanceOoc") return "refinance";
+  return "homeLoan";
+}
+
+function scenarioUiProfile(form) {
+  const scenario = loanScenarioKey(form);
+  const purchase = ["oocPurchase", "investmentPurchase", "preApprovalOoc", "preApprovalInvestment", "construction", "vacantLand"].includes(scenario);
+  const refinance = ["refinanceCashOut", "refinanceInvestment", "refinanceOoc"].includes(scenario);
+  const propertyRelated = purchase || refinance || scenario === "commercial";
+  return {
+    scenario,
+    purchase,
+    refinance,
+    cashOut: scenario === "refinanceCashOut",
+    propertyRelated,
+    showPropertyType: propertyRelated && scenario !== "business" && scenario !== "personal" && scenario !== "car",
+    showPropertyLocation: propertyRelated,
+    showPropertyValue: propertyRelated,
+    showDepositEquity: purchase || refinance,
+    showFirstHomeBuyer: purchase && !/invest/i.test(`${form.loanPurpose || ""} ${form.loanScenario || ""}`),
+    showFeaturePrefs: propertyRelated || scenario === "commercial",
+    showTimeline: true,
+    showCreditIssue: true
+  };
+}
+
 const dynamicLoanFieldCatalog = [
   {
     section: "Home loan details",
@@ -1615,6 +1940,7 @@ const dynamicLoanFieldCatalog = [
     label_vi: "Số tiền rút equity",
     type: "money",
     required: (form) => /cash/i.test(form.loanPurpose || ""),
+    conditionalDisplay: (form) => loanScenarioKey(form) === "refinanceCashOut",
     loanTypes: ["refinance"],
     infinityField: "loan.cashOutAmount",
     aolField: "loans.cashOut.amount"
@@ -1626,6 +1952,7 @@ const dynamicLoanFieldCatalog = [
     label_vi: "Mục đích rút equity",
     type: "textarea",
     required: (form) => Number(form.cashOutAmount || 0) > 0 || /cash/i.test(form.loanPurpose || ""),
+    conditionalDisplay: (form) => loanScenarioKey(form) === "refinanceCashOut" || /cash/i.test(form.loanPurpose || ""),
     loanTypes: ["refinance", "commercialLoan"],
     infinityField: "loan.cashOutPurpose",
     aolField: "loans.cashOut.purpose"
@@ -2448,7 +2775,7 @@ const dynamicLoanFieldCatalog = [
 ];
 
 function activeDynamicFields(form) {
-  const typeKey = currentLoanTypeKey(form.loanType);
+  const typeKey = dynamicLoanTypeKeyForScenario(form);
   return dynamicLoanFieldCatalog.filter((field) => {
     if (!field.loanTypes.includes(typeKey)) return false;
     if (field.conditionalDisplay && !field.conditionalDisplay(form)) return false;
@@ -3080,7 +3407,28 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   const submissionDirty = selectedIntake && JSON.stringify(submissionEdit) !== JSON.stringify(savedSubmissionEdit);
 
   function updateField(field, value) {
-    setForm((current) => ({ ...current, [field]: value }));
+    setForm((current) => {
+      const next = { ...current, [field]: value };
+      if (field === "loanCategory") {
+        next.loanAction = defaultLoanActionForCategory(value);
+        if (value !== "Residential Home Loan") next.occupancy = "";
+      }
+      const loanFields = new Set([
+        "loanCategory",
+        "loanAction",
+        "occupancy",
+        "loanType",
+        "loanPurpose",
+        "loanScenario",
+        "depositEquity",
+        "depositOrEquity",
+        "propertyValue",
+        "estimatedValue",
+        "assetType",
+        "privatePurpose"
+      ]);
+      return loanFields.has(field) ? normalizeCallNote(next) : next;
+    });
   }
 
   function clearSecondApplicantFields(current) {
@@ -3142,8 +3490,9 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
 
   function loadNote(note) {
     setSelectedId(note.id);
-    setForm({ ...emptyCallNote, ...hydrateNameParts(note) });
-    setRedFlags(note.redFlags || []);
+    const normalized = normalizeCallNote({ ...emptyCallNote, ...hydrateNameParts(note) });
+    setForm(normalized);
+    setRedFlags(note.redFlags || normalized.scenarioTags || []);
     setMessage(`Loaded ${note.id}`);
   }
 
@@ -3171,11 +3520,23 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     setRedFlags((items) => (items.includes(flag) ? items.filter((item) => item !== flag) : [...items, flag]));
   }
 
+  function toggleScenarioTag(tag) {
+    setForm((current) => {
+      const currentTags = ensureArray(current.scenarioTags);
+      const scenarioTags = currentTags.includes(tag)
+        ? currentTags.filter((item) => item !== tag)
+        : [...currentTags, tag];
+      return normalizeCallNote({ ...current, scenarioTags });
+    });
+    setRedFlags((items) => (items.includes(tag) ? items.filter((item) => item !== tag) : [...items, tag]));
+  }
+
   function validateDraftCase() {
     const missing = [];
-    if (!composeLegalName(form.firstName, "", form.surname, form.clientName).trim()) missing.push("Client name");
-    if (!form.mobile.trim() && !form.email.trim()) missing.push("Mobile or email");
-    if (!form.loanType.trim()) missing.push("Loan type");
+    const normalized = normalizeCallNote(form);
+    if (!composeLegalName(normalized.firstName, "", normalized.surname, normalized.clientName).trim()) missing.push("Client name");
+    if (!String(normalized.mobile || "").trim() && !String(normalized.email || "").trim()) missing.push("Mobile or email");
+    if (!normalized.loanCategory.trim()) missing.push("Loan category");
     return missing;
   }
 
@@ -3184,19 +3545,22 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
     setError("");
     setMessage("");
     try {
-      const primaryNameParts = hydrateNameParts(form);
-      const primaryLegalName = composeLegalName(primaryNameParts.firstName, "", primaryNameParts.surname, form.clientName);
+      const normalizedForm = normalizeCallNote(form);
+      const primaryNameParts = hydrateNameParts(normalizedForm);
+      const primaryLegalName = composeLegalName(primaryNameParts.firstName, "", primaryNameParts.surname, normalizedForm.clientName);
       const secondaryLegalName = composeLegalName(
-        form.secondApplicantFirstName,
+        normalizedForm.secondApplicantFirstName,
         "",
-        form.secondApplicantSurname,
-        form.secondApplicantName
+        normalizedForm.secondApplicantSurname,
+        normalizedForm.secondApplicantName
       );
       const hasSecondApplicantForSave =
-        form.hasSecondApplicant === "Yes" ||
-        /married|defacto/i.test(form.maritalStatus || "");
+        normalizedForm.hasSecondApplicant === "Yes" ||
+        isFilled(normalizedForm.secondApplicantFirstName) ||
+        isFilled(normalizedForm.secondApplicantSurname) ||
+        isFilled(normalizedForm.secondApplicantName);
       const callPayload = {
-        ...form,
+        ...normalizedForm,
         firstName: primaryNameParts.firstName,
         middleName: "",
         surname: primaryNameParts.surname,
@@ -3231,8 +3595,8 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
         setMessage(`Call note saved: ${saved.id}. No Loan Form link was created yet.`);
       }
       setSelectedId(output.id);
-      setForm({ ...emptyCallNote, ...output });
-      setRedFlags(output.redFlags || []);
+      setForm(normalizeCallNote({ ...emptyCallNote, ...output }));
+      setRedFlags(output.redFlags || output.scenarioTags || []);
       await refreshNotes();
       if (canViewLoanSubmissions) await refreshIntakes();
     } catch (err) {
@@ -3571,7 +3935,13 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
 
   const callHasSecondApplicant =
     form.hasSecondApplicant === "Yes" ||
-    /married|defacto/i.test(form.maritalStatus || "");
+    isFilled(form.secondApplicantFirstName) ||
+    isFilled(form.secondApplicantSurname) ||
+    isFilled(form.secondApplicantName);
+  const normalizedCallForm = useMemo(() => normalizeCallNote(form), [form]);
+  const callPath = useMemo(() => callPathProfile(normalizedCallForm), [normalizedCallForm]);
+  const callMissingInfo = useMemo(() => dynamicMissingInfo(normalizedCallForm), [normalizedCallForm]);
+  const loanActionOptions = actionOptionsForCategory(normalizedCallForm.loanCategory);
 
   return (
     <main className={`notes-shell ${appThemeClass()} ${isLoanSubmissionsRoute ? "submissions-shell" : ""}`}>
@@ -3637,7 +4007,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
           {activePanel === "call" && <div className="actions call-actions">
             <button className="ghost-button quiet-action" type="button" onClick={() => {
               if ((form.clientName || form.mobile || form.email || form.quickNotes) && !window.confirm("Clear the current call intake? Unsaved changes will be lost.")) return;
-              setForm(emptyCallNote);
+              setForm(normalizeCallNote(emptyCallNote));
               setRedFlags([]);
               setSelectedId("");
               setMessage("");
@@ -3856,8 +4226,9 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
           <div className="info-banner compact call-workflow-guide">
             <strong>Call workflow:</strong> Save call note for quick phone records. Use Create Loan Form Link when the client should complete the full Loan Form. The linked case then appears in Loan Case Manager and EasyFlow AI.
           </div>
-          <section className="panel note-panel">
-            <div className="panel-title"><ClipboardList size={18} /><h2>Client & Loan</h2></div>
+          <section className="panel note-panel call-contact-panel">
+            <div className="panel-title"><ClipboardList size={18} /><h2>Call Contact</h2></div>
+            <p className="panel-helper inbox-helper">Only capture the client details needed to triage the call. Full fact-find stays in Loan Form.</p>
             <div className="note-form-grid">
               <label>First / given name(s)<input value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} placeholder="Main applicant" /></label>
               <label>Last name / surname<input value={form.surname} onChange={(event) => updateField("surname", event.target.value)} /></label>
@@ -3866,19 +4237,135 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
               <label>Email<input value={form.email} onChange={(event) => updateField("email", event.target.value)} /></label>
               <label>Language<select value={form.preferredLanguage} onChange={(event) => updateField("preferredLanguage", event.target.value)}><option>Vietnamese / English</option><option>English</option><option>Vietnamese</option></select></label>
               <label>Source<input value={form.sourceChannel} onChange={(event) => updateField("sourceChannel", event.target.value)} placeholder="Referral, Facebook, website" /></label>
-              <label>Loan type<select value={form.loanType} onChange={(event) => updateField("loanType", event.target.value)}>{callLoanTypeOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
-              <label>Loan purpose<select value={form.loanPurpose} onChange={(event) => updateField("loanPurpose", event.target.value)}>{callLoanPurposeOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
-              <label>Loan amount<input value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>
-              <label>Property value<input value={form.propertyValue} onChange={(event) => updateField("propertyValue", event.target.value)} /></label>
-              <label>Deposit/equity<input value={form.depositEquity} onChange={(event) => updateField("depositEquity", event.target.value)} /></label>
-              <label>Property/location<input value={form.propertyLocation} onChange={(event) => updateField("propertyLocation", event.target.value)} /></label>
-              <label>Timeline<input value={form.timeline} onChange={(event) => updateField("timeline", event.target.value)} placeholder="ASAP, 3 months, pre-approval" /></label>
+              <label className="wide-field">Quick call note<textarea value={form.quickNotes} onChange={(event) => updateField("quickNotes", event.target.value)} placeholder="What client said on the call" /></label>
             </div>
           </section>
 
-          <section className="panel note-panel call-key-details-panel">
-            <div className="panel-title"><ShieldCheck size={18} /><h2>Key Client Details</h2></div>
-            <p className="panel-helper">Capture these early if the call allows. They sync into Loan Form, Loan Case Manager, and EasyFlow AI.</p>
+          <section className="panel note-panel call-path-panel">
+            <div className="panel-title"><FileJson size={18} /><h2>Loan Path</h2></div>
+            <p className="panel-helper inbox-helper">Choose the main path first. The old loan type, purpose, and scenario are mapped automatically on save.</p>
+            <div className="note-form-grid">
+              <label className="wide-field">Loan category<select value={normalizedCallForm.loanCategory} onChange={(event) => updateField("loanCategory", event.target.value)}>{loanCategoryOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+              <label>Loan action<select value={normalizedCallForm.loanAction} onChange={(event) => updateField("loanAction", event.target.value)}>{loanActionOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+              {callPath.showOccupancy && (
+                <label>Occupancy<select value={normalizedCallForm.occupancy} onChange={(event) => updateField("occupancy", event.target.value)}>{occupancyOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+              )}
+              {callPath.showLoanAmount && <label>{callPath.asset ? "Amount required" : "Loan amount"}<input value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>}
+              {callPath.showPropertyValue && <label>{callPath.refinanceLike ? "Estimated property value" : "Property value"}<input value={form.propertyValue} onChange={(event) => updateField("propertyValue", event.target.value)} /></label>}
+              {callPath.showDepositEquity && <label>Deposit/equity<input value={normalizedCallForm.depositOrEquity} onChange={(event) => updateField("depositOrEquity", event.target.value)} /></label>}
+              {callPath.showExistingLoanBalance && (
+                <label>Existing loan balance<input value={form.existingLoanBalance} onChange={(event) => updateField("existingLoanBalance", event.target.value)} /></label>
+              )}
+              {callPath.showPropertyLocation && <label>Property suburb/state<input value={form.propertyLocation} onChange={(event) => updateField("propertyLocation", event.target.value)} /></label>}
+              {callPath.showTimeline && <label>Timeline<input value={form.timeline} onChange={(event) => updateField("timeline", event.target.value)} placeholder="ASAP, 3 months, pre-approval" /></label>}
+              {callPath.showUseOfFunds && <label className="wide-field">Use of funds / client objective<textarea value={form.loanUseDescription} onChange={(event) => updateField("loanUseDescription", event.target.value)} placeholder="Short plain-English reason for the loan" /></label>}
+            </div>
+
+            {normalizedCallForm.loanCategory === "Commercial Property Loan" && (
+              <div className="dynamic-loan-panel">
+                <div className="note-form-grid">
+                  <label>Borrower type<select value={form.borrowerType} onChange={(event) => updateField("borrowerType", event.target.value)}>{borrowerTypeOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                  <label>Security type<select value={form.securityType} onChange={(event) => updateField("securityType", event.target.value)}>{securityTypeOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                  <label>Property address<input value={form.propertyAddress} onChange={(event) => updateField("propertyAddress", event.target.value)} /></label>
+                  <label>Rental/lease income<input value={form.rentalLeaseIncome} onChange={(event) => updateField("rentalLeaseIncome", event.target.value)} /></label>
+                  <label>Lease remaining<input value={form.leaseRemainingTerm} onChange={(event) => updateField("leaseRemainingTerm", event.target.value)} /></label>
+                  <label>ABN/ACN/entity<input value={form.abnAcn} onChange={(event) => updateField("abnAcn", event.target.value)} /></label>
+                </div>
+              </div>
+            )}
+
+            {normalizedCallForm.loanCategory === "Business Finance" && (
+              <div className="dynamic-loan-panel">
+                <div className="note-form-grid">
+                  <label>Business name<input value={form.businessName} onChange={(event) => updateField("businessName", event.target.value)} /></label>
+                  <label>ABN/ACN<input value={form.abnAcn} onChange={(event) => updateField("abnAcn", event.target.value)} /></label>
+                  <label>Trading history<input value={form.tradingHistory} onChange={(event) => updateField("tradingHistory", event.target.value)} /></label>
+                  <label>Monthly turnover<input value={form.monthlyTurnover} onChange={(event) => updateField("monthlyTurnover", event.target.value)} /></label>
+                  <label>GST registered<select value={form.gstRegistered} onChange={(event) => updateField("gstRegistered", event.target.value)}>{yesNoOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                  <label>Existing business debts<input value={form.existingBusinessDebts} onChange={(event) => updateField("existingBusinessDebts", event.target.value)} /></label>
+                </div>
+              </div>
+            )}
+
+            {normalizedCallForm.loanCategory === "Asset / Car / Equipment Finance" && (
+              <div className="dynamic-loan-panel">
+                <div className="note-form-grid">
+                  <label>Asset type<input value={form.assetType} onChange={(event) => updateField("assetType", event.target.value)} placeholder="Car, truck, equipment" /></label>
+                  <label>New or used<select value={form.assetCondition} onChange={(event) => updateField("assetCondition", event.target.value)}><option>New</option><option>Used</option><option>Unknown</option></select></label>
+                  <label>Seller<select value={form.sellerType} onChange={(event) => updateField("sellerType", event.target.value)}><option>Dealer</option><option>Private seller</option><option>Not sure</option></select></label>
+                  <label>Business use %<input value={form.businessUsePercent} onChange={(event) => updateField("businessUsePercent", event.target.value)} /></label>
+                  <label>ABN if business use<input value={form.abnAcn} onChange={(event) => updateField("abnAcn", event.target.value)} /></label>
+                </div>
+              </div>
+            )}
+
+            {normalizedCallForm.loanCategory === "Private Lending / Specialist Lending" && (
+              <div className="dynamic-loan-panel">
+                <div className="note-form-grid">
+                  <label>Private purpose<select value={form.privatePurpose} onChange={(event) => updateField("privatePurpose", event.target.value)}>{privatePurposeOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                  <label>Security property<input value={form.propertyAddress} onChange={(event) => updateField("propertyAddress", event.target.value)} /></label>
+                  <label>Urgency / settlement date<input value={form.urgency} onChange={(event) => updateField("urgency", event.target.value)} /></label>
+                  <label className="wide-field">Exit strategy<textarea value={form.exitStrategy} onChange={(event) => updateField("exitStrategy", event.target.value)} placeholder="Sale, refinance, incoming funds, or other exit" /></label>
+                </div>
+              </div>
+            )}
+
+            {callPath.showScenarioTags && <div className="scenario-tag-row">
+              {scenarioTagOptions.map((tag) => (
+                <button className={ensureArray(normalizedCallForm.scenarioTags).includes(tag) ? "selected" : ""} key={tag} type="button" onClick={() => toggleScenarioTag(tag)}>
+                  {tag}
+                </button>
+              ))}
+            </div>}
+          </section>
+
+          <section className="panel note-panel note-text-panel">
+            <div className="panel-title"><FileJson size={18} /><h2>Broker Notes</h2></div>
+            <div className="note-text-grid">
+              <label>Broker assessment<textarea value={form.brokerAssessment} onChange={(event) => updateField("brokerAssessment", event.target.value)} placeholder="Serviceability, red flags, likely lender path" /></label>
+              <label>Next action<textarea value={form.nextAction} onChange={(event) => updateField("nextAction", event.target.value)} placeholder="Send intake link, collect payslips, book appointment" /></label>
+              <label>Internal note<textarea value={form.existingDebtsSummary} onChange={(event) => updateField("existingDebtsSummary", event.target.value)} placeholder="Debts, risk, document requests" /></label>
+            </div>
+          </section>
+
+          <section className="panel note-panel call-summary-panel">
+            <div className="panel-title"><ShieldCheck size={18} /><h2>Call Summary</h2></div>
+            <div className="call-summary-card">
+              <div><span>Client</span><strong>{composeLegalName(form.firstName, "", form.surname, form.clientName) || "Not set"}</strong></div>
+              <div><span>Mobile</span><strong>{form.mobile || "Not set"}</strong></div>
+              <div><span>Category</span><strong>{normalizedCallForm.loanCategory}</strong></div>
+              <div><span>Action</span><strong>{normalizedCallForm.loanAction}</strong></div>
+              <div><span>Scenario</span><strong>{normalizedCallForm.loanScenario || "Not mapped"}</strong></div>
+              <div><span>Amount</span><strong>{form.loanAmount || "Not set"}</strong></div>
+            </div>
+            {callMissingInfo.length ? (
+              <div className="call-missing-info">Missing before Loan Form: {callMissingInfo.join(", ")}</div>
+            ) : (
+              <div className="call-ready-info">Ready to create the Loan Form link.</div>
+            )}
+          </section>
+
+          <section className="panel note-panel">
+            <div className="panel-title"><ShieldCheck size={18} /><h2>Quick Triage</h2></div>
+            <p className="panel-helper">Only ask enough to decide the next action. The full fact-find belongs in the Loan Form.</p>
+            <div className="note-form-grid">
+              <label>Employment<select value={form.employmentType} onChange={(event) => updateField("employmentType", event.target.value)}><option>PAYG</option><option>Self-employed</option><option>Casual</option><option>Contractor</option><option>Unemployed</option></select></label>
+              <label>Rough income p.a.<input value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} placeholder="Rough income is OK" /></label>
+              <label>Living expense monthly<input value={form.hemMonthly} onChange={(event) => updateField("hemMonthly", event.target.value)} placeholder="Only if known" /></label>
+              <label>Savings/assets<input value={form.financialAssetBuffer} onChange={(event) => updateField("financialAssetBuffer", event.target.value)} /></label>
+              <label>Credit issue<select value={form.creditIssue} onChange={(event) => updateField("creditIssue", event.target.value)}><option>Unknown</option><option>No</option><option>Unsure</option><option>Yes</option></select></label>
+            </div>
+            <div className="red-flag-row">
+              {redFlagOptions.map((flag) => (
+                <button className={redFlags.includes(flag) ? "selected" : ""} key={flag} type="button" onClick={() => toggleRedFlag(flag)}>
+                  {flag}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <details className="panel note-panel call-key-details-panel optional-borrower-details">
+            <summary><ShieldCheck size={18} /><strong>Optional Borrower Details</strong><span>Open only if the client gives ID, address, income, or spouse details during the call.</span></summary>
             <div className="call-key-detail-groups">
               <div className="call-key-detail-group">
                 <div className="call-key-detail-heading">
@@ -3898,7 +4385,6 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                   <DateField label="Licence expiry" value={form.licenceExpiryDate} onChange={(value) => updateField("licenceExpiryDate", value)} />
                   <label>Licence state<select value={form.licenceState} onChange={(event) => updateField("licenceState", event.target.value)}><option value="">Please select</option>{licenceStateOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
                   <label>Licence class<input value={form.licenceClass} onChange={(event) => updateField("licenceClass", event.target.value)} placeholder="C" /></label>
-                  <label>Main income p.a.<input value={form.annualIncome} onChange={(event) => updateField("annualIncome", event.target.value)} placeholder="Rough income is OK" /></label>
                   <label>Employer<input value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>
                   <label>Occupation<input value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
                 </div>
@@ -3933,34 +4419,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                 </div>
               )}
             </div>
-          </section>
-
-          <section className="panel note-panel">
-            <div className="panel-title"><ShieldCheck size={18} /><h2>Fact Find Snapshot</h2></div>
-            <p className="panel-helper">Only ask enough to triage borrowing path. Full fact-find belongs in the Loan Form.</p>
-            <div className="note-form-grid">
-              <label>Employment<select value={form.employmentType} onChange={(event) => updateField("employmentType", event.target.value)}><option>PAYG</option><option>Self-employed</option><option>Casual</option><option>Contractor</option><option>Unemployed</option></select></label>
-              <label>Living expense monthly<input value={form.hemMonthly} onChange={(event) => updateField("hemMonthly", event.target.value)} placeholder="Only if known" /></label>
-              <label>Savings/assets<input value={form.financialAssetBuffer} onChange={(event) => updateField("financialAssetBuffer", event.target.value)} /></label>
-              <label>Credit issue<select value={form.creditIssue} onChange={(event) => updateField("creditIssue", event.target.value)}><option>Unknown</option><option>No</option><option>Unsure</option><option>Yes</option></select></label>
-            </div>
-            <div className="red-flag-row">
-              {redFlagOptions.map((flag) => (
-                <button className={redFlags.includes(flag) ? "selected" : ""} key={flag} type="button" onClick={() => toggleRedFlag(flag)}>
-                  {flag}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="panel note-panel note-text-panel">
-            <div className="panel-title"><FileJson size={18} /><h2>Broker Notes</h2></div>
-            <div className="note-text-grid">
-              <label>Quick notes<textarea value={form.quickNotes} onChange={(event) => updateField("quickNotes", event.target.value)} placeholder="What client said on call" /></label>
-              <label>Broker assessment<textarea value={form.brokerAssessment} onChange={(event) => updateField("brokerAssessment", event.target.value)} placeholder="Serviceability, red flags, likely lender path" /></label>
-              <label>Next action<textarea value={form.nextAction} onChange={(event) => updateField("nextAction", event.target.value)} placeholder="Send intake link, collect payslips, book appointment" /></label>
-            </div>
-          </section>
+          </details>
 
           <section className="panel note-panel recent-note-panel">
             <div className="panel-title"><History size={18} /><h2>Client Call Intake Data</h2></div>
@@ -4400,11 +4859,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
   const txt = clientFormCopy[language];
   const currentTitle = language === "vi" ? entry?.viTitle || txt.title : entry?.title || txt.title;
   const purposeOptions = purposeOptionsForLoanType(form.loanType);
-  const isCommercial = /commercial/i.test(`${form.loanPurpose} ${form.loanType}`);
-  const isBusiness = /business/i.test(`${form.loanPurpose} ${form.loanType}`);
-  const isVehicle = /car loan/i.test(form.loanType);
-  const isPersonal = /personal loan/i.test(form.loanType);
-  const isRefinance = /refinance/i.test(`${form.loanPurpose} ${form.loanType}`);
+  const loanProfile = scenarioUiProfile(form);
   const missingFields = buildClientLoanMissingFields(form, language);
   const missingFieldKeys = new Set(missingFields.map((field) => field.key));
   const missingFieldMap = new Map(missingFields.map((field) => [field.key, field.label]));
@@ -4600,7 +5055,12 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
             <select value={form.loanType} onChange={(event) => {
               const nextType = event.target.value;
               const nextPurpose = purposeOptionsForLoanType(nextType)[0] || "";
-              setForm((current) => ({ ...current, loanType: nextType, loanPurpose: nextPurpose }));
+              setForm((current) => ({
+                ...current,
+                loanType: nextType,
+                loanPurpose: nextPurpose,
+                loanScenario: deriveLoanScenario(nextType, nextPurpose)
+              }));
             }}>
               {loanTypeOptions.map((option) => <option key={option} value={option}>{optionText(option, language)}</option>)}
             </select>
@@ -4789,19 +5249,23 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
         <section>
           {sectionTitle(L("Loan Details"), ["loanPurpose", "loanAmount"])}
           <div className="client-intake-grid">
-            <SelectField fieldKey="loanPurpose" language={language} required label="Your loan purpose" value={form.loanPurpose} onChange={(value) => updateField("loanPurpose", value)} options={purposeOptions} {...fieldStatus("loanPurpose")} />
-            <label>{L("Type of property")}<input value={form.propertyType} onChange={(event) => updateField("propertyType", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
+            <SelectField fieldKey="loanPurpose" language={language} required label="Your loan purpose" value={form.loanPurpose} onChange={(value) => setForm((current) => ({
+              ...current,
+              loanPurpose: value,
+              loanScenario: deriveLoanScenario(current.loanType, value)
+            }))} options={purposeOptions} {...fieldStatus("loanPurpose")} />
+            {loanProfile.showPropertyType ? <label>{L("Type of property")}<input value={form.propertyType} onChange={(event) => updateField("propertyType", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label> : null}
             <label {...fieldAttrs("loanAmount")}>{L("How much would you like to borrow ($)")}<input required value={form.loanAmount} onChange={(event) => updateField("loanAmount", event.target.value)} placeholder="390000" /></label>
-            <label>{L("Location (intended postcode OR address)")}<input value={form.propertyLocation} onChange={(event) => updateField("propertyLocation", event.target.value)} /></label>
-            <label>{L("Estimated property value ($)")}<input value={form.propertyValue} onChange={(event) => updateField("propertyValue", event.target.value)} /><span className="field-help">{L("Leave blank if unsure.")}</span></label>
-            <label>{L("Deposit/equity")}<input value={form.depositEquity} onChange={(event) => updateField("depositEquity", event.target.value)} /></label>
-            <SelectField language={language} label="Are you first home buyer?" value={form.firstHomeBuyer} onChange={(value) => updateField("firstHomeBuyer", value)} options={yesNoOptions} />
-            <SelectField language={language} label="Would you like fixed interest rate for a certain period?" value={form.fixedRatePreference} onChange={(value) => updateField("fixedRatePreference", value)} options={yesNoAdviseOptions} />
-            <SelectField language={language} label="Would you like interest rate to be variable?" value={form.variableRatePreference} onChange={(value) => updateField("variableRatePreference", value)} options={yesNoAdviseOptions} />
-            <SelectField language={language} label="Would you like to consider a split home loan?" value={form.splitLoanPreference} onChange={(value) => updateField("splitLoanPreference", value)} options={yesNoAdviseOptions} />
+            {loanProfile.showPropertyLocation ? <label>{L("Location (intended postcode OR address)")}<input value={form.propertyLocation} onChange={(event) => updateField("propertyLocation", event.target.value)} /></label> : null}
+            {loanProfile.showPropertyValue ? <label>{L("Estimated property value ($)")}<input value={form.propertyValue} onChange={(event) => updateField("propertyValue", event.target.value)} /><span className="field-help">{L("Leave blank if unsure.")}</span></label> : null}
+            {loanProfile.showDepositEquity ? <label>{L("Deposit/equity")}<input value={form.depositEquity} onChange={(event) => updateField("depositEquity", event.target.value)} /></label> : null}
+            {loanProfile.showFirstHomeBuyer ? <SelectField language={language} label="Are you first home buyer?" value={form.firstHomeBuyer} onChange={(value) => updateField("firstHomeBuyer", value)} options={yesNoOptions} /> : null}
+            {loanProfile.showFeaturePrefs ? <SelectField language={language} label="Would you like fixed interest rate for a certain period?" value={form.fixedRatePreference} onChange={(value) => updateField("fixedRatePreference", value)} options={yesNoAdviseOptions} /> : null}
+            {loanProfile.showFeaturePrefs ? <SelectField language={language} label="Would you like interest rate to be variable?" value={form.variableRatePreference} onChange={(value) => updateField("variableRatePreference", value)} options={yesNoAdviseOptions} /> : null}
+            {loanProfile.showFeaturePrefs ? <SelectField language={language} label="Would you like to consider a split home loan?" value={form.splitLoanPreference} onChange={(value) => updateField("splitLoanPreference", value)} options={yesNoAdviseOptions} /> : null}
             <label>{L("Loan term")}<select value={form.loanTermYears} onChange={(event) => updateField("loanTermYears", event.target.value)}><option>30</option><option>25</option><option>40</option></select></label>
-            <label>{L("Timeline")}<input value={form.timeline} onChange={(event) => updateField("timeline", event.target.value)} placeholder="ASAP, 3 months, pre-approval" /></label>
-            <SelectField language={language} label="Credit issue" value={form.creditIssue} onChange={(value) => updateField("creditIssue", value)} options={["No", "Unsure", "Yes"]} />
+            {loanProfile.showTimeline ? <label>{L("Timeline")}<input value={form.timeline} onChange={(event) => updateField("timeline", event.target.value)} placeholder="ASAP, 3 months, pre-approval" /></label> : null}
+            {loanProfile.showCreditIssue ? <SelectField language={language} label="Credit issue" value={form.creditIssue} onChange={(value) => updateField("creditIssue", value)} options={["No", "Unsure", "Yes"]} /> : null}
           </div>
           <DynamicLoanSections form={form} language={language} onChange={updateField} />
           <label className="client-wide-field">{L("Existing debts / comments")}<textarea value={form.existingDebtsSummary} onChange={(event) => updateField("existingDebtsSummary", event.target.value)} /></label>

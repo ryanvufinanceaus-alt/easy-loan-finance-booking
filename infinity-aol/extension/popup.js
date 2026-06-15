@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.15";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.18";
 const REPORT_HISTORY_KEY = "easyflowReportHistory";
 const REPORT_HISTORY_LIMIT = 5;
 
@@ -136,6 +136,29 @@ function appendIssueRow(issue) {
   els.reviewRows.append(row);
 }
 
+function appendWorkflowStepRow(step) {
+  const failed = ["error", "failed", "partial_failed"].includes(String(step.status || "").toLowerCase());
+  const canRetry = failed && (step.platform || state.lastResult?.platform || "infinity") === "infinity";
+  const row = document.createElement(canRetry ? "button" : "div");
+  row.className = `review-row workflow-step ${failed ? "issue-link error" : ""}`;
+  if (canRetry) row.type = "button";
+
+  const strong = document.createElement("strong");
+  strong.textContent = `Step ${step.order || ""}: ${step.label || step.id}`.trim();
+  const span = document.createElement("span");
+  span.textContent = step.status || "pending";
+  const small = document.createElement("small");
+  small.textContent = canRetry
+    ? "Click to retry only this step"
+    : (step.message || "Ready");
+  row.append(strong, span, small);
+
+  if (canRetry) {
+    row.addEventListener("click", () => retryWorkflowStep(step).catch((error) => setStatus(error.message, "error")));
+  }
+  els.reviewRows.append(row);
+}
+
 function renderReview() {
   els.reviewRows.innerHTML = "";
   if (!state.prepared) return;
@@ -176,6 +199,10 @@ function renderReview() {
     row.className = "review-row";
     row.innerHTML = `<strong>${label}</strong><span>${value}</span>`;
     els.reviewRows.append(row);
+  }
+
+  if (state.lastResult?.workflowSteps?.length) {
+    for (const step of state.lastResult.workflowSteps) appendWorkflowStepRow(step);
   }
 
   const issues = [
@@ -417,6 +444,40 @@ async function startAutofill(targetPlatform = "auto") {
   }
 }
 
+async function retryWorkflowStep(step) {
+  if (!step?.id) throw new Error("No workflow step selected.");
+  if ((step.platform || state.lastResult?.platform || "infinity") !== "infinity") {
+    throw new Error("Step retry is currently available for Infinity steps only.");
+  }
+  try {
+    setStartButtonsDisabled(true);
+    setStatus(`Retrying ${step.label || step.id} only...`, "muted");
+    if (!state.prepared || !state.mapping) await loadPayload();
+
+    const apiBase = els.apiBase.value.replace(/\/$/, "");
+    const result = await sendToContent({
+      type: "INFINITY_AOL_RETRY_STEP",
+      stepId: step.id,
+      payload: state.prepared.payload,
+      mapping: state.mapping,
+      apiBase
+    });
+
+    state.lastResult = result;
+    state.lastDiagnostics = null;
+    persistReport("retry-step", result);
+    els.copyDiagnostics.disabled = false;
+    const issues = (result.errors?.length || 0) + (result.verificationFailures?.length || 0);
+    setStatus(
+      issues ? `${result.message || `${step.label || step.id} retry still needs review.`}` : `${step.label || step.id} retry finished.`,
+      issues ? "error" : "success"
+    );
+    renderReview();
+  } finally {
+    setStartButtonsDisabled(false);
+  }
+}
+
 function diagnosticReportText(report) {
   if (!report) return "";
   const lines = [
@@ -460,6 +521,8 @@ function autofillReportText(report) {
   for (const item of report.errors || []) lines.push(`- ${item.section || ""} > ${item.label || ""}: ${item.message || item.reason || ""} ${JSON.stringify(item)}`);
   lines.push("", "Verification failures:");
   for (const item of report.verificationFailures || []) lines.push(`- ${item.section || ""} > ${item.label || ""}: ${item.message || item.reason || ""} ${JSON.stringify(item)}`);
+  lines.push("", "Workflow steps:");
+  for (const item of report.workflowSteps || []) lines.push(`- ${item.order || ""}. ${item.label || item.id}: ${item.status || ""} ${item.message || ""}`);
   lines.push("", "Common Infinity/AOL comparison:");
   for (const row of report.comparisonRows || []) lines.push(`- ${row.status}: ${row.label} | Infinity=${row.infinity ?? ""} | AOL=${row.aol ?? ""}`);
   lines.push("", "Skipped:");

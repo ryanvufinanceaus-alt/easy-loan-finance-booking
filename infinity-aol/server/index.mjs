@@ -1001,9 +1001,22 @@ function loanTypeKey(loanType = "") {
   return "homeLoan";
 }
 
+function loanScenarioKey(submission = {}) {
+  const text = `${submission.loanType || ""} ${submission.loanPurpose || ""} ${submission.loanScenario || ""}`.toLowerCase();
+  if (/commercial/.test(text)) return "commercialLoan";
+  if (/business/.test(text)) return "businessLoan";
+  if (/car|vehicle/.test(text)) return "carLoan";
+  if (/personal/.test(text)) return "personalLoan";
+  if (/refinance/.test(text) && /cash|cash.?out|equity|top.?up/.test(text)) return "refinanceCashOut";
+  if (/cash.?out/.test(text)) return "refinanceCashOut";
+  if (/refinance/.test(text)) return "refinance";
+  return loanTypeKey(submission.loanType);
+}
+
 const requiredByLoanType = {
   homeLoan: ["propertyFoundStatus", "sourceOfDeposit", "contractStatus", "propertyUsage"],
   refinance: ["currentLender", "currentLoanBalance", "currentInterestRate", "currentRepayment", "currentLoanRepaymentType", "currentRateType", "propertyEstimatedValue", "arrearsHistory"],
+  refinanceCashOut: ["currentLender", "currentLoanBalance", "currentInterestRate", "currentRepayment", "currentLoanRepaymentType", "currentRateType", "propertyEstimatedValue", "arrearsHistory", "cashOutAmount", "cashOutPurpose"],
   commercialLoan: ["borrowerEntity", "abnAcn", "companyTrustDirectorsGuarantors", "commercialPropertyAddress", "commercialPropertyType", "commercialPurchasePrice", "commercialOccupancy", "commercialIncomeEvidence", "commercialFinancialsAvailable"],
   businessLoan: ["businessLegalName", "businessTradingName", "abnAcn", "entityType", "gstRegistered", "abnStartDate", "industry", "businessAddress", "businessOwnersDirectors", "businessLoanPurpose", "businessLoanAmount", "businessLoanTerm", "businessSecurityType", "monthlyTurnover", "annualBusinessTurnover", "netProfitBeforeTax", "bankStatementsAvailable", "basAvailable", "taxReturnsAvailable"],
   carLoan: ["vehicleUse", "vehicleApplicantType", "vehicleCondition", "vehicleMake", "vehicleModel", "vehicleYear", "vehiclePrice", "saleType", "insuranceStatus"],
@@ -1102,6 +1115,7 @@ function valuePresent(value) {
 }
 
 function buildValidationStatus(submission) {
+  const scenarioKey = loanScenarioKey(submission);
   const required = [
     "firstName",
     "surname",
@@ -1120,7 +1134,7 @@ function buildValidationStatus(submission) {
     "annualIncome",
     "generalExpenses",
     ...(submission.hasSecondApplicant === "Yes" || /married|defacto/i.test(submission.maritalStatus || "") ? ["secondApplicantFirstName", "secondApplicantSurname", "secondApplicantDateOfBirth", "secondAnnualIncome"] : []),
-    ...(requiredByLoanType[loanTypeKey(submission.loanType)] || [])
+    ...(requiredByLoanType[scenarioKey] || [])
   ];
   if (!/unemployed|retired/i.test(submission.employmentType || "")) required.push("employerName", "employmentFromDate");
   if (submission.contractStatus === "Auction") required.push("auctionDate");
@@ -2073,8 +2087,39 @@ app.post("/api/call-notes", (request, response) => {
     preferredLanguage: request.body?.preferredLanguage || "Vietnamese / English",
     sourceChannel: request.body?.sourceChannel || "",
     bestTimeToContact: request.body?.bestTimeToContact || "",
+    loanCategory: request.body?.loanCategory || "",
+    loanAction: request.body?.loanAction || "",
+    occupancy: request.body?.occupancy || "",
+    scenarioTags: Array.isArray(request.body?.scenarioTags) ? request.body.scenarioTags : [],
+    borrowerType: request.body?.borrowerType || "",
+    securityType: request.body?.securityType || "",
+    depositOrEquity: request.body?.depositOrEquity || request.body?.depositEquity || "",
+    existingLoanBalance: Number(request.body?.existingLoanBalance || 0),
+    loanUseDescription: request.body?.loanUseDescription || "",
+    settlementDate: normalizeAuDate(request.body?.settlementDate || ""),
+    commercialAction: request.body?.commercialAction || "",
+    businessPurpose: request.body?.businessPurpose || "",
+    assetType: request.body?.assetType || "",
+    assetCondition: request.body?.assetCondition || "",
+    sellerType: request.body?.sellerType || "",
+    businessUsePercent: request.body?.businessUsePercent || "",
+    privatePurpose: request.body?.privatePurpose || "",
+    propertyAddress: request.body?.propertyAddress || "",
+    estimatedValue: Number(request.body?.estimatedValue || 0),
+    rentalLeaseIncome: Number(request.body?.rentalLeaseIncome || 0),
+    leaseRemainingTerm: request.body?.leaseRemainingTerm || "",
+    businessName: request.body?.businessName || "",
+    abnAcn: request.body?.abnAcn || "",
+    tradingHistory: request.body?.tradingHistory || "",
+    monthlyTurnover: Number(request.body?.monthlyTurnover || 0),
+    gstRegistered: request.body?.gstRegistered || "",
+    purposeOfFunds: request.body?.purposeOfFunds || "",
+    existingBusinessDebts: request.body?.existingBusinessDebts || "",
+    exitStrategy: request.body?.exitStrategy || "",
+    urgency: request.body?.urgency || "",
     loanType: request.body?.loanType || "Purchase",
     loanPurpose: request.body?.loanPurpose || "",
+    loanScenario: request.body?.loanScenario || "",
     loanAmount: Number(request.body?.loanAmount || 0),
     propertyValue: Number(request.body?.propertyValue || 0),
     depositEquity: Number(request.body?.depositEquity || 0),
@@ -2650,6 +2695,10 @@ app.use((error, _request, response, _next) => {
 });
 
 if (fs.existsSync(distPath)) {
+  app.use("/infinity-aol", express.static(distPath));
+  app.get(/^\/infinity-aol\/(?!api).*/, (_request, response) => {
+    response.sendFile(path.join(distPath, "index.html"));
+  });
   app.use(express.static(distPath));
   app.get(/^\/(?!api).*/, (_request, response) => {
     response.sendFile(path.join(distPath, "index.html"));

@@ -121,7 +121,8 @@
         { "payloadPath": "infinity.needsAnalysis.requirements.weeklyRepayments", "label": "Weekly Repayments", "labelContains": ["Weekly Repayments"], "optional": true },
         { "payloadPath": "infinity.needsAnalysis.requirements.fortnightlyRepayments", "label": "Fortnightly Repayments", "labelContains": ["Fortnightly Repayments"], "optional": true },
         { "payloadPath": "infinity.needsAnalysis.requirements.monthlyRepayments", "label": "Monthly Repayments", "labelContains": ["Monthly Repayments"], "optional": true },
-        { "payloadPath": "infinity.needsAnalysis.loanObjectiveExplanation", "label": "Loan Objective Explanation", "labelContains": ["Loan Objective Explanation"] }
+        { "payloadPath": "infinity.needsAnalysis.loanObjectiveExplanation", "label": "Loan Objective Explanation", "labelContains": ["Loan Objective Explanation"] },
+        { "payloadPath": "infinity.needsAnalysis.isRefinanceApplication", "label": "Is this a refinance application", "labelContains": ["Is this a refinance application"], "optional": true }
       ]
     },
     {
