@@ -1,0 +1,203 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>EasyFlow AOL Workflow Demo</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; color: #16212a; background: #f4f6f7; }
+    .top { height: 58px; background: white; border-bottom: 1px solid #d4dde4; display: flex; align-items: center; gap: 24px; padding: 0 18px; }
+    .brand { color: #48a9d8; font-size: 26px; font-weight: 700; }
+    .layout { display: grid; grid-template-columns: 82px 1fr 360px; min-height: calc(100vh - 58px); }
+    .nav { background: #314a62; color: white; padding-top: 10px; }
+    .nav button { width: 100%; display: block; padding: 14px 6px; background: transparent; color: white; border: 0; cursor: pointer; }
+    .nav button.active { background: white; color: #22384d; }
+    .main { padding: 24px 36px 80px; background: white; border-right: 1px solid #d4dde4; }
+    .todo { background: white; padding: 24px; }
+    .page { display: none; }
+    .page.active { display: block; }
+    h1 { font-size: 28px; font-weight: 300; margin: 0 0 24px; }
+    h2 { font-size: 18px; margin: 24px 0 10px; border-top: 1px solid #cbd4db; padding-top: 18px; }
+    label { display: block; margin: 10px 0 5px; color: #5e6d78; font-size: 13px; }
+    input, select, textarea { box-sizing: border-box; min-width: 190px; border: 1px solid #cbd4db; padding: 8px 10px; font-size: 14px; background: #fff; }
+    textarea { width: 96%; min-height: 110px; }
+    .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: end; }
+    .field { margin-bottom: 8px; }
+    .choice { display: inline-flex; border: 1px solid #cbd4db; margin-right: 8px; }
+    .choice button { border: 0; background: white; padding: 8px 14px; cursor: pointer; }
+    .choice button.selected { background: #767676; color: white; }
+    table { border-collapse: collapse; width: 96%; margin: 10px 0 20px; }
+    th, td { border: 1px solid #dbe3e7; padding: 10px; text-align: left; }
+    .badge { background: #0e995c; color: white; border-radius: 4px; padding: 2px 6px; font-size: 11px; }
+    #demo-report { white-space: pre-wrap; background: #0f1d18; color: #d5f5e7; padding: 14px; font-family: Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <div class="top"><div class="brand">applyonline</div><div>Lender ID 91142041973</div><div>Applicants Arsalan Saleem &amp; Araj Khan</div><div>Total loan amount $390,000</div></div>
+  <div class="layout">
+    <aside class="nav">
+      <button data-page="application" class="active">Application</button>
+      <button data-page="applicants">Applicants</button>
+      <button data-page="loans">Loans</button>
+      <button data-page="securities">Securities</button>
+      <button data-page="financials">Financials</button>
+      <button data-page="compliance">Compliance</button>
+      <button data-page="documents">Documents</button>
+    </aside>
+    <main class="main">
+      <section class="page active" data-page="application">
+        <h1>Application</h1>
+        <h2>Application</h2>
+        <div class="field"><label>Submission type</label><select><option>Loan Application</option></select></div>
+        <h2>Australian Government 5% Deposit Scheme</h2>
+        <label>Are the applicant(s) applying for the Australian Government 5% Deposit Scheme?</label><span class="choice"><button>Yes</button><button>No</button></span>
+        <h2>Multi-part application</h2>
+        <label>Is this a multi-part application?</label><span class="choice"><button>Yes</button><button>No</button></span>
+        <h2>Legal representation</h2>
+        <label>Will the applicant(s) be representing themselves?</label><span class="choice"><button>Yes</button><button>No</button></span>
+        <h2>Loan documents</h2>
+        <div class="row"><div class="field"><label>Documents delivery method</label><select><option></option><option>e-Sign</option></select></div><div class="field"><label>Receive loan offer documentation</label><select><option></option><option>Arsalan Saleem</option><option>Araj Khan</option><option>Arsalan Saleem & Araj Khan</option></select></div></div>
+        <h2>Originator comments</h2><div class="field"><label>Comments</label><textarea></textarea></div>
+      </section>
+
+      <section class="page" data-page="applicants">
+        <h1>Applicants</h1>
+        <button data-applicant-tab="Arsalan Saleem">Arsalan Saleem</button>
+        <button data-applicant-tab="Araj Khan">Araj Khan</button>
+        <h2>Type of applicant</h2>
+        <div class="row"><div class="field"><label>Applicant type</label><select><option></option><option>Person</option></select></div><div class="field"><label>Applicant role</label><select><option></option><option>Primary applicant</option><option>Co-applicant</option></select></div></div>
+        <h2>Personal details</h2>
+        <div class="row">
+          <div class="field"><label>Title</label><select><option></option><option>Mr.</option><option>Mrs.</option><option>Ms.</option></select></div>
+          <div class="field"><label>First name</label><input></div>
+          <div class="field"><label>Middle name</label><input></div>
+          <div class="field"><label>Family name</label><input></div>
+          <div class="field"><label>Date of birth</label><input></div>
+          <div class="field"><label>Gender</label><select><option></option><option>Male</option><option>Female</option></select></div>
+          <div class="field"><label>Marital status</label><select><option></option><option>Single</option><option>Married</option></select></div>
+        </div>
+        <label>Is permanent Australian resident?</label><span class="choice"><button>Yes</button><button>No</button></span>
+        <label>First home buyer</label><span class="choice"><button>Yes</button><button>No</button></span>
+        <h2>Contact details</h2>
+        <div class="row"><div class="field"><label>Mobile phone</label><input></div><div class="field"><label>Email</label><input></div></div>
+        <h2>Addresses</h2>
+        <div class="field"><label>Current residential address</label><input style="width:96%"></div>
+        <div class="row"><div class="field"><label>Current housing situation</label><select><option></option><option>Renting</option><option>Own Home</option><option>Own Home Mortgage</option></select></div><div class="field"><label>Address since</label><input></div></div>
+        <div class="field"><label>Current mailing address</label><input style="width:96%"></div>
+        <div class="field"><label>Post settlement residential address</label><input style="width:96%"></div>
+        <div class="field"><label>Post settlement mailing address</label><input style="width:96%"></div>
+        <h2>Foreseeable changes to circumstance</h2><label>Do you expect anything to change</label><span class="choice"><button>Yes</button><button>No</button></span>
+      </section>
+
+      <section class="page" data-page="loans">
+        <h1>Loans</h1>
+        <h2>Deposits and contributions</h2><div class="field"><label>Savings</label><input></div>
+        <h2>Loan splits</h2>
+        <div class="row"><div class="field"><label>Primary purpose</label><select><option></option><option>Investment</option><option>Owner Occupied</option></select></div><div class="field"><label>ABS purpose</label><select><option></option><option>129 - Purchase of established dwelling - House by first mortgage in purchasing existing real estate</option></select></div></div>
+        <div class="row"><div class="field"><label>Estimated settlement date</label><input></div><div class="field"><label>Base amount</label><input></div></div>
+        <label>Everyday Offset Account</label><input type="checkbox"><label>Redraw</label><input type="checkbox">
+        <div class="row"><div class="field"><label>Total loan term</label><select><option></option><option>30 Yrs</option><option>40 Yrs</option></select></div><div class="field"><label>Repayment type</label><select><option></option><option>Principal and Interest</option></select></div><div class="field"><label>Repayment frequency</label><select><option></option><option>Monthly</option></select></div></div>
+        <div class="row"><div class="field"><label>Repayment method</label><select><option></option><option>Direct Debit New Account</option><option>Direct Debit Existing Account</option></select></div><div class="field"><label>Ownership</label><select><option></option><option>All applicants (Auto-allocation)</option></select></div><div class="field"><label>Nominated borrowers</label><select><option></option><option>All applicants (Auto-allocation)</option></select></div></div>
+      </section>
+
+      <section class="page" data-page="securities">
+        <h1>Securities</h1>
+        <div class="row"><div class="field"><label>Type</label><select><option></option><option>Registered Mortgage</option></select></div><div class="field"><label>Transaction type</label><select><option></option><option>Purchasing</option></select></div></div>
+        <label>Is primary security?</label><span class="choice"><button>Yes</button><button>No</button></span>
+        <div class="field"><label>Address</label><input style="width:96%"></div>
+        <h2>Property Details</h2>
+        <div class="row"><div class="field"><label>Status</label><select><option></option><option>Established</option></select></div><div class="field"><label>Property primary purpose</label><select><option></option><option>Investment</option><option>Owner Occupied</option></select></div><div class="field"><label>Holding</label><select><option></option><option>Sole</option></select></div><div class="field"><label>Zoning</label><select><option></option><option>Residential</option></select></div><div class="field"><label>Property type</label><select><option></option><option>Fully Detached House</option></select></div></div>
+        <label>Off the plan?</label><span class="choice"><button>Yes</button><button>No</button></span>
+        <div class="row"><div class="field"><label>Rental income (gross)</label><input></div><div class="field"><label>Frequency</label><select><option></option><option>Weekly</option><option>Monthly</option></select></div></div>
+        <h2>Property value</h2><div class="row"><div class="field"><label>Estimated value</label><input></div><div class="field"><label>Basis of estimate</label><select><option></option><option>Applicant Estimate</option></select></div></div>
+        <h2>Title details</h2><div class="row"><div class="field"><label>Title type</label><select><option></option><option>Freehold</option></select></div><div class="field"><label>Title</label><select><option></option><option>Torrens</option></select></div></div>
+        <h2>Property expenses</h2><div class="field"><label>Expense type</label><select><option></option><option>Investment property, utilities, rates and related costs</option></select></div>
+      </section>
+
+      <section class="page" data-page="financials">
+        <h1>Financials</h1>
+        <h2>Other assets</h2>
+        <table><tr><th>Type</th><th>Value</th></tr><tr><td>Deposit Account</td><td>$15,000</td></tr><tr><td>Motor Vehicle</td><td>$10,000</td></tr><tr><td>Home Contents</td><td>$5,000</td></tr></table>
+        <h2>Income</h2><table><tr><th>Type</th><th>Amount yearly</th></tr><tr><td>Gross Salary</td><td>$80,000</td></tr></table>
+        <h2>Liabilities</h2><label>Have the applicants confirmed that there are no liabilities for this application?</label><span class="choice"><button>Yes</button><button>No</button></span>
+        <h2>Expenses</h2><label>Lender's unique expense categories have been reviewed</label><span class="choice"><button>Yes</button><button>No</button></span>
+        <table><tr><th>Type</th><th>Amount monthly</th></tr><tr><td>Groceries</td><td>$950</td></tr><tr><td>Telephone and Internet</td><td>$200</td></tr><tr><td>Vehicle Maintenance & Transport</td><td>$500</td></tr></table>
+      </section>
+
+      <section class="page" data-page="compliance">
+        <h1>Compliance</h1>
+        <h2>Requirements & objectives</h2><div class="field"><label>At what age is the applicant planning to retire?</label><input></div>
+        <h2>Rate type</h2><label>Which product rate type is most important</label><span class="choice"><button>Fixed</button><button>Variable</button><button>Fixed and variable</button></span>
+        <label>How important is variable rate</label><span class="choice"><button>Important</button><button>Not important</button></span>
+        <label><input type="checkbox"> Flexibility with respect to repayment, redraw and/or early repayment of loan</label>
+        <label><input type="checkbox"> I have discussed the above risks</label>
+        <h2>Repayment type</h2><label>How important is principal and interest</label><span class="choice"><button>Important</button><button>Not important</button></span>
+        <label><input type="checkbox"> Build up equity from the start</label>
+        <h2>Product features</h2><label>How important is having an offset account</label><span class="choice"><button>Important</button><button>Not important</button></span><label><input type="checkbox"> Allows access to funds</label>
+        <label>How important is having a redraw account</label><span class="choice"><button>Important</button><button>Not important</button></span><label><input type="checkbox"> Flexibility to access prepaid funds if needed</label>
+        <h2>Other</h2><label>any other requirements and objectives</label><span class="choice"><button>Yes</button><button>No</button></span>
+      </section>
+      <section class="page" data-page="documents"><h1>Documents</h1><p>Client Forms intentionally not automated.</p></section>
+    </main>
+    <aside class="todo"><h1>To do</h1><p><span class="badge">Policy check</span></p><p>Validation check</p></aside>
+  </div>
+  <pre id="demo-report">waiting...</pre>
+
+  <script>
+    document.querySelectorAll(".nav button").forEach((button) => button.addEventListener("click", () => {
+      document.querySelectorAll(".nav button").forEach((item) => item.classList.toggle("active", item === button));
+      document.querySelectorAll(".page").forEach((page) => page.classList.toggle("active", page.dataset.page === button.dataset.page));
+      location.hash = `${button.dataset.page}-tab`;
+    }));
+    document.querySelectorAll(".choice").forEach((choice) => choice.addEventListener("click", (event) => {
+      if (event.target.tagName !== "BUTTON") return;
+      choice.querySelectorAll("button").forEach((item) => item.classList.toggle("selected", item === event.target));
+    }));
+    window.__easyflowDemoRuntime = {
+      onMessage: { addListener(listener) { window.__easyflowListener = listener; } }
+    };
+  </script>
+  <script src="../contentScript.js"></script>
+  <script>
+    const payload = {
+      meta: { caseId: "AOL-DEMO", brokerUser: "demo" },
+      applicants: [
+        { firstName: "Arsalan", surname: "Saleem", gender: "Male", dateOfBirth: "1988-09-29", maritalStatus: "Married", mobile: "0469802339", email: "arsalan.saleem@icloud.com", currentAddress: "1/79 Crebert Street, Mayfield NSW 2304, Australia", currentHousingSituation: "Renting" },
+        { firstName: "Araj", surname: "Khan", gender: "Female", dateOfBirth: "1997-04-02", maritalStatus: "Married", mobile: "0400000000", email: "araj@example.com", currentAddress: "1/79 Crebert Street, Mayfield NSW 2304, Australia", currentHousingSituation: "Renting" }
+      ],
+      infinity: {
+        clientDetails: { firstName: "Arsalan", surname: "Saleem", currentHousingSituation: "Renting" },
+        coApplicant: { firstName: "Araj", surname: "Khan" },
+        financials: {
+          assets: [{ type: "Deposit Account", value: 15000 }, { type: "Motor Vehicle", value: 10000 }, { type: "Home Contents", value: 5000 }],
+          liabilities: [],
+          incomes: [{ type: "Base Salary", amount: 80000 }],
+          expenses: [{ type: "Groceries", amount: 950, frequency: "Monthly" }, { type: "Telephone and Internet", amount: 200, frequency: "Monthly" }, { type: "Vehicle Maintenance & Transport", amount: 500, frequency: "Monthly" }]
+        },
+        needsAnalysis: { facilityAmount: 390000, estimatedSettlementDate: "2026-07-31" },
+        loansSecuritiesCommentary: { loanPurpose: "Purchase Owner Occupied Dwelling", security: { name: "Mayfield", amount: 500000 } }
+      },
+      serviceability: { hemMonthly: 3050, hemConfirmed: true },
+      aol: {
+        application: { applicants: "Arsalan Saleem & Araj Khan", totalLoanAmount: 390000, legalRepresentation: "Yes", loanDocumentsRecipient: "Arsalan Saleem & Araj Khan", originatorComments: "Clients are seeking finance to purchase an owner occupied property." },
+        loans: { savingsContribution: 225000, primaryPurpose: "Owner Occupied", absPurpose: "129 - Purchase of established dwelling - House by first mortgage in purchasing existing real estate", estimatedSettlementDate: "2026-07-31", baseAmount: 390000, offsetSubAccount: true, redraw: true, totalLoanTerm: "30 Yrs", repaymentType: "Principal and Interest", repaymentFrequency: "Monthly", repaymentMethod: "Direct Debit New Account", nominatedBorrowers: "All applicants (Auto-allocation)" },
+        securities: { type: "Registered Mortgage", transactionType: "Purchasing", isPrimarySecurity: "Yes", address: "1/79 Crebert Street Mayfield NSW 2304", status: "Established", propertyPrimaryPurpose: "Owner Occupied", estimatedValue: 500000, basisOfEstimate: "Applicant Estimate", titleType: "Freehold", title: "Torrens" },
+        financials: { totalAssets: 30000, totalLiabilities: 0, totalIncomeMonthly: 6666.67, totalExpensesMonthly: 3050, expensesReviewed: "Yes" },
+        compliance: { retirementAge: 80, rateType: "Variable", variableRateImportant: "Important", repaymentImportance: "Important", offsetImportance: "Important", redrawImportance: "Important", otherRequirements: "No" }
+      }
+    };
+    (async () => {
+      const result = await window.__easyflowDemoApi.runAllPages({ payload, mapping: { sections: [] }, apiBase: "", targetPlatform: "aol" });
+      const compare = await window.__easyflowDemoApi.scanCompare({ mode: "visible", payload, mapping: { sections: [] } });
+      document.querySelector("#demo-report").textContent = JSON.stringify({
+        status: result.status,
+        pages: result.pages,
+        filled: result.fieldsFilled.length,
+        skipped: result.fieldsSkipped.length,
+        errors: result.errors,
+        verificationFailures: result.verificationFailures,
+        comparisonRows: compare.comparisonRows
+      }, null, 2);
+    })();
+  </script>
+</body>
+</html>

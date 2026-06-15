@@ -2,7 +2,7 @@ function getValue(object, path) {
   return path.split(".").reduce((current, part) => current?.[part], object);
 }
 
-const EASYFLOW_EXTENSION_BUILD_ID = "financials-idempotent-v2.14";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.15";
 const repeatCursors = {};
 
 function normalize(value) {
@@ -5736,6 +5736,13 @@ async function runWorkflow({ payload, mapping, apiBase, preserveProgress = false
   const result = ensureResultShape({ sectionId: "workflow", fieldsFilled: [], fieldsSkipped: [], errors: [], actions: [], verificationFailures: [] });
 
   try {
+    if (detectPlatform() === "aol") {
+      const handled = await runAolCurrentWorkflow(payload, mapping, apiBase, result);
+      if (handled) {
+        await logAutofill(apiBase, payload, result);
+        return result;
+      }
+    }
     const onClientDetails = isClientDetailsPage();
     const onFinancials = isInfinityFinancialsPage();
     const onLoansProducts = isLoansProductsArea();
@@ -5876,8 +5883,362 @@ async function runInfinityTransactionPages({ payload, mapping, apiBase, result }
   return result;
 }
 
-async function runAllPages({ payload, mapping, apiBase }) {
-  const platform = detectPlatform();
+function aolValue(payload, paths, fallback = "") {
+  for (const path of Array.isArray(paths) ? paths : [paths]) {
+    const value = getValue(payload, path);
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return fallback;
+}
+
+function moneyText(value) {
+  const number = normalizeMoneyValue(value);
+  if (!number) return "$0";
+  return `$${Math.round(number).toLocaleString("en-AU")}`;
+}
+
+function dateForAol(value) {
+  const text = formatDateValue(value, "au");
+  return text === undefined || text === null ? "" : String(text);
+}
+
+function purposeIsInvestment(payload) {
+  return normalize([
+    aolValue(payload, "aol.loans.primaryPurpose"),
+    aolValue(payload, "aol.securities.propertyPrimaryPurpose"),
+    aolValue(payload, "infinity.loansSecuritiesCommentary.loanPurpose")
+  ].join(" ")).includes("investment");
+}
+
+function aolApplicantRows(payload) {
+  const direct = getValue(payload, "aol.applicants");
+  if (Array.isArray(direct)) return direct.filter(hasApplicantName);
+  const baseRows = collectionAt(payload, "applicants").filter(hasApplicantName);
+  if (baseRows.length) {
+    return baseRows.map((row, index) => ({
+      applicantType: "Person",
+      applicantRole: index === 0 ? "Primary applicant" : "Co-applicant",
+      title: row.title || (normalize(row.gender) === "female" ? "Mrs." : "Mr."),
+      firstName: row.firstName,
+      middleName: row.middleName,
+      familyName: row.surname || row.lastName || row.familyName,
+      dateOfBirth: row.dateOfBirth || row.dob,
+      gender: row.gender,
+      maritalStatus: row.maritalStatus || (baseRows.length > 1 ? "Married" : "Single"),
+      permanentResident: row.permanentResident || row.permanentInAustralia || "Yes",
+      firstHomeBuyer: row.firstHomeBuyer || "No",
+      mobilePhone: row.mobile || row.mobilePhone,
+      email: row.email,
+      currentResidentialAddress: row.currentAddress || row.address,
+      currentHousingSituation: row.currentHousingSituation || aolValue(payload, "aol.applicants.currentHousingSituation") || aolValue(payload, "infinity.clientDetails.currentHousingSituation"),
+      addressSince: row.addressSince || row.startDate,
+      employmentName: row.employer || row.employmentName,
+      incomeYearOne: row.annualIncome || row.incomeYearOne
+    }));
+  }
+  if (direct && typeof direct === "object") return [direct].filter((row) => row.firstName || row.familyName || row.dateOfBirth);
+  const primary = getValue(payload, "infinity.clientDetails");
+  const co = getValue(payload, "infinity.coApplicant");
+  return [primary, co].filter(Boolean).map((row, index) => ({
+    applicantType: "Person",
+    applicantRole: index === 0 ? "Primary applicant" : "Co-applicant",
+    title: row.title,
+    firstName: row.firstName,
+    middleName: row.middleName,
+    familyName: row.surname || row.lastName,
+    dateOfBirth: row.dateOfBirth,
+    gender: row.gender,
+    maritalStatus: row.maritalStatus,
+    permanentResident: row.permanentInAustralia,
+    mobilePhone: row.mobile,
+    email: row.email,
+    currentResidentialAddress: row.currentAddress,
+    currentHousingSituation: row.currentHousingSituation,
+    addressSince: row.addressStartDate
+  }));
+}
+
+function aolFullName(applicant) {
+  return [applicant?.firstName, applicant?.middleName, applicant?.familyName || applicant?.surname || applicant?.lastName].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+}
+
+function aolSectionRoot(labels) {
+  const node = findTextNode(labels);
+  if (!node) return document;
+  let current = node;
+  for (let depth = 0; depth < 5 && current; depth += 1) {
+    const text = normalize(current.innerText || current.textContent || "");
+    if (text.length > 80 && current.querySelector?.("input, textarea, select, button, [role='button']")) return current;
+    current = current.parentElement;
+  }
+  return document;
+}
+
+async function aolFill(label, value, result, section, options = {}) {
+  if (value === undefined || value === null || value === "") {
+    result.fieldsSkipped.push({ section, label, reason: "empty value", source: "aol-workflow" });
+    return false;
+  }
+  const scope = options.scope || document;
+  const stringValue = options.date ? dateForAol(value) : String(value);
+  const ok = options.select
+    ? await selectDropdownByText(label, stringValue, scope, result, { section, source: "aol-workflow" })
+    : await fillInputByLabel(label, stringValue, scope, result, { section, source: "aol-workflow" });
+  return ok;
+}
+
+async function aolChoice(label, value, result, section, options = {}) {
+  if (value === undefined || value === null || value === "") return false;
+  const scope = options.scope || document;
+  const normalizedValue = typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
+  const found = findByLabelText([label], normalizedValue, scope);
+  if (found?.element && await setFieldValue(found.element, normalizedValue)) {
+    recordFieldFilled(result, section, label, normalizedValue, found, { source: "aol-workflow" });
+    return true;
+  }
+  await scrollToText([label], scope === document ? document : undefined);
+  const labelNode = findTextNode([label], scope);
+  const expected = normalize(normalizedValue);
+  if (labelNode) {
+    const labelRect = labelNode.getBoundingClientRect();
+    const nearbyTargets = [...scope.querySelectorAll("button, [role='button'], label, span, div")]
+      .filter(isVisible)
+      .map((el) => {
+        const rect = el.getBoundingClientRect();
+        const text = normalize(el.textContent || el.getAttribute("aria-label") || "");
+        const horizontalOverlap = Math.min(rect.right, labelRect.right + 320) - Math.max(rect.left, labelRect.left - 24);
+        const verticalDistance = Math.max(0, rect.top - labelRect.bottom, labelRect.top - rect.bottom);
+        return { el, rect, text, horizontalOverlap, verticalDistance };
+      })
+      .filter((item) => {
+        if (!(item.text === expected || item.text.includes(expected))) return false;
+        if (item.el === labelNode || item.el.contains(labelNode) || labelNode.contains(item.el)) return false;
+        if (item.horizontalOverlap <= 0) return false;
+        return item.rect.top >= labelRect.top - 12 && item.verticalDistance <= 90;
+      })
+      .sort((a, b) => a.verticalDistance - b.verticalDistance || a.rect.left - b.rect.left);
+    if (nearbyTargets[0]) {
+      await clickAtCenter(nearbyTargets[0].el);
+      result.fieldsFilled.push({ section, label, expected: normalizedValue, selector: describeElement(nearbyTargets[0].el), source: "aol-workflow" });
+      return true;
+    }
+  }
+  let container = labelNode?.parentElement || scope;
+  for (let depth = 0; depth < 5 && container; depth += 1) {
+    const button = [...container.querySelectorAll("button, [role='button'], label, span, div")]
+      .filter(isVisible)
+      .filter((el) => {
+        const text = normalize(el.textContent || el.getAttribute("aria-label") || "");
+        return text === expected || text.includes(expected);
+      })[0];
+    if (button) {
+      await clickAtCenter(button);
+      result.fieldsFilled.push({ section, label, expected: normalizedValue, selector: describeElement(button), source: "aol-workflow" });
+      return true;
+    }
+    container = container.parentElement;
+  }
+  result.fieldsSkipped.push({ section, label, reason: `choice not found: ${normalizedValue}`, source: "aol-workflow" });
+  return false;
+}
+
+async function aolClickNav(labels, result, section) {
+  const target = findNavigationTarget(labels) || findClickableByText(labels);
+  if (!target) {
+    result.fieldsSkipped.push({ section, label: labels[0], reason: "AOL nav target not visible" });
+    return false;
+  }
+  await clickAtCenter(target);
+  result.actions.push({ action: "open-aol-section", section, label: labels[0] });
+  await waitForAngularSettle();
+  return true;
+}
+
+async function runAolApplicationWorkflow(payload, mapping, apiBase, result) {
+  const section = "aolApplication";
+  await aolChoice("Are the applicant(s) applying for the Australian Government 5% Deposit Scheme?", "No", result, section);
+  await aolChoice("Is this a multi-part application?", "No", result, section);
+  await aolChoice("Will the applicant(s) be representing themselves?", aolValue(payload, "aol.application.legalRepresentation", "Yes"), result, section);
+  await aolChoice("Documents delivery method", "e-Sign", result, section);
+  await aolFill("Receive loan offer documentation", aolValue(payload, "aol.application.loanDocumentsRecipient"), result, section, { select: true });
+  await aolFill("Comments", aolValue(payload, "aol.application.originatorComments"), result, section);
+  return true;
+}
+
+async function runAolApplicantsWorkflow(payload, mapping, apiBase, result) {
+  const section = "aolApplicants";
+  const applicants = aolApplicantRows(payload);
+  if (!applicants.length) {
+    result.verificationFailures.push({ section, label: "Applicants", message: "No AOL/infinity applicants available in payload" });
+    return false;
+  }
+  for (const [index, applicant] of applicants.entries()) {
+    throwIfAutomationStopped();
+    const name = aolFullName(applicant);
+    const navLabels = index === 0 ? ["Applicants"] : [name, applicant.firstName, `Applicant ${index + 1}`].filter(Boolean);
+    await aolClickNav(navLabels, result, section);
+    result.actions.push({ action: "aol-applicant-start", section, applicantName: name, index });
+    await aolFill("Applicant type", applicant.applicantType || "Person", result, section, { select: true });
+    await aolFill("Applicant role", applicant.applicantRole || (index === 0 ? "Primary applicant" : "Co-applicant"), result, section, { select: true });
+    await aolFill("Title", applicant.title || (normalize(applicant.gender) === "female" ? "Mrs." : "Mr."), result, section, { select: true });
+    await aolFill("First name", applicant.firstName, result, section);
+    await aolFill("Middle name", applicant.middleName, result, section);
+    await aolFill("Family name", applicant.familyName || applicant.surname || applicant.lastName, result, section);
+    await aolFill("Date of birth", applicant.dateOfBirth, result, section, { date: true });
+    await aolFill("Gender", applicant.gender, result, section, { select: true });
+    await aolFill("Marital status", applicant.maritalStatus, result, section, { select: true });
+    await aolChoice("Is permanent Australian resident?", applicant.permanentResident || "Yes", result, section);
+    await aolChoice("First home buyer", applicant.firstHomeBuyer || "No", result, section);
+    await aolFill("Mobile phone", applicant.mobilePhone || applicant.mobile, result, section);
+    await aolFill("Email", applicant.email, result, section);
+    await aolFill("Current residential address", applicant.currentResidentialAddress || applicant.currentAddress, result, section);
+    await aolFill("Current housing situation", applicant.currentHousingSituation || aolValue(payload, ["aol.applicants.currentHousingSituation", "infinity.clientDetails.currentHousingSituation"], "Renting"), result, section, { select: true });
+    await aolFill("Address since", applicant.addressSince, result, section, { date: true });
+    const mailing = applicant.currentMailingAddress || applicant.mailingAddress;
+    const postResidential = applicant.postSettlementResidentialAddress || applicant.postSettlementAddress;
+    const postMailing = applicant.postSettlementMailingAddress;
+    if (mailing) await aolFill("Current mailing address", mailing, result, section);
+    if (postResidential) await aolFill("Post settlement residential address", postResidential, result, section);
+    if (postMailing) await aolFill("Post settlement mailing address", postMailing, result, section);
+    await aolChoice("Do you expect anything to change", "No", result, section);
+  }
+  return true;
+}
+
+async function runAolLoansWorkflow(payload, mapping, apiBase, result) {
+  const section = "aolLoans";
+  await aolFill("Savings", aolValue(payload, ["aol.loans.savingsContribution", "loan.deposit", "loan.depositEquity"]), result, section);
+  await aolFill("Primary purpose", aolValue(payload, "aol.loans.primaryPurpose", purposeIsInvestment(payload) ? "Investment" : "Owner Occupied"), result, section, { select: true });
+  await aolFill("ABS purpose", aolValue(payload, "aol.loans.absPurpose"), result, section, { select: true });
+  const settlement = aolValue(payload, ["aol.loans.estimatedSettlementDate", "infinity.needsAnalysis.estimatedSettlementDate"]);
+  await aolFill("Estimated settlement date", settlement, result, section, { date: true });
+  await aolFill("Base amount", aolValue(payload, ["aol.loans.baseAmount", "infinity.needsAnalysis.facilityAmount", "loan.amount"]), result, section);
+  await aolChoice("Everyday Offset Account", aolValue(payload, "aol.loans.offsetSubAccount", true), result, section);
+  await aolChoice("Redraw", aolValue(payload, "aol.loans.redraw", true), result, section);
+  await aolFill("Total loan term", aolValue(payload, "aol.loans.totalLoanTerm", "30 Yrs"), result, section, { select: true });
+  await aolFill("Repayment type", aolValue(payload, "aol.loans.repaymentType", "Principal and Interest"), result, section, { select: true });
+  await aolFill("Repayment frequency", aolValue(payload, "aol.loans.repaymentFrequency", "Monthly"), result, section, { select: true });
+  await aolFill("Repayment method", aolValue(payload, "aol.loans.repaymentMethod", "Direct Debit New Account"), result, section, { select: true });
+  await aolFill("Ownership", "All applicants (Auto-allocation)", result, section, { select: true });
+  await aolFill("Nominated borrowers", aolValue(payload, "aol.loans.nominatedBorrowers", "All applicants (Auto-allocation)"), result, section, { select: true });
+  result.actions.push({ action: "aol-review-loan-errors-only", section, note: "AOL final submit/finalise is intentionally not clicked." });
+  return true;
+}
+
+async function runAolSecuritiesWorkflow(payload, mapping, apiBase, result) {
+  const section = "aolSecurities";
+  await aolFill("Type", aolValue(payload, "aol.securities.type", "Registered Mortgage"), result, section, { select: true });
+  await aolFill("Transaction type", aolValue(payload, "aol.securities.transactionType", "Purchasing"), result, section, { select: true });
+  await aolChoice("Is primary security?", aolValue(payload, "aol.securities.isPrimarySecurity", "Yes"), result, section);
+  await aolFill("Address", aolValue(payload, ["aol.securities.address", "property.address"]), result, section);
+  await aolFill("Status", aolValue(payload, "aol.securities.status", "Established"), result, section, { select: true });
+  await aolFill("Property primary purpose", aolValue(payload, "aol.securities.propertyPrimaryPurpose", purposeIsInvestment(payload) ? "Investment" : "Owner Occupied"), result, section, { select: true });
+  await aolFill("Holding", aolValue(payload, "aol.securities.holding", "Sole"), result, section, { select: true });
+  await aolFill("Zoning", aolValue(payload, "aol.securities.zoning", "Residential"), result, section, { select: true });
+  await aolFill("Property type", aolValue(payload, "aol.securities.propertyType", "Fully Detached House"), result, section, { select: true });
+  await aolChoice("Off the plan?", aolValue(payload, "aol.securities.offThePlan", "No"), result, section);
+  await aolFill("Rental income (gross)", aolValue(payload, "aol.securities.rentalIncomeGross"), result, section);
+  await aolFill("Frequency", aolValue(payload, "aol.securities.rentalIncomePeriod", "Monthly"), result, section, { select: true });
+  await aolFill("Estimated value", aolValue(payload, ["aol.securities.estimatedValue", "property.estimatedValue"]), result, section);
+  await aolFill("Basis of estimate", aolValue(payload, "aol.securities.basisOfEstimate", "Applicant Estimate"), result, section, { select: true });
+  await aolFill("Title type", aolValue(payload, "aol.securities.titleType", "Freehold"), result, section, { select: true });
+  await aolFill("Title", aolValue(payload, "aol.securities.title", "Torrens"), result, section, { select: true });
+  await aolFill("Expense type", "Investment property, utilities, rates and related costs", result, section, { select: true });
+  return true;
+}
+
+function aolExistingText() {
+  return normalize(document.body?.innerText || "");
+}
+
+async function runAolFinancialsWorkflow(payload, mapping, apiBase, result) {
+  const section = "aolFinancials";
+  const existing = aolExistingText();
+  for (const asset of collectionAt(payload, "infinity.financials.assets")) {
+    if (asset.type && existing.includes(normalize(asset.type)) && numericTokens(asset.value).some((token) => existing.includes(normalize(token)))) {
+      result.fieldsSkipped.push({ section, label: asset.type, reason: "AOL asset already visible", source: "aol-workflow" });
+    }
+  }
+  const liabilities = collectionAt(payload, "infinity.financials.liabilities").filter((row) => !isEmptyLiabilityRow(row));
+  await aolChoice("Have the applicants confirmed that there are no liabilities for this application?", liabilities.length ? "No" : "Yes", result, section);
+  await aolChoice("Lender's unique expense categories have been reviewed", aolValue(payload, "aol.financials.expensesReviewed", "Yes"), result, section);
+  const rows = buildHemExpenseRows(hemMonthlyAmount(payload), payload);
+  for (const row of rows) {
+    if (existing.includes(normalize(row.type)) && numericTokens(row.amount).some((token) => existing.includes(normalize(token)))) {
+      result.fieldsSkipped.push({ section, label: row.type, reason: "AOL expense already visible", source: "aol-workflow" });
+    }
+  }
+  result.actions.push({
+    action: "aol-financials-compare-source",
+    section,
+    assets: collectionAt(payload, "infinity.financials.assets").length,
+    liabilities: liabilities.length,
+    hemMonthly: hemMonthlyAmount(payload),
+    preparedExpenseRows: rows.length
+  });
+  return true;
+}
+
+async function runAolComplianceWorkflow(payload, mapping, apiBase, result) {
+  const section = "aolCompliance";
+  const compliance = getValue(payload, "aol.compliance") || {};
+  await aolFill("At what age is the applicant planning to retire?", compliance.retirementAge || 80, result, section);
+  await aolChoice("Which product rate type is most important", compliance.rateType || "Variable", result, section);
+  await aolChoice("How important is variable rate", compliance.variableRateImportant || "Important", result, section);
+  await clickCheckboxByLabel("Flexibility with respect to repayment, redraw and/or early repayment of loan", result, { section, source: "aol-workflow" });
+  await clickCheckboxByLabel("I have discussed the above risks", result, { section, source: "aol-workflow" });
+  await aolChoice("How important is principal and interest", compliance.repaymentImportance || "Important", result, section);
+  await clickCheckboxByLabel("Build up equity from the start", result, { section, source: "aol-workflow" });
+  await aolChoice("How important is having an offset account", compliance.offsetImportance || "Important", result, section);
+  await clickCheckboxByLabel("Allows access to funds", result, { section, source: "aol-workflow" });
+  await aolChoice("How important is having a redraw account", compliance.redrawImportance || "Important", result, section);
+  await clickCheckboxByLabel("Flexibility to access prepaid funds if needed", result, { section, source: "aol-workflow" });
+  await aolChoice("any other requirements and objectives", compliance.otherRequirements || "No", result, section);
+  result.actions.push({ action: "aol-compliance-review", section, note: "Client Forms/Documents generation is intentionally left for broker review." });
+  return true;
+}
+
+async function runAolCurrentWorkflow(payload, mapping, apiBase, result) {
+  const url = normalize(location.href);
+  const text = normalize(document.body?.innerText || "");
+  if (url.includes("application-tab") || text.includes("originator comments") || text.includes("multi-part application")) return runAolApplicationWorkflow(payload, mapping, apiBase, result);
+  if (url.includes("applicants-tab") || text.includes("personal details") || text.includes("current residential address")) return runAolApplicantsWorkflow(payload, mapping, apiBase, result);
+  if (url.includes("loans-tab") || text.includes("loan splits") || text.includes("deposits and contributions")) return runAolLoansWorkflow(payload, mapping, apiBase, result);
+  if (url.includes("securities-tab") || text.includes("type of security") || text.includes("property details")) return runAolSecuritiesWorkflow(payload, mapping, apiBase, result);
+  if (url.includes("financials-tab") || text.includes("other assets") || text.includes("lender's unique expense categories")) return runAolFinancialsWorkflow(payload, mapping, apiBase, result);
+  if (url.includes("compliance-tab") || text.includes("requirements & objectives") || text.includes("rate type")) return runAolComplianceWorkflow(payload, mapping, apiBase, result);
+  return false;
+}
+
+async function runAolTransactionPages({ payload, mapping, apiBase, result }) {
+  const steps = [
+    { id: "application", labels: ["Application"], run: runAolApplicationWorkflow },
+    { id: "applicants", labels: ["Applicants"], run: runAolApplicantsWorkflow },
+    { id: "loans", labels: ["Loans"], run: runAolLoansWorkflow },
+    { id: "securities", labels: ["Securities"], run: runAolSecuritiesWorkflow },
+    { id: "financials", labels: ["Financials"], run: runAolFinancialsWorkflow },
+    { id: "compliance", labels: ["Compliance"], run: runAolComplianceWorkflow }
+  ];
+  for (const [index, step] of steps.entries()) {
+    throwIfAutomationStopped();
+    const pageSpan = 100 / steps.length;
+    configureAutomationSegment(index * pageSpan, pageSpan);
+    setAutomationProgress(0, 1, `Opening AOL ${step.labels[0]}...`);
+    const navigated = await aolClickNav(step.labels, result, step.id);
+    result.pages.push({ id: step.id, labels: step.labels, navigated });
+    if (!navigated) continue;
+    await step.run(payload, mapping, apiBase, result);
+    result.actions.push({ action: "aol-page-complete", section: step.id });
+    setAutomationProgress(1, 1, `Completed AOL ${step.labels[0]}`);
+  }
+  result.status = "success";
+  return result;
+}
+
+async function runAllPages({ payload, mapping, apiBase, targetPlatform = "auto" }) {
+  const detectedPlatform = detectPlatform();
+  const requestedPlatform = normalize(targetPlatform);
+  const platform = ["infinity", "aol"].includes(requestedPlatform) ? requestedPlatform : detectedPlatform;
   const plan = navigationPlans[platform] || [];
   const result = ensureResultShape({ sectionId: "all-pages", fieldsFilled: [], fieldsSkipped: [], errors: [], actions: [], verificationFailures: [], pages: [], platform });
   resetAutomationRun(100);
@@ -5885,6 +6246,14 @@ async function runAllPages({ payload, mapping, apiBase }) {
   if (!plan.length) {
     result.errors.push({ message: "Could not detect Infinity or AOL page. Open a case page first." });
     return result;
+  }
+
+  if (platform !== detectedPlatform && detectedPlatform !== "unknown") {
+    result.warnings.push({
+      section: "all-pages",
+      label: "Platform",
+      message: `Start button requested ${platform}, current page looks like ${detectedPlatform}. Running requested workflow.`
+    });
   }
 
   if (platform === "infinity") {
@@ -5897,6 +6266,20 @@ async function runAllPages({ payload, mapping, apiBase }) {
         : "EasyFlow AI finished. Review before Push AOL or Submit.",
       issueCount ? "error" : "success",
       { final: true, progress: issueCount ? undefined : 100, autoHideMs: 10000 }
+    );
+    return result;
+  }
+
+  if (platform === "aol") {
+    await runAolTransactionPages({ payload, mapping, apiBase, result });
+    await logAutofill(apiBase, payload, result);
+    const issueCount = result.errors.length + result.verificationFailures.length;
+    showAutomationStatus(
+      issueCount
+        ? `AOL AutoFill finished with ${issueCount} item(s) to review.`
+        : "AOL AutoFill finished. Review before Submit.",
+      issueCount ? "error" : "success",
+      { final: true, progress: 100, autoHideMs: 10000 }
     );
     return result;
   }
@@ -6117,12 +6500,56 @@ async function runDiagnostics({ payload }) {
 
 function comparable(value) {
   if (typeof value === "boolean") return value ? "true" : "false";
-  return normalize(String(value ?? "").replace(/[$,]/g, ""));
+  return normalize(String(value ?? "").replace(/[$,&;]/g, " "));
+}
+
+function comparableMoney(value) {
+  const number = normalizeMoneyValue(value);
+  if (value === 0 || String(value ?? "").trim() === "0") return "0";
+  return number ? String(Math.round(number)) : "";
+}
+
+function sumMoneyRows(rows, key = "value") {
+  return (rows || []).reduce((sum, row) => sum + normalizeMoneyValue(row?.[key] ?? row?.amount ?? row?.balance), 0);
+}
+
+function buildInfinityAolComparisonRows(payload) {
+  const infinityAssets = sumMoneyRows(collectionAt(payload, "infinity.financials.assets"), "value");
+  const infinityLiabilities = collectionAt(payload, "infinity.financials.liabilities").filter((row) => !isEmptyLiabilityRow(row));
+  const infinityLiabilityTotal = infinityLiabilities.reduce((sum, row) => sum + normalizeMoneyValue(row.balance || row.limit || row.amount), 0);
+  const infinityIncome = sumMoneyRows(collectionAt(payload, "infinity.financials.incomes"), "amount");
+  const sharedApplicants = collectionAt(payload, "applicants").filter(hasApplicantName);
+  const infinityApplicants = sharedApplicants.length ? sharedApplicants : infinityApplicantRows(payload);
+  const rows = [
+    ["Applicants", infinityApplicants.map(fullApplicantName).filter(Boolean).join("; "), aolValue(payload, ["aol.application.applicants", "aol.summary.applicants"], aolApplicantRows(payload).map(aolFullName).join("; "))],
+    ["Loan amount", aolValue(payload, ["infinity.needsAnalysis.facilityAmount", "infinity.loansSecuritiesCommentary.facilityAmount", "loan.amount"]), aolValue(payload, ["aol.loans.baseAmount", "aol.application.totalLoanAmount"])],
+    ["Assets total", infinityAssets, aolValue(payload, "aol.financials.totalAssets")],
+    ["Liabilities total", infinityLiabilityTotal, aolValue(payload, "aol.financials.totalLiabilities")],
+    ["Annual income", infinityIncome, normalizeMoneyValue(aolValue(payload, "aol.financials.totalIncomeMonthly")) * 12],
+    ["Monthly expenses / HEM", hemMonthlyAmount(payload), aolValue(payload, "aol.financials.totalExpensesMonthly")],
+    ["Loan purpose", aolValue(payload, ["infinity.loansSecuritiesCommentary.loanPurpose", "infinity.needsAnalysis.loanObjectiveExplanation"]), aolValue(payload, "aol.loans.primaryPurpose")],
+    ["Security value", aolValue(payload, ["infinity.loansSecuritiesCommentary.security.amount", "property.estimatedValue"]), aolValue(payload, "aol.securities.estimatedValue")],
+    ["Security address", aolValue(payload, ["property.address", "infinity.loansSecuritiesCommentary.security.name"]), aolValue(payload, "aol.securities.address")],
+    ["Repayment type", aolValue(payload, "infinity.recommendation.loanStructure"), aolValue(payload, "aol.loans.repaymentType")],
+    ["Repayment frequency", "Monthly", aolValue(payload, "aol.loans.repaymentFrequency")],
+    ["Rate type", "Variable", aolValue(payload, "aol.compliance.rateType")]
+  ];
+  return rows.map(([label, infinity, aol]) => {
+    const moneyLike = /amount|assets|liabilities|income|expenses|hem|value/i.test(label);
+    const left = moneyLike ? comparableMoney(infinity) : comparable(infinity);
+    const right = moneyLike ? comparableMoney(aol) : comparable(aol);
+    return {
+      label,
+      infinity,
+      aol,
+      status: left && right && (left === right || left.includes(right) || right.includes(left)) ? "match" : left || right ? "review" : "missing"
+    };
+  });
 }
 
 async function scanCompare({ mode, payload, mapping }) {
   const { sectionId, sections } = fieldsForMode(mapping, mode);
-  const result = { sectionId, platform: detectPlatform(), url: location.href, matched: [], mismatched: [], missing: [] };
+  const result = { sectionId, platform: detectPlatform(), url: location.href, matched: [], mismatched: [], missing: [], comparisonRows: buildInfinityAolComparisonRows(payload) };
 
   for (const section of sections) {
     for (const field of section.fields) {

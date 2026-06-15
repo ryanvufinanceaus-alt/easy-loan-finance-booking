@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "financials-idempotent-v2.14";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.15";
 const REPORT_HISTORY_KEY = "easyflowReportHistory";
 const REPORT_HISTORY_LIMIT = 5;
 
@@ -166,6 +166,11 @@ function renderReview() {
     rows.push(["Not checked yet", String(state.lastResult.pendingChecks?.length || 0)]);
   }
 
+  if (state.lastResult?.comparisonRows?.length) {
+    const reviewCount = state.lastResult.comparisonRows.filter((row) => row.status !== "match").length;
+    rows.push(["Common compare", `${reviewCount} review / ${state.lastResult.comparisonRows.length} checked`]);
+  }
+
   for (const [label, value] of rows) {
     const row = document.createElement("div");
     row.className = "review-row";
@@ -214,6 +219,14 @@ function renderReview() {
       path: issue.fieldPath || issue.path,
       section: "comparison"
     })),
+    ...(state.lastResult?.comparisonRows || [])
+      .filter((row) => row.status !== "match")
+      .slice(0, 6)
+      .map((row) => ({
+        label: `Common: ${row.label}`,
+        value: `${shortValue(row.infinity ?? "blank")} <> ${shortValue(row.aol ?? "blank")}`,
+        section: "comparison"
+      })),
     ...(state.lastDiagnostics?.checks || [])
       .filter((check) => check.status !== "pass")
       .map((check) => ({
@@ -447,6 +460,8 @@ function autofillReportText(report) {
   for (const item of report.errors || []) lines.push(`- ${item.section || ""} > ${item.label || ""}: ${item.message || item.reason || ""} ${JSON.stringify(item)}`);
   lines.push("", "Verification failures:");
   for (const item of report.verificationFailures || []) lines.push(`- ${item.section || ""} > ${item.label || ""}: ${item.message || item.reason || ""} ${JSON.stringify(item)}`);
+  lines.push("", "Common Infinity/AOL comparison:");
+  for (const row of report.comparisonRows || []) lines.push(`- ${row.status}: ${row.label} | Infinity=${row.infinity ?? ""} | AOL=${row.aol ?? ""}`);
   lines.push("", "Skipped:");
   for (const item of report.fieldsSkipped || []) lines.push(`- ${item.section || ""} > ${item.label || ""}: ${item.reason || ""} ${JSON.stringify(item)}`);
   lines.push("", "Actions:");

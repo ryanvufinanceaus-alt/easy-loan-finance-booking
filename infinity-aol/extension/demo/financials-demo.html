@@ -129,10 +129,10 @@
         return;
       }
       const firstResult = runner
-        ? await runner({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" })
+        ? await runner({ payload, mapping, apiBase: "" })
         : await new Promise((resolve) => listener({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" }, null, resolve));
       const result = runner
-        ? await runner({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" })
+        ? await runner({ payload, mapping, apiBase: "" })
         : await new Promise((resolve) => listener({ type: "INFINITY_AOL_RUN_WORKFLOW", payload, mapping, apiBase: "" }, null, resolve));
       const total = expenses.reduce((sum, row) => sum + Number(row.amount || 0), 0);
       const checks = {
