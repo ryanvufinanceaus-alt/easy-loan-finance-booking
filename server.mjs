@@ -1,16 +1,13 @@
 import { createServer } from "node:http";
 import { createHash, createHmac, createSign, randomBytes, timingSafeEqual } from "node:crypto";
 import { promises as fs } from "node:fs";
-import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dns from "node:dns";
-import express from "express";
 import nodemailer from "nodemailer";
 import { app as infinityAolApp } from "./infinity-aol/server/index.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
 const PORT = Number(process.env.PORT || 3000);
 const DATA_DIR = path.join(__dirname, "data");
 const DIST_DIR = path.join(__dirname, "dist");
@@ -65,9 +62,6 @@ const BUSINESS_END = "17:00";
 const REMINDER_MINUTES_BEFORE = Number(process.env.BOOKING_REMINDER_MINUTES_BEFORE || 10);
 const reminderSendKeys = new Set();
 const EMAIL_TEMPLATES_SETTING_KEY = "email_templates";
-const brokerDeskApp = express();
-brokerDeskApp.disable("x-powered-by");
-brokerDeskApp.use(require("./broker-desk"));
 
 dns.setDefaultResultOrder?.("ipv4first");
 
@@ -460,10 +454,45 @@ function publicBroker(broker) {
   return safeBroker;
 }
 
-function brokerMatchesLogin(broker, email, password) {
-  if (!broker?.email || !broker?.accessCode) return false;
-  return broker.email.toLowerCase() === String(email || "").trim().toLowerCase()
-    && safeEqual(String(broker.accessCode), String(password || ""));
+function normalizedLoginKey(value = "") {
+  return String(value || "").trim().toLowerCase();
+}
+
+function brokerLoginAliases(broker) {
+  const aliases = new Set();
+  const push = (value) => {
+    const normalized = normalizedLoginKey(value);
+    if (normalized) aliases.add(normalized);
+  };
+
+  push(broker?.email);
+  push(broker?.username);
+  push(broker?.id);
+  push(broker?.name);
+
+  const email = normalizedLoginKey(broker?.email);
+  if (email.includes("@")) push(email.split("@")[0]);
+
+  const brokerId = normalizedLoginKey(broker?.id);
+  if (brokerId.includes("-")) {
+    brokerId.split("-").forEach(push);
+  }
+
+  const brokerName = normalizedLoginKey(broker?.name);
+  if (brokerName) {
+    push(brokerName.replace(/\s+/g, ""));
+    brokerName.split(/\s+/).forEach(push);
+  }
+
+  return aliases;
+}
+
+function brokerMatchesLogin(broker, identifier, password) {
+  if (!broker?.accessCode) return false;
+  const normalizedIdentifier = normalizedLoginKey(identifier);
+  if (!normalizedIdentifier) return false;
+  if (!brokerLoginAliases(broker).has(normalizedIdentifier)) return false;
+  return safeEqual(String(broker.accessCode), String(password || ""));
 }
 
 function passwordHash(value = "") {
@@ -1661,6 +1690,28 @@ function contentType(file) {
   return "application/octet-stream";
 }
 
+function runtimeTargetForHost(hostname = "") {
+  const value = String(hostname || "").toLowerCase();
+  if (PORTAL_HOST_RE.test(value)) return "portal";
+  return "booking";
+}
+
+function runtimeTitleForTarget(target) {
+  return target === "portal" ? "BrokerDesk CRM" : "Easy Loan Finance Booking";
+}
+
+async function loadStaticShell(hostname = "") {
+  const target = runtimeTargetForHost(hostname);
+  const title = runtimeTitleForTarget(target);
+  let html = await fs.readFile(path.join(DIST_DIR, "index.html"), "utf8");
+  html = html.replace(/<title>.*?<\/title>/i, `<title>${title}</title>`);
+  if (!html.includes("__ELF_RUNTIME_TARGET")) {
+    const runtimeScript = `<script>window.__ELF_RUNTIME_TARGET=${JSON.stringify(target)};window.__ELF_RUNTIME_HOST=${JSON.stringify(String(hostname || ""))};</script>`;
+    html = html.replace("</head>", `${runtimeScript}</head>`);
+  }
+  return Buffer.from(html, "utf8");
+}
+
 function isStaticAsset(pathname) {
   return pathname.startsWith("/assets/")
     || pathname === "/favicon.ico"
@@ -2113,34 +2164,24 @@ async function handleStatic(req, res, url) {
   try {
     const stat = await fs.stat(file);
     const finalFile = stat.isDirectory() ? path.join(file, "index.html") : file;
-    const bytes = await fs.readFile(finalFile);
-    res.writeHead(200, { "content-type": contentType(finalFile) });
+    const isHtmlShell = path.basename(finalFile).toLowerCase() === "index.html";
+    const bytes = isHtmlShell ? await loadStaticShell(requestHostname(req)) : await fs.readFile(finalFile);
+    const headers = { "content-type": contentType(finalFile) };
+    if (isHtmlShell) headers["cache-control"] = "no-store, no-cache, must-revalidate";
+    res.writeHead(200, headers);
     res.end(bytes);
   } catch {
     try {
-      const bytes = await fs.readFile(path.join(DIST_DIR, "index.html"));
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      const bytes = await loadStaticShell(requestHostname(req));
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store, no-cache, must-revalidate"
+      });
       res.end(bytes);
     } catch {
       sendJson(res, 404, { error: "Build not found. Run npm run build first." });
     }
   }
-}
-
-function handleBrokerDesk(req, res) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const done = (handled, error) => {
-      if (settled) return;
-      settled = true;
-      if (error) reject(error);
-      else resolve(handled);
-    };
-
-    brokerDeskApp.handle(req, res, (error) => done(false, error));
-    res.once("finish", () => done(true));
-    res.once("close", () => done(true));
-  });
 }
 
 await ensureData();
@@ -2218,9 +2259,17 @@ createServer(async (req, res) => {
         forwardToInfinityAolApp(req, res, url);
         return;
       }
-      const brokerDeskHandled = await handleBrokerDesk(req, res);
-      if (brokerDeskHandled || res.writableEnded) return;
-      return sendJson(res, 404, { error: "BrokerDesk CRM route not found" });
+      if (url.pathname.startsWith("/api/") || url.pathname === "/calendar/team.ics" || url.pathname.startsWith("/calendar/broker/")) {
+        if (url.pathname === "/calendar/team.ics" || url.pathname.startsWith("/calendar/broker/")) {
+          return await handleCalendar(req, res, url);
+        }
+        return await handleApi(req, res, url);
+      }
+      if (isStaticAsset(url.pathname)) return await handleStatic(req, res, url);
+      if (!ADMIN_PASSWORD || adminSession(req) || url.pathname === "/" || url.pathname === "/login") {
+        return await handleStatic(req, res, url);
+      }
+      return await handleStatic(req, res, new URL("/login", requestOrigin(req)));
     }
     if (BOOKING_HOST_RE.test(hostname)) {
       if (url.pathname.startsWith("/book") || url.pathname.startsWith("/widget")) return await handleStatic(req, res, url);
@@ -2233,8 +2282,6 @@ createServer(async (req, res) => {
       return await handleStatic(req, res, new URL("/login", requestOrigin(req)));
     }
     if (url.pathname === "/api/backup") return await handleApi(req, res, url);
-    const brokerDeskHandled = await handleBrokerDesk(req, res);
-    if (brokerDeskHandled || res.writableEnded) return;
     if (url.pathname.startsWith("/api/")) return await handleApi(req, res, url);
     if (url.pathname === "/calendar/team.ics" || url.pathname.startsWith("/calendar/broker/")) {
       return await handleCalendar(req, res, url);

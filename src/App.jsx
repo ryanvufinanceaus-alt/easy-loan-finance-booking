@@ -45,6 +45,60 @@ const NOTIFICATION_SNAPSHOT_KEY = "elfBookingNotificationSnapshot";
 const NOTIFICATION_ITEMS_KEY = "elfBookingNotifications";
 const DISMISSED_FOLLOWUPS_KEY = "elfDismissedFollowups";
 
+function currentHostname() {
+  if (typeof window === "undefined") return "";
+  return window.location.hostname.toLowerCase();
+}
+
+function currentRuntimeTarget(hostname = currentHostname()) {
+  if (typeof window !== "undefined") {
+    const explicitTarget = typeof window.__ELF_RUNTIME_TARGET === "string"
+      ? window.__ELF_RUNTIME_TARGET.toLowerCase()
+      : "";
+    if (explicitTarget === "portal" || explicitTarget === "booking") {
+      return explicitTarget;
+    }
+  }
+  return /^(portal|app)\./i.test(hostname) ? "portal" : "booking";
+}
+
+function isPortalHost(hostname = currentHostname()) {
+  return currentRuntimeTarget(hostname) === "portal";
+}
+
+function isLocalHost(hostname = currentHostname()) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function bookingOrigin(hostname = currentHostname()) {
+  if (typeof window === "undefined") return "";
+  const url = new URL(window.location.href);
+  if (isPortalHost(hostname) && !isLocalHost(hostname)) {
+    url.hostname = "booking.easyloanfinance.com.au";
+    url.port = "";
+  }
+  return url.origin;
+}
+
+function runtimeBranding(hostname = currentHostname()) {
+  if (isPortalHost(hostname)) {
+    return {
+      documentTitle: "BrokerDesk CRM",
+      shellTitle: "BrokerDesk CRM",
+      workspaceTitle: "Broker Desk",
+      loginTitle: "BrokerDesk CRM",
+      loginSubtitle: "Sign in to your broker dashboard"
+    };
+  }
+  return {
+    documentTitle: "Easy Loan Finance Booking",
+    shellTitle: "Easy Loan Finance Booking",
+    workspaceTitle: "Booking Calendar",
+    loginTitle: "Booking Admin",
+    loginSubtitle: "Sign in to your booking dashboard"
+  };
+}
+
 function addMinutes(date, minutes) {
   return new Date(date.getTime() + minutes * 60000);
 }
@@ -344,6 +398,8 @@ function BrandMark() {
 
 function App() {
   const publicPath = typeof window !== "undefined" ? window.location.pathname : "/";
+  const hostname = currentHostname();
+  const branding = runtimeBranding(hostname);
   if (publicPath.startsWith("/book")) {
     return <PublicBookingPage />;
   }
@@ -565,10 +621,15 @@ function App() {
   const activeBroker = brokerFilter === "all" ? brokers[0] : brokerById[brokerFilter];
   const isAdmin = auth.role === "admin" || !auth.required;
   const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const bookingBaseOrigin = bookingOrigin(hostname) || origin;
   const teamIcsUrl = `${origin}/calendar/team.ics`;
   const brokerIcsUrl = `${origin}/calendar/broker/${activeBroker?.id || "ryan-vu"}.ics`;
-  const teamBookingUrl = `${origin}/book`;
-  const brokerBookingUrl = `${origin}/book/${activeBroker?.id || "ryan-vu"}`;
+  const teamBookingUrl = `${bookingBaseOrigin}/book`;
+  const brokerBookingUrl = `${bookingBaseOrigin}/book/${activeBroker?.id || "ryan-vu"}`;
+
+  useEffect(() => {
+    document.title = branding.documentTitle;
+  }, [branding.documentTitle]);
 
   function step(direction) {
     const next = new Date(anchor);
@@ -815,7 +876,7 @@ function App() {
           <BrandMark />
           <div>
             <p className="eyebrow">Easy Loan Finance</p>
-            <h1>BrokerDesk CRM</h1>
+            <h1>{branding.shellTitle}</h1>
           </div>
         </div>
 
@@ -839,7 +900,7 @@ function App() {
         <section className="panel broker-panel">
           <div className="section-title">
             <Users size={18} />
-            <h2>Broker Desk</h2>
+            <h2>{branding.workspaceTitle}</h2>
           </div>
           {isAdmin && (
             <button
@@ -1499,7 +1560,8 @@ function IntegrationFlag({ label, active }) {
 }
 
 function LoginPage() {
-  const [email, setEmail] = useState("ryan.vufinanceaus@gmail.com");
+  const branding = runtimeBranding();
+  const [email, setEmail] = useState("ryan");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [resetMessage, setResetMessage] = useState("");
@@ -1507,6 +1569,7 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    document.title = branding.documentTitle;
     fetch("/api/auth/status")
       .then((res) => res.json())
       .then((status) => {
@@ -1515,7 +1578,7 @@ function LoginPage() {
           window.location.href = returnTo.startsWith("/") ? returnTo : "/";
         }
       });
-  }, []);
+  }, [branding.documentTitle]);
 
   async function submitLogin(event) {
     event.preventDefault();
@@ -1559,21 +1622,22 @@ function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-card">
-          <div className="brand-block">
+        <div className="brand-block">
           <BrandMark />
           <div>
             <p className="eyebrow">Easy Loan Finance</p>
-            <h1>Ryan Admin</h1>
+            <h1>{branding.loginTitle}</h1>
           </div>
         </div>
         <form onSubmit={submitLogin} className="booking-form">
+          <p className="login-help" style={{ marginTop: 0 }}>{branding.loginSubtitle}</p>
           <label>
-            Email
+            Email or username
             <input
-              type="email"
+              type="text"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="ryan.vufinanceaus@gmail.com"
+              placeholder="ryan or ryan@easyloanfinance.com.au"
             />
           </label>
           <label>
