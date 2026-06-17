@@ -11,6 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
 const DATA_DIR = path.join(__dirname, "data");
 const DIST_DIR = path.join(__dirname, "dist");
+const BROKER_DESK_DIR = path.join(__dirname, "broker-desk", "public");
 const INFINITY_AOL_BASE = "/infinity-aol";
 const BOOKING_HOST_RE = /^booking\./i;
 const PORTAL_HOST_RE = /^(portal|app)\./i;
@@ -59,6 +60,7 @@ const PUBLIC_API_ROUTES = new Set(["/api/health", "/api/brokers", "/api/bookings
 const PUBLIC_BOOKING_DURATION = 30;
 const BUSINESS_START = "09:30";
 const BUSINESS_END = "17:00";
+const BROKER_DESK_API_URL = String(process.env.APPS_SCRIPT_URL || "").trim();
 const REMINDER_MINUTES_BEFORE = Number(process.env.BOOKING_REMINDER_MINUTES_BEFORE || 10);
 const reminderSendKeys = new Set();
 const EMAIL_TEMPLATES_SETTING_KEY = "email_templates";
@@ -2184,6 +2186,66 @@ async function handleStatic(req, res, url) {
   }
 }
 
+async function handleBrokerDeskStatic(req, res, url) {
+  const file = safeJoin(BROKER_DESK_DIR, url.pathname);
+  try {
+    const stat = await fs.stat(file);
+    const finalFile = stat.isDirectory() ? path.join(file, "index.html") : file;
+    const isHtmlShell = path.basename(finalFile).toLowerCase() === "index.html";
+    const bytes = await fs.readFile(finalFile);
+    const headers = { "content-type": contentType(finalFile) };
+    if (isHtmlShell) headers["cache-control"] = "no-store, no-cache, must-revalidate";
+    res.writeHead(200, headers);
+    res.end(bytes);
+  } catch {
+    try {
+      const bytes = await fs.readFile(path.join(BROKER_DESK_DIR, "index.html"));
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store, no-cache, must-revalidate"
+      });
+      res.end(bytes);
+    } catch {
+      sendJson(res, 404, { error: "Broker Desk build not found." });
+    }
+  }
+}
+
+async function handleBrokerDeskApi(req, res) {
+  if (req.method !== "POST") {
+    return sendJson(res, 405, { ok: false, msg: "Method not allowed" });
+  }
+  if (!BROKER_DESK_API_URL) {
+    return sendJson(res, 500, {
+      ok: false,
+      msg: "APPS_SCRIPT_URL env var is not set on this service."
+    });
+  }
+
+  const chunks = [];
+  try {
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const body = Buffer.concat(chunks).toString("utf8");
+    const upstream = await fetch(BROKER_DESK_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body,
+      redirect: "follow"
+    });
+    const text = await upstream.text();
+    res.writeHead(upstream.ok ? 200 : upstream.status || 502, {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store"
+    });
+    res.end(text);
+  } catch (error) {
+    sendJson(res, 502, {
+      ok: false,
+      msg: `Proxy error reaching broker desk backend: ${error.message || error}`
+    });
+  }
+}
+
 await ensureData();
 
 setInterval(() => {
@@ -2249,6 +2311,7 @@ createServer(async (req, res) => {
         forwardToInfinityAolApp(req, res, url, INFINITY_AOL_BASE);
         return;
       }
+      if (url.pathname === "/api") return await handleBrokerDeskApi(req, res);
       if (url.pathname.startsWith("/api/auth/")) return await handleApi(req, res, url);
       if (/^\/api\/brokers(?:\/|$)/.test(url.pathname)) {
         if (!requireInfinityAolLogin(req, res, url)) return;
@@ -2259,17 +2322,13 @@ createServer(async (req, res) => {
         forwardToInfinityAolApp(req, res, url);
         return;
       }
-      if (url.pathname.startsWith("/api/") || url.pathname === "/calendar/team.ics" || url.pathname.startsWith("/calendar/broker/")) {
-        if (url.pathname === "/calendar/team.ics" || url.pathname.startsWith("/calendar/broker/")) {
-          return await handleCalendar(req, res, url);
-        }
-        return await handleApi(req, res, url);
+      if (url.pathname.startsWith("/api/")) {
+        return sendJson(res, 404, { ok: false, msg: "Broker Desk API route not found" });
       }
-      if (isStaticAsset(url.pathname)) return await handleStatic(req, res, url);
-      if (!ADMIN_PASSWORD || adminSession(req) || url.pathname === "/" || url.pathname === "/login") {
-        return await handleStatic(req, res, url);
+      if (url.pathname === "/calendar/team.ics" || url.pathname.startsWith("/calendar/broker/")) {
+        return await handleCalendar(req, res, url);
       }
-      return await handleStatic(req, res, new URL("/login", requestOrigin(req)));
+      return await handleBrokerDeskStatic(req, res, url);
     }
     if (BOOKING_HOST_RE.test(hostname)) {
       if (url.pathname.startsWith("/book") || url.pathname.startsWith("/widget")) return await handleStatic(req, res, url);
