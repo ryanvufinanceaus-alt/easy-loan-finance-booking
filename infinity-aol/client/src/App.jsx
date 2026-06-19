@@ -413,7 +413,7 @@ function CaseFacts({ caseData }) {
           </ul>
         </div>
       )}
-      {(selectedLender || scenarios.length > 0) && (
+      {(
         <div className="lender-sync" style={{ marginBottom: 12, padding: "10px 12px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, color: "#14532d" }}>
           <strong>🏦 Lender &amp; product (synced from Infinity)</strong>
           {selectedLender ? (
@@ -423,8 +423,10 @@ function CaseFacts({ caseData }) {
               {selectedLender.rate ? <> · {selectedLender.rate}%</> : null}
               {selectedLender.term ? <> · {selectedLender.term} yrs</> : null}
             </div>
+          ) : scenarios.length > 0 ? (
+            <div style={{ marginTop: 6, fontSize: 13, color: "#65a30d" }}>Lender not confirmed yet — broker confirms it in Infinity Recommendation.</div>
           ) : (
-            <div style={{ marginTop: 6, fontSize: 13, color: "#65a30d" }}>Lender not confirmed yet — broker confirms in Infinity Recommendation.</div>
+            <div style={{ marginTop: 6, fontSize: 13, color: "#65a30d" }}>Not synced yet — run Infinity AutoFill (through Preferred Features) and confirm the lender; it appears here automatically.</div>
           )}
           {scenarios.length > 0 && (
             <table style={{ marginTop: 8, width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
