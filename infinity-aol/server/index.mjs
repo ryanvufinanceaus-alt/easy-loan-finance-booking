@@ -36,11 +36,15 @@ const comparisonSnapshotsPath = path.resolve(dataDir, "comparisonSnapshots.json"
 const callNotesPath = path.resolve(dataDir, "callNotes.json");
 const localCasesPath = path.resolve(dataDir, "localCases.json");
 const clientIntakesPath = path.resolve(dataDir, "clientIntakes.json");
+const aolTemplatesPath = path.resolve(dataDir, "aolTemplates.json");
 
 const preparedCases = new Map();
 const documentDrafts = new Map();
 const caseHistory = new Map();
 const comparisonSnapshots = new Map();
+// Per-lender AOL learned templates (Compliance R&O reason selections etc.). Each lender's AOL form
+// differs, so the bot learns + stores a template keyed by lender code (ANZ/ING/…) and reuses it.
+const aolTemplates = new Map();
 let callNotes = [];
 let localCases = [];
 let clientIntakes = [];
@@ -279,6 +283,20 @@ async function hydrateStoredData() {
   callNotes = await readStoredJson("call_notes", callNotesPath, []);
   localCases = await readStoredJson("local_cases", localCasesPath, []);
   clientIntakes = await readStoredJson("client_intakes", clientIntakesPath, []);
+
+  const loadedTemplates = await readStoredJson("aol_templates", aolTemplatesPath, {});
+  for (const [lender, tmpl] of Object.entries(loadedTemplates)) {
+    if (tmpl && typeof tmpl === "object") aolTemplates.set(lender, tmpl);
+  }
+}
+
+function persistAolTemplates() {
+  writeStoredJson("aol_templates", aolTemplatesPath, Object.fromEntries(aolTemplates.entries()));
+}
+
+// Normalise a lender code key (ANZ, ING, …) so "anz"/"ANZ"/"Anz" all map to one template.
+function lenderKey(raw) {
+  return String(raw || "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "") || "DEFAULT";
 }
 
 function persistCallNotes() {
@@ -1989,6 +2007,35 @@ app.get("/api/cases/:caseId/capture/:key", (request, response) => {
     data: latest?.data ?? null,
     capturedAt: latest?.timestamp || null
   });
+});
+
+// Per-lender learned AOL template (Compliance R&O reason selections etc.). Each lender's AOL form
+// differs, so the bot reads this template before filling and writes back any NEW selections it sees —
+// the template self-learns per lender across cases. GET returns the stored template; POST merges in.
+app.get("/api/aol-templates/:lender", (request, response) => {
+  const key = lenderKey(request.params.lender);
+  response.json({ ok: true, lender: key, template: aolTemplates.get(key) || null });
+});
+
+app.post("/api/aol-templates/:lender", (request, response) => {
+  const key = lenderKey(request.params.lender);
+  const incoming = request.body && typeof request.body === "object" ? request.body : {};
+  const prev = aolTemplates.get(key) || {};
+  // Union the reason phrases (learn new ones, never drop known ones); merge scalar fields shallowly.
+  const mergedReasons = Array.from(new Set([
+    ...(Array.isArray(prev.reasons) ? prev.reasons : []),
+    ...(Array.isArray(incoming.reasons) ? incoming.reasons : [])
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)));
+  const template = {
+    ...prev,
+    ...incoming,
+    reasons: mergedReasons,
+    lender: key,
+    learnedAt: new Date().toISOString()
+  };
+  aolTemplates.set(key, template);
+  persistAolTemplates();
+  response.json({ ok: true, lender: key, template });
 });
 
 app.delete("/api/cases/:caseId/local-data", (request, response) => {
