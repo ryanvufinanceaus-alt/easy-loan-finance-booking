@@ -128,6 +128,7 @@ export function buildAolTemplate(caseData, infinity) {
       rentalIncomePeriod: "Weekly",
       hasEvidenceOfTenancy: "No",
       estimatedValue: money(caseData.property?.estimatedValue || caseData.property?.purchasePrice),
+      transferOfLandAmount: money(caseData.property?.purchasePrice || caseData.property?.estimatedValue),
       basisOfEstimate: "Applicant Estimate",
       titleType: "Freehold",
       title: caseData.property?.titleType || "Torrens",

@@ -1940,8 +1940,13 @@ app.get("/api/cases", (_request, response) => {
 app.get("/api/cases/:caseId", (request, response) => {
   const caseData = findCase(request.params.caseId);
   if (!caseData) return response.status(404).json({ error: "Case not found" });
-  const latestNote = (caseHistory.get(request.params.caseId) || []).find((event) => event.type === "loan-form-mismatch");
-  response.json({ ...caseData, loanFormNotes: latestNote?.mismatches || [], loanFormNoteAt: latestNote?.timestamp || null });
+  const events = caseHistory.get(request.params.caseId) || [];
+  const latestNote = events.find((event) => event.type === "loan-form-mismatch");
+  const captures = {};
+  for (const event of events) {
+    if (event.type === "capture" && event.key && !(event.key in captures)) captures[event.key] = event.data;
+  }
+  response.json({ ...caseData, loanFormNotes: latestNote?.mismatches || [], loanFormNoteAt: latestNote?.timestamp || null, captures });
 });
 
 // Records a Loan-Form-vs-Infinity divergence note on the case (persisted to caseHistory).
@@ -1954,6 +1959,36 @@ app.post("/api/cases/:caseId/loan-form-note", (request, response) => {
     mismatches
   });
   response.json({ ok: true, caseId, count: mismatches.length });
+});
+
+// Generic per-case capture store (internal autofill data — lender scenarios now, more later).
+// Mirrors loan-form-note: persisted via caseHistory; GET returns the latest entry per key.
+// This is the EasyFlow AI internal source of truth that bridges Infinity ↔ AOL and feeds the
+// bidirectional sync (changes captured on one platform are reusable on the other).
+app.post("/api/cases/:caseId/capture", (request, response) => {
+  const caseId = request.params.caseId;
+  const key = String(request.body?.key || "").trim();
+  if (!key) return response.status(400).json({ error: "capture key required" });
+  pushCaseHistory(caseId, {
+    type: "capture",
+    key,
+    brokerUser: request.body?.brokerUser || "unknown",
+    platform: request.body?.platform || null,
+    data: request.body?.data ?? null
+  });
+  response.json({ ok: true, caseId, key });
+});
+
+app.get("/api/cases/:caseId/capture/:key", (request, response) => {
+  const events = caseHistory.get(request.params.caseId) || [];
+  const latest = events.find((event) => event.type === "capture" && event.key === request.params.key);
+  response.json({
+    ok: true,
+    caseId: request.params.caseId,
+    key: request.params.key,
+    data: latest?.data ?? null,
+    capturedAt: latest?.timestamp || null
+  });
 });
 
 app.delete("/api/cases/:caseId/local-data", (request, response) => {
