@@ -2021,18 +2021,24 @@ app.post("/api/aol-templates/:lender", (request, response) => {
   const key = lenderKey(request.params.lender);
   const incoming = request.body && typeof request.body === "object" ? request.body : {};
   const prev = aolTemplates.get(key) || {};
-  // Union the reason phrases (learn new ones, never drop known ones); merge scalar fields shallowly.
-  const mergedReasons = Array.from(new Set([
-    ...(Array.isArray(prev.reasons) ? prev.reasons : []),
-    ...(Array.isArray(incoming.reasons) ? incoming.reasons : [])
-  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)));
+  const incomingReasons = (Array.isArray(incoming.reasons) ? incoming.reasons : [])
+    .map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+  // replace=true → the broker DELIBERATELY taught this exact set (overwrite, so corrections stick).
+  // Otherwise union (additive learning). The reasons are always de-duplicated.
+  const reasons = incoming.replace
+    ? Array.from(new Set(incomingReasons))
+    : Array.from(new Set([
+        ...(Array.isArray(prev.reasons) ? prev.reasons : []).map((value) => String(value || "").trim().toLowerCase()).filter(Boolean),
+        ...incomingReasons
+      ]));
   const template = {
     ...prev,
     ...incoming,
-    reasons: mergedReasons,
+    reasons,
     lender: key,
     learnedAt: new Date().toISOString()
   };
+  delete template.replace;
   aolTemplates.set(key, template);
   persistAolTemplates();
   response.json({ ok: true, lender: key, template });
