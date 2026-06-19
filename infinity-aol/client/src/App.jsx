@@ -398,6 +398,9 @@ function CaseFacts({ caseData }) {
   if (!caseData) return null;
   const primary = caseData.applicants.find((applicant) => applicant.role === "primary");
   const loanFormNotes = Array.isArray(caseData.loanFormNotes) ? caseData.loanFormNotes : [];
+  const captures = caseData.captures || {};
+  const selectedLender = captures.selectedLender || null;
+  const scenarios = Array.isArray(captures.lenderScenarios) ? captures.lenderScenarios : [];
   return (
     <>
       {loanFormNotes.length > 0 && (
@@ -408,6 +411,46 @@ function CaseFacts({ caseData }) {
               <li key={idx}>{m.field} — Loan Form: <strong>{m.loanForm}</strong> (differs in Infinity)</li>
             ))}
           </ul>
+        </div>
+      )}
+      {(selectedLender || scenarios.length > 0) && (
+        <div className="lender-sync" style={{ marginBottom: 12, padding: "10px 12px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, color: "#14532d" }}>
+          <strong>🏦 Lender &amp; product (synced from Infinity)</strong>
+          {selectedLender ? (
+            <div style={{ marginTop: 6, fontSize: 13 }}>
+              Confirmed: <strong>{selectedLender.lender || "—"}</strong>
+              {selectedLender.product ? <> · <span title="Product">{selectedLender.product}</span></> : null}
+              {selectedLender.rate ? <> · {selectedLender.rate}%</> : null}
+              {selectedLender.term ? <> · {selectedLender.term} yrs</> : null}
+            </div>
+          ) : (
+            <div style={{ marginTop: 6, fontSize: 13, color: "#65a30d" }}>Lender not confirmed yet — broker confirms in Infinity Recommendation.</div>
+          )}
+          {scenarios.length > 0 && (
+            <table style={{ marginTop: 8, width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ textAlign: "left", color: "#3f6212" }}>
+                  <th style={{ padding: "2px 6px" }}>Lender</th>
+                  <th style={{ padding: "2px 6px" }}>Product</th>
+                  <th style={{ padding: "2px 6px" }}>Rate</th>
+                  <th style={{ padding: "2px 6px" }}>Term</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scenarios.map((s, idx) => {
+                  const isChosen = selectedLender && (s.lender || "").toLowerCase().includes((selectedLender.lender || "").toLowerCase()) && selectedLender.lender;
+                  return (
+                    <tr key={idx} style={{ background: isChosen ? "#dcfce7" : "transparent", fontWeight: isChosen ? 700 : 400 }}>
+                      <td style={{ padding: "2px 6px" }}>{s.lender || "—"}{isChosen ? " ✓" : ""}</td>
+                      <td style={{ padding: "2px 6px" }}>{s.product || "—"}</td>
+                      <td style={{ padding: "2px 6px" }}>{s.rate || "—"}</td>
+                      <td style={{ padding: "2px 6px" }}>{s.term || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
     <div className="facts-grid">
