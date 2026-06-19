@@ -1914,7 +1914,14 @@ await hydrateStoredData();
 persistBackupSnapshot();
 
 app.get("/api/health", (_request, response) => {
-  response.json({ ok: true, service: "Infinity AOL AutoFill Assistant" });
+  response.json({
+    ok: true,
+    service: "Infinity AOL AutoFill Assistant",
+    commit: process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || "local",
+    deployedAt: process.env.RENDER_DEPLOY_TIME || null,
+    templateIds: listTemplates().map((t) => t.id),
+    time: new Date().toISOString()
+  });
 });
 
 app.get("/api/storage/status", (_request, response) => {

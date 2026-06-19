@@ -366,12 +366,12 @@ export function buildInfinityTemplate(caseData) {
           const ownerOccupied = loanPurposeText(caseData) === "Purchase Owner Occupied Dwelling";
           rows.unshift({
             templateKey: "rent",
-            type: "Rent",
-            expenseType: "Rent",
-            infinityTypeCandidates: ["Rent", "Board"],
+            type: "Rental Expenses",
+            expenseType: "Rental Expenses",
+            infinityTypeCandidates: ["Rental Expenses", "Rent", "Board"],
             amount: rentMonthly,
             frequency: "Monthly",
-            description: "Rent",
+            description: "Rental Expense",
             continuePostSettlement: ownerOccupied ? "No" : "Yes",
             ownership: ownerPct,
             applicantScope: "household",
