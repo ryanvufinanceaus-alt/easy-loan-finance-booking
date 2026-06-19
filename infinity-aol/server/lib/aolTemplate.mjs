@@ -13,6 +13,38 @@ function firstPrimary(caseData) {
   return caseData.applicants.find((applicant) => applicant.role === "primary") || caseData.applicants[0] || {};
 }
 
+function firstPresent(...values) {
+  return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "");
+}
+
+// Normalise any date-ish value to ISO yyyy-mm-dd so the extension can parse it (new Date) + drive the
+// AOL calendar (navigate month + click day). Handles ISO, dd/mm/yyyy, and JS-parseable timestamps.
+function toIsoDate(value) {
+  if (!value) return "";
+  const au = String(value).match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (au) return `${au[3]}-${au[2].padStart(2, "0")}-${au[1].padStart(2, "0")}`;
+  const date = new Date(value);
+  if (!Number.isNaN(date.getTime())) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  }
+  return "";
+}
+
+// The interview/case date — SAME source chain Infinity uses (infinityTemplate dateInterviewConducted),
+// so Infinity ↔ AOL always match: explicit interview date → loan-form submission timestamp → today.
+function interviewIsoDate(caseData) {
+  const today = new Date();
+  const fallback = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return toIsoDate(firstPresent(
+    caseData.factFind?.dateInterviewConducted,
+    caseData.loan?.dateInterviewConducted,
+    caseData.interviewDate,
+    caseData.createdAt,
+    caseData.intake?.submittedAt,
+    caseData.intake?.createdAt
+  )) || fallback;
+}
+
 function housingSituation(applicant, caseData) {
   return applicant?.currentHousingSituation ||
     applicant?.currentResidentialStatus ||
@@ -33,6 +65,7 @@ function loanPurpose(caseData) {
 export function buildAolTemplate(caseData, infinity) {
   const primary = firstPrimary(caseData);
   const primaryName = fullName(primary);
+  const interviewDate = interviewIsoDate(caseData); // ISO yyyy-mm-dd; SAME as Infinity → dates match
   const propertyAddress = caseData.property?.aolAddress || caseData.property?.address || "";
   const deposit = money(caseData.loan?.deposit);
   const savings = Math.max(0, deposit - money(caseData.serviceability?.financialAssetBuffer));
@@ -142,9 +175,11 @@ export function buildAolTemplate(caseData, infinity) {
       ) / 100,
       totalExpensesMonthly: money(caseData.expenses?.livingMonthly),
       incomeConfirmed: "No",
-      expensesReviewed: "Yes"
+      expensesReviewed: "Yes",
+      statementOfPositionDate: interviewDate // broker decision: SoP date = interview date
     },
     compliance: {
+      interviewDate, // ISO yyyy-mm-dd — bot fills the AOL interview date with this (matches Infinity)
       anticipatedChanges: "No",
       retirementAge: 80,
       reachRetirementDuringLoan: "No",
