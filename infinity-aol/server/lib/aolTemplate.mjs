@@ -36,7 +36,7 @@ export function buildAolTemplate(caseData, infinity) {
   const propertyAddress = caseData.property?.aolAddress || caseData.property?.address || "";
   const deposit = money(caseData.loan?.deposit);
   const savings = Math.max(0, deposit - money(caseData.serviceability?.financialAssetBuffer));
-  const selectedLender = caseData.loan?.lender || infinity?.recommendation?.selectedLender || "Pepper Money";
+  const selectedLender = caseData.loan?.lender || infinity?.recommendation?.selectedLender || "[LENDER]";
   const isVariable = /variable/i.test(caseData.loan?.productPreference || "") || !/fixed/i.test(caseData.loan?.productPreference || "");
   const isPrincipalInterest = /principal|p\s*&\s*i/i.test(caseData.loan?.repaymentType || "");
   const hasOffset = Boolean(caseData.loan?.offsetRequested);

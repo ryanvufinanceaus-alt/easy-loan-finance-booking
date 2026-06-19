@@ -173,7 +173,7 @@ function selectedRequirements(caseData) {
 }
 
 function lenderText(caseData) {
-  return caseData.loan?.lender || caseData.loan?.preferredLender || "Pepper Money";
+  return caseData.loan?.lender || caseData.loan?.preferredLender || "[LENDER]";
 }
 
 function primarySecurity(caseData) {
