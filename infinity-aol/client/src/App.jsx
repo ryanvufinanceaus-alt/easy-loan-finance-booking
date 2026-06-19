@@ -397,7 +397,19 @@ function IssueFixGuide({ issue }) {
 function CaseFacts({ caseData }) {
   if (!caseData) return null;
   const primary = caseData.applicants.find((applicant) => applicant.role === "primary");
+  const loanFormNotes = Array.isArray(caseData.loanFormNotes) ? caseData.loanFormNotes : [];
   return (
+    <>
+      {loanFormNotes.length > 0 && (
+        <div className="loan-form-note" style={{ marginBottom: 12, padding: "10px 12px", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, color: "#92400e" }}>
+          <strong>⚠️ Loan Form mismatch on this case</strong>
+          <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+            {loanFormNotes.map((m, idx) => (
+              <li key={idx}>{m.field} — Loan Form: <strong>{m.loanForm}</strong> (differs in Infinity)</li>
+            ))}
+          </ul>
+        </div>
+      )}
     <div className="facts-grid">
       <div>
         <span>Primary applicant</span>
@@ -418,6 +430,7 @@ function CaseFacts({ caseData }) {
         </strong>
       </div>
     </div>
+    </>
   );
 }
 
@@ -4233,6 +4246,34 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
               <label>First / given name(s)<input value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} placeholder="Main applicant" /></label>
               <label>Last name / surname<input value={form.surname} onChange={(event) => updateField("surname", event.target.value)} /></label>
               <label>Second applicant?<select value={callHasSecondApplicant ? "Yes" : "No"} onChange={(event) => updateSecondApplicantChoice(event.target.value)}><option>No</option><option>Yes</option></select></label>
+              {callHasSecondApplicant && (
+                <div className="call-second-applicant-inline">
+                  <div className="call-key-detail-heading">
+                    <strong>Second applicant details</strong>
+                    <span>This section appears immediately when you choose Yes so the co-borrower can be captured here instead of hunting for another panel.</span>
+                  </div>
+                  <div className="note-form-grid compact-inline-grid">
+                    <label>Given name(s)<input value={form.secondApplicantFirstName} onChange={(event) => updateField("secondApplicantFirstName", event.target.value)} placeholder="As shown on ID" /></label>
+                    <label>Surname<input value={form.secondApplicantSurname} onChange={(event) => updateField("secondApplicantSurname", event.target.value)} /></label>
+                    <DateField label="DOB" value={form.secondApplicantDateOfBirth} onChange={(value) => updateField("secondApplicantDateOfBirth", value)} />
+                    <label>Gender<select value={form.secondApplicantGender} onChange={(event) => updateField("secondApplicantGender", event.target.value)}><option value="">Please select</option>{genderOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                    <label>Mobile<input value={form.secondApplicantMobile} onChange={(event) => updateField("secondApplicantMobile", event.target.value)} placeholder="Leave blank if same contact" /></label>
+                    <label>Email<input value={form.secondApplicantEmail} onChange={(event) => updateField("secondApplicantEmail", event.target.value)} placeholder="Leave blank if same email" /></label>
+                    <label>Address<input value={form.secondApplicantAddress} onChange={(event) => updateField("secondApplicantAddress", event.target.value)} placeholder="Leave blank if same address" /></label>
+                    <label>Residency<select value={form.secondApplicantResidencyStatus || "Australian citizen"} onChange={(event) => updateField("secondApplicantResidencyStatus", event.target.value)}>{residencyOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                    <label>Permanent in Australia<select value={form.secondApplicantPermanentInAustralia} onChange={(event) => updateField("secondApplicantPermanentInAustralia", event.target.value)}>{yesNoOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                    <label>Marital<select value={form.secondApplicantMaritalStatus || form.maritalStatus} onChange={(event) => updateField("secondApplicantMaritalStatus", event.target.value)}><option>Single</option><option>Married</option><option>Defacto</option><option>Separated</option></select></label>
+                    <label>Dependants<input value={form.secondApplicantDependants || "0"} onChange={(event) => updateField("secondApplicantDependants", event.target.value)} /></label>
+                    <label>Driver licence no.<input value={form.secondApplicantDriversLicenceNo} onChange={(event) => updateField("secondApplicantDriversLicenceNo", event.target.value)} /></label>
+                    <DateField label="Licence expiry" value={form.secondApplicantLicenceExpiryDate} onChange={(value) => updateField("secondApplicantLicenceExpiryDate", value)} />
+                    <label>Licence state<select value={form.secondApplicantLicenceState} onChange={(event) => updateField("secondApplicantLicenceState", event.target.value)}><option value="">Please select</option>{licenceStateOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
+                    <label>Licence class<input value={form.secondApplicantLicenceClass} onChange={(event) => updateField("secondApplicantLicenceClass", event.target.value)} placeholder="C" /></label>
+                    <label>Income p.a.<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
+                    <label>Employer<input value={form.secondApplicantEmployerName} onChange={(event) => updateField("secondApplicantEmployerName", event.target.value)} /></label>
+                    <label>Occupation<input value={form.secondApplicantJobTitle} onChange={(event) => updateField("secondApplicantJobTitle", event.target.value)} /></label>
+                  </div>
+                </div>
+              )}
               <label>Mobile<input value={form.mobile} onChange={(event) => updateField("mobile", event.target.value)} /></label>
               <label>Email<input value={form.email} onChange={(event) => updateField("email", event.target.value)} /></label>
               <label>Language<select value={form.preferredLanguage} onChange={(event) => updateField("preferredLanguage", event.target.value)}><option>Vietnamese / English</option><option>English</option><option>Vietnamese</option></select></label>
@@ -4364,8 +4405,8 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
             </div>
           </section>
 
-          <details className="panel note-panel call-key-details-panel optional-borrower-details">
-            <summary><ShieldCheck size={18} /><strong>Optional Borrower Details</strong><span>Open only if the client gives ID, address, income, or spouse details during the call.</span></summary>
+          <details className="panel note-panel call-key-details-panel optional-borrower-details" open={callHasSecondApplicant || undefined}>
+            <summary><ShieldCheck size={18} /><strong>Optional Borrower Details</strong><span>{callHasSecondApplicant ? "Main applicant details stay here. Second applicant details now appear above as soon as Yes is selected." : "Open only if the client gives ID, address, income, or spouse details during the call."}</span></summary>
             <div className="call-key-detail-groups">
               <div className="call-key-detail-group">
                 <div className="call-key-detail-heading">
@@ -4389,35 +4430,6 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                   <label>Occupation<input value={form.occupation} onChange={(event) => updateField("occupation", event.target.value)} /></label>
                 </div>
               </div>
-
-              {callHasSecondApplicant && (
-                <div className="call-key-detail-group second-applicant-call-panel">
-                  <div className="call-key-detail-heading">
-                    <strong>Second applicant</strong>
-                    <span>Shown only when there is a spouse, partner, or co-borrower.</span>
-                  </div>
-                  <div className="note-form-grid">
-                    <label>Given name(s)<input value={form.secondApplicantFirstName} onChange={(event) => updateField("secondApplicantFirstName", event.target.value)} placeholder="As shown on ID" /></label>
-                    <label>Surname<input value={form.secondApplicantSurname} onChange={(event) => updateField("secondApplicantSurname", event.target.value)} /></label>
-                    <DateField label="DOB" value={form.secondApplicantDateOfBirth} onChange={(value) => updateField("secondApplicantDateOfBirth", value)} />
-                    <label>Gender<select value={form.secondApplicantGender} onChange={(event) => updateField("secondApplicantGender", event.target.value)}><option value="">Please select</option>{genderOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
-                    <label>Mobile<input value={form.secondApplicantMobile} onChange={(event) => updateField("secondApplicantMobile", event.target.value)} placeholder="Leave blank if same contact" /></label>
-                    <label>Email<input value={form.secondApplicantEmail} onChange={(event) => updateField("secondApplicantEmail", event.target.value)} placeholder="Leave blank if same email" /></label>
-                    <label>Address<input value={form.secondApplicantAddress} onChange={(event) => updateField("secondApplicantAddress", event.target.value)} placeholder="Leave blank if same address" /></label>
-                    <label>Residency<select value={form.secondApplicantResidencyStatus || "Australian citizen"} onChange={(event) => updateField("secondApplicantResidencyStatus", event.target.value)}>{residencyOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
-                    <label>Permanent in Australia<select value={form.secondApplicantPermanentInAustralia} onChange={(event) => updateField("secondApplicantPermanentInAustralia", event.target.value)}>{yesNoOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
-                    <label>Marital<select value={form.secondApplicantMaritalStatus || form.maritalStatus} onChange={(event) => updateField("secondApplicantMaritalStatus", event.target.value)}><option>Single</option><option>Married</option><option>Defacto</option><option>Separated</option></select></label>
-                    <label>Dependants<input value={form.secondApplicantDependants || "0"} onChange={(event) => updateField("secondApplicantDependants", event.target.value)} /></label>
-                    <label>Driver licence no.<input value={form.secondApplicantDriversLicenceNo} onChange={(event) => updateField("secondApplicantDriversLicenceNo", event.target.value)} /></label>
-                    <DateField label="Licence expiry" value={form.secondApplicantLicenceExpiryDate} onChange={(value) => updateField("secondApplicantLicenceExpiryDate", value)} />
-                    <label>Licence state<select value={form.secondApplicantLicenceState} onChange={(event) => updateField("secondApplicantLicenceState", event.target.value)}><option value="">Please select</option>{licenceStateOptions.map((option) => <option key={option}>{option}</option>)}</select></label>
-                    <label>Licence class<input value={form.secondApplicantLicenceClass} onChange={(event) => updateField("secondApplicantLicenceClass", event.target.value)} placeholder="C" /></label>
-                    <label>Income p.a.<input value={form.secondAnnualIncome} onChange={(event) => updateField("secondAnnualIncome", event.target.value)} /></label>
-                    <label>Employer<input value={form.secondApplicantEmployerName} onChange={(event) => updateField("secondApplicantEmployerName", event.target.value)} /></label>
-                    <label>Occupation<input value={form.secondApplicantJobTitle} onChange={(event) => updateField("secondApplicantJobTitle", event.target.value)} /></label>
-                  </div>
-                </div>
-              )}
             </div>
           </details>
 
@@ -4833,7 +4845,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
     setForm((current) => ({
       ...current,
       maritalStatus: value,
-      hasSecondApplicant: /married|defacto/i.test(value) ? "Yes" : current.hasSecondApplicant
+      hasSecondApplicant: current.hasSecondApplicant
     }));
   }
 
@@ -4864,14 +4876,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
   const missingFieldKeys = new Set(missingFields.map((field) => field.key));
   const missingFieldMap = new Map(missingFields.map((field) => [field.key, field.label]));
   const dependantCount = Math.min(Math.max(Number(form.dependants || 0), 0), 4);
-  const hasSecondApplicant = /married|defacto/i.test(form.maritalStatus)
-    || form.hasSecondApplicant === "Yes"
-    || Boolean(composeLegalName(
-      form.secondApplicantFirstName,
-      form.secondApplicantMiddleName,
-      form.secondApplicantSurname,
-      form.secondApplicantName
-    ));
+  const hasSecondApplicant = form.hasSecondApplicant === "Yes";
   const canImportCaseData = false;
   const L = (label) => tx(label, language);
   const requiredErrorText = (key) => {

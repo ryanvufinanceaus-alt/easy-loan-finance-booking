@@ -966,7 +966,55 @@ function normalizeClientIntakeSubmission(body = {}) {
     currentRepayment: toNumber(body.currentRepayment),
     offsetRequested: toBoolean(body.offsetRequested)
   };
-  return attachClientIntakePayloads(base, body);
+
+  const hasSecondApplicant = /^(yes|true|1)$/i.test(String(base.hasSecondApplicant || "").trim());
+  base.hasSecondApplicant = hasSecondApplicant ? "Yes" : "No";
+  if (!hasSecondApplicant) {
+    [
+      "secondApplicantName",
+      "secondApplicantFirstName",
+      "secondApplicantMiddleName",
+      "secondApplicantSurname",
+      "secondApplicantNameSearch",
+      "secondApplicantDateOfBirth",
+      "secondApplicantGender",
+      "secondApplicantMobile",
+      "secondApplicantEmail",
+      "secondApplicantResidencyStatus",
+      "secondApplicantPermanentInAustralia",
+      "secondApplicantVisaSubclass",
+      "secondApplicantMaritalStatus",
+      "secondApplicantDriversLicenceNo",
+      "secondApplicantLicenceCardNumber",
+      "secondApplicantLicenceExpiryDate",
+      "secondApplicantLicenceState",
+      "secondApplicantLicenceClass",
+      "secondApplicantAddress",
+      "secondApplicantCurrentAddress",
+      "secondApplicantCurrentSuburb",
+      "secondApplicantCurrentState",
+      "secondApplicantCurrentPostcode",
+      "secondApplicantCurrentAddressFromDate",
+      "secondApplicantPreviousAddress",
+      "secondApplicantCurrentResidentialStatus",
+      "secondApplicantEmploymentType",
+      "secondApplicantEmployerName",
+      "secondApplicantOccupation",
+      "secondApplicantJobTitle",
+      "secondApplicantEmploymentBasis",
+      "secondApplicantEmploymentLength",
+      "secondApplicantEmploymentFromDate",
+      "secondApplicantPreviousEmploymentFromDate",
+      "secondApplicantPreviousEmploymentToDate"
+    ].forEach((field) => {
+      base[field] = "";
+    });
+    base.secondApplicantDependants = 0;
+    base.secondAnnualIncome = 0;
+    base.applicant2Expenses = 0;
+    base.applicant2PrivateHealthAmount = 0;
+  }
+  return attachClientIntakePayloads(base, base);
 }
 
 function toNumber(value) {
@@ -1133,7 +1181,7 @@ function buildValidationStatus(submission) {
     "employmentType",
     "annualIncome",
     "generalExpenses",
-    ...(submission.hasSecondApplicant === "Yes" || /married|defacto/i.test(submission.maritalStatus || "") ? ["secondApplicantFirstName", "secondApplicantSurname", "secondApplicantDateOfBirth", "secondAnnualIncome"] : []),
+    ...(submission.hasSecondApplicant === "Yes" ? ["secondApplicantFirstName", "secondApplicantSurname", "secondApplicantDateOfBirth", "secondAnnualIncome"] : []),
     ...(requiredByLoanType[scenarioKey] || [])
   ];
   if (!/unemployed|retired/i.test(submission.employmentType || "")) required.push("employerName", "employmentFromDate");
@@ -1160,6 +1208,7 @@ function buildValidationStatus(submission) {
 }
 
 function buildNormalisedPayload(submission, validationStatus) {
+  const hasSecondApplicant = submission.hasSecondApplicant === "Yes";
   return {
     applicants: [
       {
@@ -1197,7 +1246,7 @@ function buildNormalisedPayload(submission, validationStatus) {
           mailing: submission.mailingAddress || submission.address
         }
       },
-      ...(submission.secondApplicantName ? [{
+      ...(hasSecondApplicant ? [{
         role: "secondary",
         firstName: submission.secondApplicantFirstName,
         surname: submission.secondApplicantSurname,
@@ -1239,7 +1288,7 @@ function buildNormalisedPayload(submission, validationStatus) {
         basis: submission.employmentBasis,
         fromDate: submission.employmentFromDate
       },
-      secondary: submission.secondApplicantName ? {
+      secondary: hasSecondApplicant ? {
         type: submission.secondApplicantEmploymentType,
         employerName: submission.secondApplicantEmployerName,
         jobTitle: submission.secondApplicantJobTitle,
@@ -1801,8 +1850,22 @@ function summarizePrepared(prepared, type) {
   };
 }
 
+function pickTemplateIdForCase(caseData) {
+  const purpose = `${caseData?.property?.purpose || ""} ${caseData?.property?.occupancy || ""} ${caseData?.loan?.purpose || ""} ${caseData?.loan?.loanPurpose || ""} ${caseData?.loan?.applicationType || ""} ${caseData?.loan?.opportunityName || ""}`.toLowerCase();
+  const applicants = Array.isArray(caseData?.applicants) ? caseData.applicants.filter(Boolean) : [];
+  const isCouple = applicants.length >= 2;
+  if (/refinance|\brefi\b|cash.?out/.test(purpose)) return "refinance-cashout";
+  if (/investment|\binv\b|rental/.test(purpose)) return "single-investor-preapproval";
+  return isCouple ? "couple-owner-occupied-purchase" : "single-owner-occupied-purchase";
+}
+
 function prepareCase(caseData, source = "prepare", options = {}) {
   const sourceCase = hydrateCaseFromLinkedLoanForm(caseData);
+  // Auto-pick a scenario-matched template on first prepare; broker can still override by passing templateId.
+  if (!options.templateId && !documentDrafts.get(sourceCase.id)) {
+    const autoTemplateId = pickTemplateIdForCase(sourceCase);
+    if (autoTemplateId) options.templateId = autoTemplateId;
+  }
   if (options.templateId || options.templateOverrides || options.hemMonthly || options.financialAssetBuffer || options.manualIntake) {
     const draft = buildDocumentDraft([], {
       templateId: options.templateId,
@@ -1870,7 +1933,20 @@ app.get("/api/cases", (_request, response) => {
 app.get("/api/cases/:caseId", (request, response) => {
   const caseData = findCase(request.params.caseId);
   if (!caseData) return response.status(404).json({ error: "Case not found" });
-  response.json(caseData);
+  const latestNote = (caseHistory.get(request.params.caseId) || []).find((event) => event.type === "loan-form-mismatch");
+  response.json({ ...caseData, loanFormNotes: latestNote?.mismatches || [], loanFormNoteAt: latestNote?.timestamp || null });
+});
+
+// Records a Loan-Form-vs-Infinity divergence note on the case (persisted to caseHistory).
+app.post("/api/cases/:caseId/loan-form-note", (request, response) => {
+  const caseId = request.params.caseId;
+  const mismatches = Array.isArray(request.body?.mismatches) ? request.body.mismatches : [];
+  pushCaseHistory(caseId, {
+    type: "loan-form-mismatch",
+    brokerUser: request.body?.brokerUser || "unknown",
+    mismatches
+  });
+  response.json({ ok: true, caseId, count: mismatches.length });
 });
 
 app.delete("/api/cases/:caseId/local-data", (request, response) => {

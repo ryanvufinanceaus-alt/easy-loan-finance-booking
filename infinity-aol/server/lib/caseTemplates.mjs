@@ -111,6 +111,58 @@ const defaultTemplates = [
     requiredDocs: ["IDs for both applicants", "Payslips or income evidence", "Bank statements", "Contract of sale"]
   },
   {
+    id: "single-owner-occupied-purchase",
+    name: "Single Owner Occupied Purchase",
+    description: "Single borrower buying an owner occupied home with variable P&I, redraw, and offset.",
+    applicantMode: "single",
+    scenario: "owner_purchase",
+    defaults: {
+      hemMonthly: 3000,
+      financialAssetBuffer: 30000,
+      currentHousingSituation: "Renting",
+      loanPurpose: "Purchase Owner Occupied Dwelling",
+      repaymentType: "Principal and Interest",
+      productPreference: "Variable",
+      loanTermYears: 30,
+      offsetRequested: true,
+      preApproval: true,
+      expenses: {
+        livingMonthly: 3000,
+        rentMonthly: 0,
+        educationMonthly: 0,
+        insuranceMonthly: 200,
+        transportMonthly: 500,
+        otherMonthly: 2300
+      }
+    },
+    loanFeatures: [
+      { priority: 1, feature: "Variable Rate", reason: "The client wants flexibility if interest rates decrease." },
+      { priority: 2, feature: "Redraw", reason: "Gain access to funds if required." },
+      { priority: 3, feature: "P & I Repayments", reason: "The client prefers to reduce principal over the loan term." },
+      { priority: 4, feature: "Offset", reason: "To save interest charged." },
+      { priority: 5, feature: "Monthly Repayments", reason: "Personal preference and easier monthly budgeting." }
+    ],
+    narrativeOverrides: {
+      loanObjectiveExplanation: "{Client} would like to buy {possessive} owner occupied property to live in.",
+      circumstancesObjectivesPriorities:
+        "{Client} {be} seeking finance to purchase an owner occupied property to live in. {Subject} {be} looking to have the loan for {loanTerm} years; however {subject} may be able to pay down sooner in the future if {subject} {be} in a position to. The applicant {be} working and earning a good income. The applicant does not foresee any changes to {possessive} financial position that may affect {possessive} ability to repay the home loan.\n{lender} was chosen because they provide stronger servicing and offer competitive rates.\n\n{Client} chooses a variable option to enable flexibility in reducing debt if {subject} accumulates extra funds during this period. Also, {client} would like to use the redraw option if {subject} needs to gain access to the funds. {Client} prefers a {repayment} option because {subject} would like to pay down the loan over the period of {loanTerm} years to reduce the debt. The repayment monthly is more suitable for {client} to budget.",
+      financialAwarenessPractices:
+        "{Client} already has experience with mortgage products. Loan terms and key features have been fully explained and understood.\n{Client} has a good record of saving. {Client} {be} living within {possessive} means and can save most of {possessive} income.",
+      lender:
+        "{lender} was chosen because they provide a stronger service and better interest rate for the client. Other lenders do not give enough borrowing capacity and better interest rate for {object} to purchase the property {subject} wants.",
+      loanAmount: "The loan amount can be serviced by the applicant and is enough for {object} to complete the purchase.",
+      interestRate: "Variable rate to take advantage of when the interest rate decreases.",
+      loanStructure:
+        "{Client} {be} seeking finance to purchase an owner occupied property to live in. {Subject} {be} looking to have the loan for {loanTerm} years; however {subject} may be able to pay down sooner in the future if {subject} {be} in a position to.\nThe applicant {be} working and earning a good income. The applicant does not foresee any changes to {possessive} financial position that may affect {possessive} ability to repay the home loan.\n\n{Client} chooses a variable option to enable flexibility in reducing debt if {subject} accumulates extra funds during this period. Also, {client} would like to use the redraw option if {subject} needs to gain access to the fund. {Client} prefers a {repayment} option because {subject} would like to pay down the loan in a period of {loanTerm} years to reduce the debt. The repayment of the monthly amount is more suitable for {client} to budget.",
+      goalsObjectives:
+        "{Client} {be} buying an owner occupied property to live in and wants a loan structure that is affordable, flexible, and suitable for long-term budgeting. {Subject} {be} looking to have the loan for {loanTerm} years; however {subject} may be able to pay down sooner in the future if {subject} {be} in a position to.\nThe applicant {be} working and earning a good income and does not foresee any changes that may affect {possessive} ability to repay the home loan.",
+      loanFeatures:
+        "{Subject} {be} looking to have the loan for {loanTerm} years; however {client} may be able to pay down sooner in the future if {subject} {be} in a position to.\nThe applicant {be} working and earning a good income. The applicant does not foresee any changes to {possessive} financial position that may affect {possessive} ability to repay the home loan.\n\n{Client} chooses a variable option to enable flexibility in reducing debt if {subject} accumulates extra funds during this period. Also, {client} would like to use the redraw option if {subject} needs to gain access to the funds. {Client} prefers a {repayment} option because {subject} would like to pay down the loan in a period of {loanTerm} years to reduce the debt. The repayment of the monthly amount is more suitable for {client} to budget.",
+      commissionsConflict: "No conflict of interest has been identified. Standard lender commissions and referral fees have been disclosed where applicable."
+    },
+    requiredDocs: ["Drivers licence", "Income evidence", "Bank statements", "Contract of sale or property details"]
+  },
+  {
     id: "refinance-cashout",
     name: "Refinance / Cash Out",
     description: "Refinance existing loan, review equity release purpose, and map existing mortgage details.",

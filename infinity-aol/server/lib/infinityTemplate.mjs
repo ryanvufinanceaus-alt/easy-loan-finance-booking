@@ -142,9 +142,16 @@ function selectedObjectives(caseData) {
 function selectedRequirements(caseData) {
   const product = String(caseData.loan?.productPreference || "");
   const repayment = String(caseData.loan?.repaymentType || "");
+  const purpose = loanPurposeText(caseData);
+  const ownerOccupiedPurchase = purpose === "Purchase Owner Occupied Dwelling" && !isRefinance(caseData);
+  const explicitInterestOnly = ownerOccupiedPurchase ? caseData.loan?.interestOnly === true : (caseData.loan?.interestOnly === true || /interest only/i.test(repayment));
+  const balloonRepayments = ownerOccupiedPurchase ? caseData.loan?.balloonRepayments === true : Boolean(caseData.loan?.balloonRepayments || /balloon/i.test(repayment));
+  const weeklyRepayments = ownerOccupiedPurchase ? false : caseData.loan?.weeklyRepayments === true;
+  const fortnightlyRepayments = ownerOccupiedPurchase ? false : caseData.loan?.fortnightlyRepayments === true;
+  const monthlyRepayments = ownerOccupiedPurchase ? true : (caseData.loan?.monthlyRepayments === true || (!weeklyRepayments && !fortnightlyRepayments));
   return {
     bridgingFinance: Boolean(caseData.loan?.bridging),
-    extraRepayments: Boolean(caseData.loan?.extraRepayments ?? true),
+    extraRepayments: caseData.loan?.extraRepayments === true,
     lineOfCredit: Boolean(caseData.loan?.lineOfCredit),
     nonConformingLoan: Boolean(caseData.loan?.nonConformingLoan),
     offset: caseData.loan?.offsetRequested !== false,
@@ -156,12 +163,12 @@ function selectedRequirements(caseData) {
     fixedRate: /fixed/i.test(product) && !/variable/i.test(product),
     variableRate: /variable/i.test(product) || !/fixed/i.test(product),
     fixedVariableRate: /fixed.*variable|variable.*fixed/i.test(product),
-    interestOnly: /interest only/i.test(repayment),
-    balloonRepayments: Boolean(caseData.loan?.balloonRepayments),
-    principalAndInterest: !/interest only|balloon/i.test(repayment),
-    weeklyRepayments: /weekly/i.test(caseData.loan?.repaymentFrequency || ""),
-    fortnightlyRepayments: /fortnight/i.test(caseData.loan?.repaymentFrequency || ""),
-    monthlyRepayments: !/weekly|fortnight/i.test(caseData.loan?.repaymentFrequency || "")
+    interestOnly: explicitInterestOnly,
+    balloonRepayments,
+    principalAndInterest: !explicitInterestOnly && !balloonRepayments,
+    weeklyRepayments,
+    fortnightlyRepayments,
+    monthlyRepayments
   };
 }
 
@@ -336,19 +343,43 @@ export function buildInfinityTemplate(caseData) {
     financials: {
       assets: caseData.assets || [],
       liabilities: caseData.liabilities || [],
-      expenses: (caseData.expenses?.breakdown?.length ? caseData.expenses.breakdown : []).map((expense) => ({
-        templateKey: expense.templateKey || "",
-        type: expense.expenseType || expense.type || "Groceries",
-        expenseType: expense.expenseType || expense.type || "Groceries",
-        infinityTypeCandidates: Array.isArray(expense.infinityTypeCandidates) ? expense.infinityTypeCandidates : [expense.expenseType || expense.type || "Groceries"],
-        amount: currency(expense.amount || expense.value),
-        frequency: expense.frequency || "Monthly",
-        description: expense.description || expense.expenseType || expense.type || "Living expenses / HEM",
-        continuePostSettlement: expense.continuePostSettlement || "Yes",
-        ownership: expense.ownership || "100%",
-        applicantScope: expense.applicantScope || "household",
-        source: expense.source || caseData.expenseSource || caseData.expenses?.source || ""
-      })).filter((expense) => expense.amount > 0),
+      expenses: (() => {
+        const ownerPct = applicants.length >= 2 ? "50%" : "100%";
+        const rows = (caseData.expenses?.breakdown?.length ? caseData.expenses.breakdown : []).map((expense) => ({
+          templateKey: expense.templateKey || "",
+          type: expense.expenseType || expense.type || "Groceries",
+          expenseType: expense.expenseType || expense.type || "Groceries",
+          infinityTypeCandidates: Array.isArray(expense.infinityTypeCandidates) ? expense.infinityTypeCandidates : [expense.expenseType || expense.type || "Groceries"],
+          amount: currency(expense.amount || expense.value),
+          frequency: expense.frequency || "Monthly",
+          description: expense.description || expense.expenseType || expense.type || "Living expenses / HEM",
+          continuePostSettlement: expense.continuePostSettlement || "Yes",
+          ownership: expense.ownership || "100%",
+          applicantScope: expense.applicantScope || "household",
+          source: expense.source || caseData.expenseSource || caseData.expenses?.source || ""
+        })).map((expense) => ({ ...expense, ownership: expense.ownership && expense.ownership !== "100%" ? expense.ownership : ownerPct })).filter((expense) => expense.amount > 0);
+        // Renting applicants must carry a Rent living expense (default $600/mo unless provided).
+        const housing = String(currentHousingSituationForApplicant(caseData, primary) || "").toLowerCase();
+        const hasRent = rows.some((r) => /rent/i.test(r.type) || /rent/i.test(r.expenseType));
+        if (housing.includes("rent") && !hasRent) {
+          const rentMonthly = Number(caseData.expenses?.rentMonthly) > 0 ? Number(caseData.expenses.rentMonthly) : 600;
+          const ownerOccupied = loanPurposeText(caseData) === "Purchase Owner Occupied Dwelling";
+          rows.unshift({
+            templateKey: "rent",
+            type: "Rent",
+            expenseType: "Rent",
+            infinityTypeCandidates: ["Rent", "Board"],
+            amount: rentMonthly,
+            frequency: "Monthly",
+            description: "Rent",
+            continuePostSettlement: ownerOccupied ? "No" : "Yes",
+            ownership: ownerPct,
+            applicantScope: "household",
+            source: "template (renting)"
+          });
+        }
+        return rows;
+      })(),
       incomes: applicants.flatMap((applicant) => {
         const rows = [];
         if (primaryIncome(applicant)) {
