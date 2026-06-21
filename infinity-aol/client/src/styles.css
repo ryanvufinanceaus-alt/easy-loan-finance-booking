@@ -3087,3 +3087,23 @@ select {
 .theme-easyflow .panel textarea:focus {
   border-color: #2f9e6e; box-shadow: 0 0 0 3px rgba(47, 158, 110, .15); outline: none;
 }
+
+/* === Client Call Intake — consistent polish (2026-06-22) === */
+.theme-call .note-form-grid input,
+.theme-call .note-form-grid select,
+.theme-call .note-form-grid textarea,
+.theme-call .panel input,
+.theme-call .panel select,
+.theme-call .panel textarea {
+  border-radius: 10px; font-size: 14px; min-height: 42px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.theme-call .note-form-grid input:focus,
+.theme-call .note-form-grid select:focus,
+.theme-call .note-form-grid textarea:focus,
+.theme-call .panel input:focus,
+.theme-call .panel select:focus,
+.theme-call .panel textarea:focus {
+  border-color: #2f9e6e; box-shadow: 0 0 0 3px rgba(47, 158, 110, .15); outline: none;
+}
+.theme-call .panel { border-radius: 12px; box-shadow: 0 1px 3px rgba(16, 32, 25, .05); }
