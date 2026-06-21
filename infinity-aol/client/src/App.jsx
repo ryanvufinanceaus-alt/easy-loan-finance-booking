@@ -1492,8 +1492,8 @@ const labelVi = {
   "Leave blank if there is no second applicant.": "Để trống nếu không có người vay thứ hai.",
   "Leave blank if not applicable.": "Để trống nếu không áp dụng.",
   "Leave blank if unsure.": "Để trống nếu chưa chắc.",
-  "Only enter previous address if current address is less than 3 years.": "Chỉ điền địa chỉ trước đây nếu bạn ở địa chỉ hiện tại chưa đủ 3 năm.",
-  "Residential History Within The Last 3 Years": "Lịch sử địa chỉ trong 3 năm gần nhất",
+  "Only enter previous address if current address is less than 2 years.": "Chỉ điền địa chỉ trước đây nếu bạn ở địa chỉ hiện tại chưa đủ 2 năm.",
+  "Residential History Within The Last 2 Years": "Lịch sử địa chỉ trong 2 năm gần nhất",
   "Current residential address": "Địa chỉ hiện tại",
   "Suburb": "Suburb",
   "State": "Bang",
@@ -1503,7 +1503,7 @@ const labelVi = {
   "Previous state": "Bang trước đây",
   "Previous postal code": "Postcode trước đây",
   "Previous Residential Status": "Tình trạng nhà ở trước đây",
-  "Employment History Within The Last 3 Years": "Lịch sử công việc trong 3 năm gần nhất",
+  "Employment History Within The Last 2 Years": "Lịch sử công việc trong 2 năm gần nhất",
   "Employment Type": "Loại công việc",
   "Business Name": "Tên công ty/doanh nghiệp",
   "Business Address": "Địa chỉ công ty/doanh nghiệp",
@@ -5234,7 +5234,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
         </section>
 
         <section>
-          {sectionTitle(L("Residential History Within The Last 3 Years"), ["address", "currentSuburb", "currentState", "currentAddressFromDate", "currentResidentialStatus"])}
+          {sectionTitle(L("Residential History Within The Last 2 Years"), ["address", "currentSuburb", "currentState", "currentAddressFromDate", "currentResidentialStatus"])}
           <div className="client-intake-grid">
             <label {...fieldAttrs("address")}>{L("Current residential address")}<input required value={form.address} onChange={(event) => updateField("address", event.target.value)} /></label>
             <label {...fieldAttrs("currentSuburb")}>{L("Suburb")}<input required value={form.currentSuburb} onChange={(event) => updateField("currentSuburb", event.target.value)} /></label>
@@ -5244,7 +5244,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
             <SelectField fieldKey="currentResidentialStatus" language={language} required label="Residential Status" value={form.currentResidentialStatus} onChange={(value) => updateField("currentResidentialStatus", value)} options={residentialStatusOptions} {...fieldStatus("currentResidentialStatus")} />
             <label>{L("Post settlement address")}<input value={form.postSettlementAddress} onChange={(event) => updateField("postSettlementAddress", event.target.value)} placeholder="Leave blank if same as current address" /></label>
             <label>{L("Mailing address")}<input value={form.mailingAddress} onChange={(event) => updateField("mailingAddress", event.target.value)} placeholder="Leave blank if same as current address" /></label>
-            <label>{L("Previous residential address")}<input value={form.previousAddress} onChange={(event) => updateField("previousAddress", event.target.value)} /><span className="field-help">{L("Only enter previous address if current address is less than 3 years.")}</span></label>
+            <label>{L("Previous residential address")}<input value={form.previousAddress} onChange={(event) => updateField("previousAddress", event.target.value)} /><span className="field-help">{L("Only enter previous address if current address is less than 2 years.")}</span></label>
             <label>{L("Previous suburb")}<input value={form.previousSuburb} onChange={(event) => updateField("previousSuburb", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             <label>{L("Previous state")}<input value={form.previousState} onChange={(event) => updateField("previousState", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             <label>{L("Previous postal code")}<input value={form.previousPostcode} onChange={(event) => updateField("previousPostcode", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
@@ -5260,7 +5260,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
             <label>{L("Postcode")}<input value={form.secondApplicantCurrentPostcode} onChange={(event) => updateField("secondApplicantCurrentPostcode", event.target.value)} /></label>
             <DateField language={language} label="From Date" value={form.secondApplicantCurrentAddressFromDate} onChange={(value) => updateField("secondApplicantCurrentAddressFromDate", value)} help="Leave blank if same as main applicant." />
             <SelectField language={language} label="Residential Status" value={form.secondApplicantCurrentResidentialStatus} onChange={(value) => updateField("secondApplicantCurrentResidentialStatus", value)} options={residentialStatusOptions} help="Leave blank if same as main applicant." />
-            <label>{L("Previous residential address")}<input value={form.secondApplicantPreviousAddress} onChange={(event) => updateField("secondApplicantPreviousAddress", event.target.value)} /><span className="field-help">{L("Only enter previous address if current address is less than 3 years.")}</span></label>
+            <label>{L("Previous residential address")}<input value={form.secondApplicantPreviousAddress} onChange={(event) => updateField("secondApplicantPreviousAddress", event.target.value)} /><span className="field-help">{L("Only enter previous address if current address is less than 2 years.")}</span></label>
             <label>{L("Previous suburb")}<input value={form.secondApplicantPreviousSuburb} onChange={(event) => updateField("secondApplicantPreviousSuburb", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             <label>{L("Previous state")}<input value={form.secondApplicantPreviousState} onChange={(event) => updateField("secondApplicantPreviousState", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
             <label>{L("Previous postal code")}<input value={form.secondApplicantPreviousPostcode} onChange={(event) => updateField("secondApplicantPreviousPostcode", event.target.value)} /><span className="field-help">{L("Leave blank if not applicable.")}</span></label>
@@ -5269,7 +5269,7 @@ function ClientIntakePage({ token, publicForm = false, entry = null }) {
         </section>}
 
         <section>
-          {sectionTitle(L("Employment History Within The Last 3 Years"), ["employmentType", "employerName", "occupation", "employmentBasis", "employmentFromDate"])}
+          {sectionTitle(L("Employment History Within The Last 2 Years"), ["employmentType", "employerName", "occupation", "employmentBasis", "employmentFromDate"])}
           <div className="client-intake-grid">
             <SelectField fieldKey="employmentType" language={language} required label="Employment Type" value={form.employmentType} onChange={(value) => updateField("employmentType", value)} options={employmentTypeOptions} {...fieldStatus("employmentType")} />
             <label {...fieldAttrs("employerName")}>{L("Business Name")}<input required value={form.employerName} onChange={(event) => updateField("employerName", event.target.value)} /></label>

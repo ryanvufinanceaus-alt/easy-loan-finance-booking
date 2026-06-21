@@ -3073,3 +3073,17 @@ select {
 }
 .submissions-shell .submission-meta-grid span { border-radius: 10px; }
 .submissions-shell .submission-editor-sections .info-banner.compact { margin: 12px 16px 0; }
+
+/* === EasyFlow AI — consistent polish with Loan Case Manager / Loan Form (2026-06-21) === */
+.theme-easyflow .panel { border-radius: 12px; box-shadow: 0 1px 3px rgba(16, 32, 25, .05); }
+.theme-easyflow .panel input,
+.theme-easyflow .panel select,
+.theme-easyflow .panel textarea {
+  border-radius: 10px; font-size: 14px; min-height: 42px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.theme-easyflow .panel input:focus,
+.theme-easyflow .panel select:focus,
+.theme-easyflow .panel textarea:focus {
+  border-color: #2f9e6e; box-shadow: 0 0 0 3px rgba(47, 158, 110, .15); outline: none;
+}
