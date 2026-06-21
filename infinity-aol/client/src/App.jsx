@@ -4207,6 +4207,31 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                       </div>
                     </section>
                     <section>
+                      <h3>Loan form history{Number(selectedIntake.submissionVersion) > 1 ? ` (v${selectedIntake.submissionVersion})` : ""}</h3>
+                      {Array.isArray(selectedIntake.lastChangedFields) && selectedIntake.lastChangedFields.length ? (
+                        <div className="info-banner compact">
+                          <strong>⚠ Client changed {selectedIntake.lastChangedFields.length} field(s) on the last submission:</strong>
+                          <ul>
+                            {selectedIntake.lastChangedFields.slice(0, 25).map((change, index) => (
+                              <li key={index}>{change.field}: <em>{String(change.from || "—")}</em> → <strong>{String(change.to || "—")}</strong></li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : (
+                        <div className="submission-meta-grid"><span>No client re-submissions yet — this is the original version.</span></div>
+                      )}
+                      {Array.isArray(selectedIntake.submissionHistory) && selectedIntake.submissionHistory.length ? (
+                        <details>
+                          <summary>{selectedIntake.submissionHistory.length} earlier version(s)</summary>
+                          <ul>
+                            {selectedIntake.submissionHistory.slice().reverse().map((entry, index) => (
+                              <li key={index}>v{entry.version} — {entry.submittedAt ? new Date(entry.submittedAt).toLocaleString() : "unknown date"}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      ) : null}
+                    </section>
+                    <section>
                       <h3>Applicant</h3>
                       <div className="note-form-grid">
                         <label>Primary given name(s)<input value={submissionEdit.firstName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, firstName: event.target.value })} /></label>

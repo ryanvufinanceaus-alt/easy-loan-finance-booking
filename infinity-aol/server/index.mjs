@@ -2162,6 +2162,9 @@ app.get("/api/client-intakes", (request, response) => {
       lastSavedAt: intake.lastSavedAt || intake.updatedAt || intake.submittedAt || null,
       lastEditedBy: intake.lastEditedBy || "",
       factFindExportedAt: intake.factFindExportedAt || null,
+      submissionVersion: Number(intake.submissionVersion) || 1,
+      lastChangedFields: Array.isArray(intake.lastChangedFields) ? intake.lastChangedFields : [],
+      submissionHistory: Array.isArray(intake.submissionHistory) ? intake.submissionHistory : [],
       convertedCaseId: intake.caseId || note.convertedCaseId || null,
       url: loanFormUrl(request, intake),
       updatedAt: intake.submittedAt || note.updatedAt || intake.createdAt
