@@ -2165,6 +2165,17 @@ app.get("/api/client-intakes", (request, response) => {
       submissionVersion: Number(intake.submissionVersion) || 1,
       lastChangedFields: Array.isArray(intake.lastChangedFields) ? intake.lastChangedFields : [],
       submissionHistory: Array.isArray(intake.submissionHistory) ? intake.submissionHistory : [],
+      // Broker edits made on Infinity/AOL (the override layer), surfaced into the internal loan form view.
+      brokerEdits: (() => {
+        try {
+          const cid = intake.caseId || note.convertedCaseId;
+          if (!cid) return [];
+          const ev = (caseHistory.get(cid) || []).find((e) => e.type === "capture" && e.key === "brokerOverrides");
+          const ov = ev && ev.data && typeof ev.data === "object" ? ev.data : null;
+          if (!ov) return [];
+          return Object.values(ov).filter(Boolean).map((o) => ({ label: o.label || "", value: o.value || "", platform: o.platform || "", at: o.at || null })).slice(0, 80);
+        } catch (e) { return []; }
+      })(),
       convertedCaseId: intake.caseId || note.convertedCaseId || null,
       url: loanFormUrl(request, intake),
       updatedAt: intake.submittedAt || note.updatedAt || intake.createdAt

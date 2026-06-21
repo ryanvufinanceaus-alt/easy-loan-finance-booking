@@ -4232,6 +4232,21 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
                       ) : null}
                     </section>
                     <section>
+                      <h3>Broker edits (synced from Infinity / AOL)</h3>
+                      {Array.isArray(selectedIntake.brokerEdits) && selectedIntake.brokerEdits.length ? (
+                        <>
+                          <div className="info-banner compact"><strong>Values you changed on Infinity/AOL, synced back to EasyFlow (live source).</strong> The loan form above stays the client's original — these are the broker layer.</div>
+                          <div className="submission-meta-grid">
+                            {selectedIntake.brokerEdits.map((edit, index) => (
+                              <span key={index}><strong>{edit.label || "field"}{edit.platform ? ` (${edit.platform})` : ""}</strong>{String(edit.value || "—")}{edit.at ? ` · ${new Date(edit.at).toLocaleString()}` : ""}</span>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="submission-meta-grid"><span>No broker edits captured from Infinity/AOL yet.</span></div>
+                      )}
+                    </section>
+                    <section>
                       <h3>Applicant</h3>
                       <div className="note-form-grid">
                         <label>Primary given name(s)<input value={submissionEdit.firstName} onChange={(event) => setSubmissionEdit({ ...submissionEdit, firstName: event.target.value })} /></label>
