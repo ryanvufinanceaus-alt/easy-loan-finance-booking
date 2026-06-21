@@ -2654,16 +2654,24 @@ app.post("/api/client-intake/:token", (request, response) => {
 
   const now = new Date().toISOString();
   const submission = normalizeClientIntakeSubmission(request.body || {});
-  // --- ADDITIVE: keep a version history of every customer submission + diff what changed. Wrapped so a
-  // failure here can NEVER block the core submit. The original v1 is preserved; each re-submit appends. ---
-  let submissionHistory = [], changedFields = [], submissionVersion = 1;
+  // --- ADDITIVE: version the customer's loan form. RULE (broker's logic): a new version + "previous" copy
+  // is created ONLY when something actually CHANGED. If the re-submit is identical → keep the same version,
+  // no "pre" copy. Original v1 preserved. Wrapped so a failure here can NEVER block the core submit. ---
+  let submissionHistory = [], changedFields = [], submissionVersion = 1, lastChangedFields = [];
   try {
     const prev = clientIntakes[intakeIndex];
     const prevSub = prev.submission || null;
     submissionHistory = Array.isArray(prev.submissionHistory) ? prev.submissionHistory.slice(-49) : [];
-    if (prevSub) submissionHistory.push({ version: Number(prev.submissionVersion) || 1, submittedAt: prev.submittedAt || prev.updatedAt || null, submission: prevSub });
-    changedFields = diffSubmissions(prevSub, submission);
-    submissionVersion = (Number(prev.submissionVersion) || 1) + (prevSub ? 1 : 0);
+    submissionVersion = Number(prev.submissionVersion) || 1;
+    lastChangedFields = Array.isArray(prev.lastChangedFields) ? prev.lastChangedFields : [];
+    changedFields = diffSubmissions(prevSub, submission); // what THIS submit changed
+    if (prevSub && changedFields.length) {
+      // changed → the old value becomes a previous version, bump version, record the diff
+      submissionHistory.push({ version: submissionVersion, submittedAt: prev.submittedAt || prev.updatedAt || null, submission: prevSub });
+      submissionVersion += 1;
+      lastChangedFields = changedFields;
+    }
+    // (first submit → v1, no history; identical re-submit → keep version, no "pre", keep prior change info)
   } catch (error) { console.warn(`intake versioning failed: ${error.message}`); }
   clientIntakes[intakeIndex] = {
     ...clientIntakes[intakeIndex],
@@ -2674,7 +2682,7 @@ app.post("/api/client-intake/:token", (request, response) => {
     submission,
     submissionHistory,
     submissionVersion,
-    lastChangedFields: changedFields
+    lastChangedFields
   };
   callNotes[noteIndex] = applyClientIntakeToNote(callNotes[noteIndex], submission);
   const localCase = upsertLocalCaseFromCallNote(noteIndex, "loan-form-submitted");
