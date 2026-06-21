@@ -19,22 +19,21 @@ function firstPresent(...values) {
 
 // Normalise any date-ish value to ISO yyyy-mm-dd so the extension can parse it (new Date) + drive the
 // AOL calendar (navigate month + click day). Handles ISO, dd/mm/yyyy, and JS-parseable timestamps.
+const ADELAIDE_YMD = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Adelaide", year: "numeric", month: "2-digit", day: "2-digit" }).format(d); // "YYYY-MM-DD"
 function toIsoDate(value) {
   if (!value) return "";
   const au = String(value).match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
   if (au) return `${au[3]}-${au[2].padStart(2, "0")}-${au[1].padStart(2, "0")}`;
   const date = new Date(value);
-  if (!Number.isNaN(date.getTime())) {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-  }
-  return "";
+  if (Number.isNaN(date.getTime())) return "";
+  // Anchor to Adelaide (broker timezone) so a UTC timestamp near midnight doesn't shift the calendar day.
+  return ADELAIDE_YMD(date);
 }
 
 // The interview/case date — SAME source chain Infinity uses (infinityTemplate dateInterviewConducted),
 // so Infinity ↔ AOL always match: explicit interview date → loan-form submission timestamp → today.
 function interviewIsoDate(caseData) {
-  const today = new Date();
-  const fallback = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const fallback = ADELAIDE_YMD(new Date()); // today in Adelaide, not UTC server time
   return toIsoDate(firstPresent(
     caseData.factFind?.dateInterviewConducted,
     caseData.loan?.dateInterviewConducted,
@@ -137,7 +136,7 @@ export function buildAolTemplate(caseData, infinity) {
       debitCard: false,
       offsetSubAccount: hasOffset,
       redraw: hasRedraw,
-      interestRatePa: caseData.loan?.interestRate || 0,
+      interestRatePa: Number(String(caseData.loan?.interestRate ?? "").replace(/[^0-9.]/g, "")) || 0,
       totalLoanTerm: `${caseData.loan?.loanTermYears || 30} Yrs`,
       repaymentType: caseData.loan?.repaymentType || "Principal & Interest",
       repaymentFrequency: "Monthly",

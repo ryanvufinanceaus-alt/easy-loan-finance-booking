@@ -50,6 +50,18 @@ let localCases = [];
 let clientIntakes = [];
 let preparedArchive = [];
 const auditLog = [];
+// Bounded append — keep memory from growing without limit (esp. for the public write endpoints).
+function audit(event) { auditLog.push(event); if (auditLog.length > 3000) auditLog.splice(0, auditLog.length - 3000); }
+// Optional shared-secret for the public extension WRITE endpoints. BACKWARD-COMPATIBLE: if the env var
+// isn't set, nothing is enforced (behaves exactly as before). Set EASYFLOW_EXT_SECRET (server) + send the
+// matching `x-easyflow-ext-token` header (extension) to turn enforcement ON. Timing-safe compare.
+function extTokenOk(request) {
+  const secret = process.env.EASYFLOW_EXT_SECRET;
+  if (!secret) return true; // not configured → no enforcement
+  const got = String(request.get("x-easyflow-ext-token") || "");
+  const a = Buffer.from(got), b = Buffer.from(secret);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 12 } });
 const notificationEmail = process.env.EASYFLOW_NOTIFY_EMAIL || process.env.BOOKING_NOTIFY_EMAIL || process.env.NOTIFY_EMAIL || "hello@easyloanfinance.com.au";
 const notificationFrom = process.env.EASYFLOW_FROM_EMAIL || "Easy Loan Finance <ryan.vufinanceaus@gmail.com>";
@@ -1913,7 +1925,7 @@ function prepareCase(caseData, source = "prepare", options = {}) {
   preparedCases.set(token, prepared);
   preparedCases.set(sourceCase.id, prepared);
   persistPrepared(prepared);
-  auditLog.push({
+  audit({
     type: source,
     timestamp: new Date().toISOString(),
     brokerUser: sourceCase.brokerUser,
@@ -1969,6 +1981,7 @@ app.get("/api/cases/:caseId", (request, response) => {
 
 // Records a Loan-Form-vs-Infinity divergence note on the case (persisted to caseHistory).
 app.post("/api/cases/:caseId/loan-form-note", (request, response) => {
+  if (!extTokenOk(request)) return response.status(401).json({ error: "unauthorized" });
   const caseId = request.params.caseId;
   const mismatches = Array.isArray(request.body?.mismatches) ? request.body.mismatches : [];
   pushCaseHistory(caseId, {
@@ -1984,6 +1997,7 @@ app.post("/api/cases/:caseId/loan-form-note", (request, response) => {
 // This is the EasyFlow AI internal source of truth that bridges Infinity ↔ AOL and feeds the
 // bidirectional sync (changes captured on one platform are reusable on the other).
 app.post("/api/cases/:caseId/capture", (request, response) => {
+  if (!extTokenOk(request)) return response.status(401).json({ error: "unauthorized" });
   const caseId = request.params.caseId;
   const key = String(request.body?.key || "").trim();
   if (!key) return response.status(400).json({ error: "capture key required" });
@@ -2018,6 +2032,7 @@ app.get("/api/aol-templates/:lender", (request, response) => {
 });
 
 app.post("/api/aol-templates/:lender", (request, response) => {
+  if (!extTokenOk(request)) return response.status(401).json({ error: "unauthorized" });
   const key = lenderKey(request.params.lender);
   const incoming = request.body && typeof request.body === "object" ? request.body : {};
   const prev = aolTemplates.get(key) || {};
@@ -2052,7 +2067,7 @@ app.delete("/api/cases/:caseId/local-data", (request, response) => {
   }
 
   const result = deleteLocalCaseData(caseId);
-  auditLog.push({
+  audit({
     type: "delete-local-case-data",
     timestamp: new Date().toISOString(),
     brokerUser: request.body?.brokerUser || "unknown",
@@ -2165,7 +2180,7 @@ app.get("/api/client-intakes/:intakeId/fact-find", (request, response) => {
   const now = new Date().toISOString();
   clientIntakes[intakeIndex] = { ...intake, factFindExportedAt: now, updatedAt: now };
   persistClientIntakes();
-  auditLog.push({
+  audit({
     type: "fact-find-exported",
     timestamp: now,
     brokerUser: request.get("x-elf-user-email") || intake.brokerUser || "broker",
@@ -2207,7 +2222,7 @@ app.patch("/api/client-intakes/:intakeId", (request, response) => {
     persistCallNotes();
   }
   persistClientIntakes();
-  auditLog.push({
+  audit({
     type: "client-intake-edited",
     timestamp: now,
     brokerUser: editor,
@@ -2340,7 +2355,7 @@ app.post("/api/call-notes", (request, response) => {
 
   callNotes.unshift(note);
   persistCallNotes();
-  auditLog.push({ type: "call-note", timestamp: now, brokerUser: note.brokerUser, caseId: note.id, clientName: note.clientName });
+  audit({ type: "call-note", timestamp: now, brokerUser: note.brokerUser, caseId: note.id, clientName: note.clientName });
   notifyCallIntake(note).catch((error) => console.warn(`Call intake email failed: ${error.message}`));
   response.status(201).json(note);
 });
@@ -2378,7 +2393,7 @@ app.delete("/api/call-notes/:noteId", (request, response) => {
   clientIntakes = clientIntakes.filter((item) => item.callNoteId !== note.id);
   persistCallNotes();
   persistClientIntakes();
-  auditLog.push({ type: "delete-call-note", timestamp: new Date().toISOString(), brokerUser: note.brokerUser, caseId: note.id });
+  audit({ type: "delete-call-note", timestamp: new Date().toISOString(), brokerUser: note.brokerUser, caseId: note.id });
   response.json({ ok: true, id: note.id });
 });
 
@@ -2403,7 +2418,7 @@ app.post("/api/call-notes/:noteId/convert-to-case", (request, response) => {
     sourceCallNoteId: callNotes[index].id,
     clientName: callNotes[index].clientName
   });
-  auditLog.push({
+  audit({
     type: "convert-call-note",
     timestamp: new Date().toISOString(),
     brokerUser: localCase.brokerUser,
@@ -2585,7 +2600,7 @@ app.post("/api/client-intake/public", (request, response) => {
   clientIntakes.unshift(intake);
   persistCallNotes();
   persistClientIntakes();
-  auditLog.push({
+  audit({
     type: "client-intake",
     timestamp: now,
     brokerUser: note.brokerUser,
@@ -2610,6 +2625,24 @@ app.get("/api/client-intake/:token", (request, response) => {
   });
 });
 
+// Field-level diff between two normalized loan-form submissions → the list of what the customer changed
+// (for the broker alert + audit history). Flattens nested objects to dotted paths; arrays compared as JSON.
+function diffSubmissions(a, b) {
+  const flat = (obj, prefix, out) => {
+    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+      for (const k of Object.keys(obj)) flat(obj[k], prefix ? `${prefix}.${k}` : k, out);
+    } else {
+      out[prefix] = Array.isArray(obj) ? JSON.stringify(obj) : (obj == null ? "" : String(obj));
+    }
+    return out;
+  };
+  const fa = flat(a || {}, "", {}), fb = flat(b || {}, "", {});
+  const keys = new Set([...Object.keys(fa), ...Object.keys(fb)]);
+  const changes = [];
+  for (const k of keys) if ((fa[k] || "") !== (fb[k] || "")) changes.push({ field: k, from: fa[k] || "", to: fb[k] || "" });
+  return changes.slice(0, 200);
+}
+
 app.post("/api/client-intake/:token", (request, response) => {
   const intakeIndex = clientIntakes.findIndex((item) => item.token === request.params.token);
   if (intakeIndex === -1) return response.status(404).json({ error: "Loan form link not found" });
@@ -2618,13 +2651,27 @@ app.post("/api/client-intake/:token", (request, response) => {
 
   const now = new Date().toISOString();
   const submission = normalizeClientIntakeSubmission(request.body || {});
+  // --- ADDITIVE: keep a version history of every customer submission + diff what changed. Wrapped so a
+  // failure here can NEVER block the core submit. The original v1 is preserved; each re-submit appends. ---
+  let submissionHistory = [], changedFields = [], submissionVersion = 1;
+  try {
+    const prev = clientIntakes[intakeIndex];
+    const prevSub = prev.submission || null;
+    submissionHistory = Array.isArray(prev.submissionHistory) ? prev.submissionHistory.slice(-49) : [];
+    if (prevSub) submissionHistory.push({ version: Number(prev.submissionVersion) || 1, submittedAt: prev.submittedAt || prev.updatedAt || null, submission: prevSub });
+    changedFields = diffSubmissions(prevSub, submission);
+    submissionVersion = (Number(prev.submissionVersion) || 1) + (prevSub ? 1 : 0);
+  } catch (error) { console.warn(`intake versioning failed: ${error.message}`); }
   clientIntakes[intakeIndex] = {
     ...clientIntakes[intakeIndex],
     caseId: clientIntakes[intakeIndex].caseId || callNotes[noteIndex].convertedCaseId || null,
     source: clientIntakes[intakeIndex].source || "client-call-link",
     status: "submitted",
     submittedAt: now,
-    submission
+    submission,
+    submissionHistory,
+    submissionVersion,
+    lastChangedFields: changedFields
   };
   callNotes[noteIndex] = applyClientIntakeToNote(callNotes[noteIndex], submission);
   const localCase = upsertLocalCaseFromCallNote(noteIndex, "loan-form-submitted");
@@ -2635,7 +2682,7 @@ app.post("/api/client-intake/:token", (request, response) => {
   };
   persistClientIntakes();
   persistCallNotes();
-  auditLog.push({
+  audit({
     type: "client-intake",
     timestamp: now,
     brokerUser: callNotes[noteIndex].brokerUser,
@@ -2643,7 +2690,30 @@ app.post("/api/client-intake/:token", (request, response) => {
     clientName: callNotes[noteIndex].clientName
   });
   notifyLoanFormSubmission(clientIntakes[intakeIndex], callNotes[noteIndex]).catch((error) => console.warn(`Loan form email failed: ${error.message}`));
-  response.status(201).json({ ok: true, status: "submitted", caseId: localCase?.id || null });
+  // Surface what the customer changed (re-submission) to the case capture store so the broker / extension
+  // can see "customer updated income 80k→95k" and re-check Infinity/AOL. Never blocks the submit.
+  try {
+    const cid = localCase?.id || clientIntakes[intakeIndex].caseId;
+    if (cid && changedFields.length && submissionVersion > 1) {
+      pushCaseHistory(cid, { type: "capture", key: "loanFormChanges", brokerUser: callNotes[noteIndex].brokerUser, platform: "loan-form", data: { at: now, version: submissionVersion, changes: changedFields } });
+    }
+  } catch (error) { console.warn(`loan-form change alert failed: ${error.message}`); }
+  response.status(201).json({ ok: true, status: "submitted", caseId: localCase?.id || null, version: submissionVersion, changed: changedFields.length });
+});
+
+// Customer loan-form version history (for the broker UI: "original → updates", diff per version).
+app.get("/api/client-intake/:token/history", (request, response) => {
+  const intake = clientIntakes.find((item) => item.token === request.params.token || item.id === request.params.token);
+  if (!intake) return response.status(404).json({ error: "Loan form link not found" });
+  response.json({
+    ok: true,
+    token: intake.token,
+    caseId: intake.caseId || null,
+    currentVersion: Number(intake.submissionVersion) || 1,
+    current: intake.submission || null,
+    lastChangedFields: intake.lastChangedFields || [],
+    history: Array.isArray(intake.submissionHistory) ? intake.submissionHistory : []
+  });
 });
 
 app.get("/api/templates/:templateId", (request, response) => {
@@ -2676,7 +2746,7 @@ app.post("/api/cases/:caseId/document-intake", upload.array("documents"), (reque
   });
 
   documentDrafts.set(caseData.id, draft);
-  auditLog.push({
+  audit({
     type: "document-intake",
     timestamp: new Date().toISOString(),
     brokerUser: caseData.brokerUser,
@@ -2712,7 +2782,7 @@ app.post("/api/cases/:caseId/intake-and-prepare", upload.array("documents"), (re
       manualIntake: request.body.manualIntake
     });
     documentDrafts.set(caseData.id, draft);
-    auditLog.push({
+    audit({
       type: "document-intake",
       timestamp: new Date().toISOString(),
       brokerUser: caseData.brokerUser,
@@ -2789,6 +2859,7 @@ app.get("/api/infinity/mappings/current", (_request, response) => {
 });
 
 app.post("/api/infinity/autofill-log", (request, response) => {
+  if (!extTokenOk(request)) return response.status(401).json({ error: "unauthorized" });
   const event = {
     type: "autofill",
     timestamp: new Date().toISOString(),
@@ -2800,7 +2871,7 @@ app.post("/api/infinity/autofill-log", (request, response) => {
     sectionId: request.body.sectionId || null,
     userAgent: request.get("user-agent")
   };
-  auditLog.push(event);
+  audit(event);
   pushCaseHistory(event.caseId, {
     type: "autofill",
     brokerUser: event.brokerUser,
@@ -2813,6 +2884,7 @@ app.post("/api/infinity/autofill-log", (request, response) => {
 });
 
 app.post("/api/cases/:caseId/comparison-snapshot", (request, response) => {
+  if (!extTokenOk(request)) return response.status(401).json({ error: "unauthorized" });
   const caseId = request.params.caseId;
   const snapshot = {
     id: crypto.randomBytes(8).toString("hex"),
