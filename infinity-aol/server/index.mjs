@@ -37,6 +37,7 @@ const callNotesPath = path.resolve(dataDir, "callNotes.json");
 const localCasesPath = path.resolve(dataDir, "localCases.json");
 const clientIntakesPath = path.resolve(dataDir, "clientIntakes.json");
 const aolTemplatesPath = path.resolve(dataDir, "aolTemplates.json");
+const userTemplatesPath = path.resolve(dataDir, "userTemplates.json"); // same file caseTemplates.mjs writes
 
 const preparedCases = new Map();
 const documentDrafts = new Map();
@@ -300,6 +301,16 @@ async function hydrateStoredData() {
   for (const [lender, tmpl] of Object.entries(loadedTemplates)) {
     if (tmpl && typeof tmpl === "object") aolTemplates.set(lender, tmpl);
   }
+
+  // User-edited case templates (the EasyFlow "Edit template text") persisted ONLY to local disk before —
+  // wiped on every Render redeploy. Restore them from Supabase to the local file so caseTemplates reads them.
+  try {
+    const userTpls = await readStoredJson("user_templates", userTemplatesPath, []);
+    if (Array.isArray(userTpls) && userTpls.length) {
+      fs.mkdirSync(path.dirname(userTemplatesPath), { recursive: true });
+      fs.writeFileSync(userTemplatesPath, `${JSON.stringify(userTpls, null, 2)}\n`);
+    }
+  } catch (error) { console.warn(`user templates restore failed: ${error.message}`); }
 }
 
 function persistAolTemplates() {
@@ -2747,6 +2758,8 @@ app.get("/api/templates/:templateId", (request, response) => {
 app.put("/api/templates/:templateId", (request, response) => {
   try {
     const saved = saveTemplate({ ...request.body, id: request.params.templateId });
+    // Mirror the user templates file to Supabase so the edit survives the next Render redeploy.
+    try { writeStoredJson("user_templates", userTemplatesPath, JSON.parse(fs.readFileSync(userTemplatesPath, "utf8"))); } catch (mirrorError) { console.warn(`user templates mirror failed: ${mirrorError.message}`); }
     response.json(saved);
   } catch (error) {
     response.status(400).json({ error: error.message });
