@@ -84,8 +84,17 @@ function verifyBrokerToken(token) {
   } catch { return null; }
 }
 function brokerFromRequest(request) {
+  // 1) bearer token (Chrome extension stores it from /api/auth/login)
   const raw = String(request.get("x-easyflow-broker-token") || request.get("authorization") || "").replace(/^Bearer\s+/i, "");
-  return verifyBrokerToken(raw);
+  let session = verifyBrokerToken(raw);
+  if (session) return session;
+  // 2) the web app's signed session cookie (same HMAC token, set by server.mjs on login)
+  const cookies = String(request.get("cookie") || "");
+  for (const match of cookies.matchAll(/(elf_[a-z_]*session)=([^;]+)/g)) {
+    session = verifyBrokerToken(decodeURIComponent(match[2]));
+    if (session) return session;
+  }
+  return null;
 }
 // Guard for endpoints that must be done by a vetted, logged-in broker. Returns the session or sends 401.
 function requireBroker(request, response) {

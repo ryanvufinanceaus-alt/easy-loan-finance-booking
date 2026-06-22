@@ -394,6 +394,59 @@ function IssueFixGuide({ issue }) {
   );
 }
 
+function CaseDocuments({ caseData }) {
+  const captures = caseData?.captures || {};
+  const docHistory = captures.docHistory || {};
+  const caseId = caseData?.id;
+  const [ytd, setYtd] = useState({ first: "", last: "", income: "", base: "" });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const clientName = (caseData?.applicants || [])
+    .map((a) => [a.firstName, a.lastName || a.surname].filter(Boolean).join(" ")).filter(Boolean).join(" & ");
+  const fileSlug = (clientName || "client").toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+
+  async function download(path, filename, body) {
+    setBusy(true); setMsg("Generating…");
+    try {
+      const res = await fetch(`${apiBase}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) });
+      if (res.status === 401) { setMsg("Please sign in again."); return; }
+      if (!res.ok) { setMsg("Failed: " + (await res.text().catch(() => "")).slice(0, 120)); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+      setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1500);
+      setMsg("✓ Downloaded " + filename + " (refresh case to update history)");
+    } catch (error) { setMsg("Failed: " + error.message); } finally { setBusy(false); }
+  }
+  const histLine = (label, e) => <li key={label}>{label}: {e?.at ? `✓ ${e.count || 1}× · ${new Date(e.at).toLocaleString()}` : "not downloaded yet"}</li>;
+
+  return (
+    <div style={{ marginBottom: 12, padding: "10px 12px", background: "#fff", border: "1px solid #e2e5ea", borderRadius: 8 }}>
+      <strong>📄 Documents</strong>
+      <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>Generated from this prepared case. Recommendation Notes prefill from the case; refine in the Word file.</div>
+      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+        <button type="button" disabled={busy} onClick={() => download(`/api/cases/${encodeURIComponent(caseId)}/recommendation-notes?format=pdf`, `RECNOTES_${fileSlug}.pdf`)}>Rec Notes · PDF</button>
+        <button type="button" disabled={busy} onClick={() => download(`/api/cases/${encodeURIComponent(caseId)}/recommendation-notes?format=docx`, `RECNOTES_${fileSlug}.docx`)}>Rec Notes · Word</button>
+      </div>
+      <details style={{ marginTop: 10 }}>
+        <summary>YTD / Casual income calculator (Excel)</summary>
+        <div style={{ display: "grid", gap: 6, marginTop: 6, maxWidth: 320 }}>
+          <label style={{ fontSize: 12 }}>First pay day / start of FY<input type="date" value={ytd.first} onChange={(e) => setYtd({ ...ytd, first: e.target.value })} /></label>
+          <label style={{ fontSize: 12 }}>Last pay day<input type="date" value={ytd.last} onChange={(e) => setYtd({ ...ytd, last: e.target.value })} /></label>
+          <label style={{ fontSize: 12 }}>YTD income on last payslip<input type="number" value={ytd.income} onChange={(e) => setYtd({ ...ytd, income: e.target.value })} /></label>
+          <label style={{ fontSize: 12 }}>Base income (annually)<input type="number" value={ytd.base} onChange={(e) => setYtd({ ...ytd, base: e.target.value })} /></label>
+          <button type="button" disabled={busy} onClick={() => {
+            if (!ytd.first || !ytd.last || !ytd.income) { setMsg("Fill first/last pay day + YTD income."); return; }
+            download(`/api/cases/${encodeURIComponent(caseId)}/ytd-calc`, `YTD_${fileSlug}.xlsx`, { clientName, firstPayDay: ytd.first, lastPayDay: ytd.last, ytdIncome: Number(ytd.income) || 0, baseAnnual: Number(ytd.base) || 0 });
+          }}>Download YTD (Excel)</button>
+        </div>
+      </details>
+      <ul style={{ fontSize: 12, color: "#6b7280", marginTop: 8, paddingLeft: 18 }}>{histLine("YTD Excel", docHistory.ytd)}{histLine("Rec PDF", docHistory.recPdf)}{histLine("Rec Word", docHistory.recDocx)}</ul>
+      {msg && <div style={{ fontSize: 12, marginTop: 4, color: "#1f2937" }}>{msg}</div>}
+    </div>
+  );
+}
+
 function CaseFacts({ caseData }) {
   if (!caseData) return null;
   const primary = caseData.applicants.find((applicant) => applicant.role === "primary");
@@ -480,6 +533,7 @@ function CaseFacts({ caseData }) {
           </div>
         </div>
       )}
+      <CaseDocuments caseData={caseData} />
     <div className="facts-grid">
       <div>
         <span>Primary applicant</span>
