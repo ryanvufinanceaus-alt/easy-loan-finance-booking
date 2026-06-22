@@ -2237,10 +2237,29 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const rate = lender.rate || loan.interestRate || "";
   const term = Number(loan.loanTermYears) || 30;
 
-  // INCOME — one detailed paragraph per applicant + total
-  const totalIncome = apps.reduce((s, a) => s + applicantTotalIncome(a), 0);
-  const incomeDetails = apps.map(applicantIncomeNarrative).filter(Boolean).join("\n\n")
-    + (totalIncome ? `\n\nTotal gross income adopted for servicing: ${docMoney(totalIncome)} p.a.` : "");
+  // INCOME — PREFER the income captured LIVE from Infinity/AOL (the broker's latest edits are the source of
+  // truth; the loan-form employment is the customer's original and may be stale). Fall back to the case only
+  // if nothing was captured.
+  const liveFin = getCapture(caseData?.id, "infinityFinancials") || getCapture(caseData?.id, "aolFinancials") || {};
+  const liveIncomes = (liveFin.incomes || []).filter((i) => Number(i.amount));
+  const annualise = (i) => {
+    const a = Number(i.amount) || 0, f = String(i.frequency || "Annually").toLowerCase();
+    if (/fortnight/.test(f)) return a * 26;
+    if (/week/.test(f)) return a * 52;
+    if (/month/.test(f)) return a * 12;
+    return a;
+  };
+  let incomeDetails;
+  if (liveIncomes.length) {
+    const total = liveIncomes.reduce((s, i) => s + annualise(i), 0);
+    incomeDetails = "Income has been verified from the most recent payslips / financials provided, as currently recorded in Infinity and AOL, and supports servicing:\n"
+      + liveIncomes.map((i) => `• ${i.type}: ${docMoney(annualise(i))} p.a.`).join("\n")
+      + (total ? `\n\nTotal gross income adopted for servicing: ${docMoney(total)} p.a.` : "");
+  } else {
+    const totalIncome = apps.reduce((s, a) => s + applicantTotalIncome(a), 0);
+    incomeDetails = apps.map(applicantIncomeNarrative).filter(Boolean).join("\n\n")
+      + (totalIncome ? `\n\nTotal gross income adopted for servicing: ${docMoney(totalIncome)} p.a.` : "");
+  }
   // RENTAL — only investment, when rental income present
   const rentalIncome = isInvestment
     ? apps.filter((a) => Number(a?.income?.rentalAnnual)).map((a) => `${applicantFullName(a)} receives rental income of ${docMoney(a.income.rentalAnnual)} p.a. from the investment property, supported by a rental appraisal.`).join("\n")
