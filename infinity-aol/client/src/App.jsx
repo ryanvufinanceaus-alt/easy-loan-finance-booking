@@ -399,6 +399,7 @@ function CaseDocuments({ caseData }) {
   const docHistory = captures.docHistory || {};
   const caseId = caseData?.id;
   const [busy, setBusy] = useState(false);
+  const [recSingle, setRecSingle] = useState(false);
   const [msg, setMsg] = useState("");
   const clientName = (caseData?.applicants || [])
     .map((a) => [a.firstName, a.lastName || a.surname].filter(Boolean).join(" ")).filter(Boolean).join(" & ");
@@ -424,10 +425,11 @@ function CaseDocuments({ caseData }) {
       <strong>📄 Documents</strong>
       <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>Generated from this prepared case. Recommendation Notes prefill from the case; refine in the Word file.</div>
       <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-        <button type="button" disabled={busy} onClick={() => download(`/api/cases/${encodeURIComponent(caseId)}/recommendation-notes?format=pdf`, `RECNOTES_${fileSlug}.pdf`)}>Rec Notes · PDF</button>
-        <button type="button" disabled={busy} onClick={() => download(`/api/cases/${encodeURIComponent(caseId)}/recommendation-notes?format=docx`, `RECNOTES_${fileSlug}.docx`)}>Rec Notes · Word</button>
+        <button type="button" disabled={busy} onClick={() => download(`/api/cases/${encodeURIComponent(caseId)}/recommendation-notes?format=pdf`, `RECNOTES_${fileSlug}.pdf`, { single: recSingle })}>Rec Notes · PDF</button>
+        <button type="button" disabled={busy} onClick={() => download(`/api/cases/${encodeURIComponent(caseId)}/recommendation-notes?format=docx`, `RECNOTES_${fileSlug}.docx`, { single: recSingle })}>Rec Notes · Word</button>
         <button type="button" disabled={busy} onClick={() => download(`/api/cases/${encodeURIComponent(caseId)}/ytd-calc`, `YTD_${fileSlug}.xlsx`)}>YTD · Excel</button>
       </div>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, marginTop: 6 }}><input type="checkbox" checked={recSingle} onChange={(e) => setRecSingle(e.target.checked)} /> Single applicant only (primary borrower)</label>
       <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>YTD prefills client + base income from the case; complete the yellow payslip cells in Excel.</div>
       <ul style={{ fontSize: 12, color: "#6b7280", marginTop: 8, paddingLeft: 18 }}>{histLine("YTD Excel", docHistory.ytd)}{histLine("Rec PDF", docHistory.recPdf)}{histLine("Rec Word", docHistory.recDocx)}</ul>
       {msg && <div style={{ fontSize: 12, marginTop: 4, color: "#1f2937" }}>{msg}</div>}

@@ -2197,18 +2197,30 @@ const docMoney = (v) => (Number(v) ? "$" + Number(v).toLocaleString("en-AU") : "
 function applicantIncomeNarrative(a) {
   const name = applicantFullName(a) || "The applicant";
   const emp = a?.employment || {}, inc = a?.income || {};
+  const selfEmployed = /self|director|sole|abn/i.test(`${emp.status || ""} ${emp.basis || ""} ${emp.type || ""} ${emp.employmentType || ""}`);
   const out = [];
-  if (emp.employerName) {
+  if (selfEmployed && emp.employerName) {
+    out.push(`${name} is self-employed and operates ${emp.employerName}${emp.abn ? ` (ABN: ${emp.abn})` : ""}${emp.occupation ? ` as a ${emp.occupation}` : ""}. Income has been verified via the accountant's letter and company financials. Annual income = ${docMoney(inc.baseAnnual) || "the stated amount"} p.a.`);
+  } else if (emp.employerName) {
     out.push(`${name} is employed ${(emp.status || "full-time").toLowerCase()}${emp.occupation ? ` as a ${emp.occupation}` : ""} at ${emp.employerName}${emp.startDate || emp.since ? ` since ${emp.startDate || emp.since}` : ""}. Income is verified from the most recent payslips at a base of ${docMoney(inc.baseAnnual) || "the stated amount"} p.a.`);
   } else if (inc.baseAnnual) {
-    out.push(`${name} has a verified base income of ${docMoney(inc.baseAnnual)} p.a.`);
+    out.push(`${name} has a verified income of ${docMoney(inc.baseAnnual)} p.a.`);
   }
   if (Number(inc.overtimeAnnual)) out.push(`Overtime of ${docMoney(inc.overtimeAnnual)} p.a. is also received but not required for servicing.`);
   if (Number(inc.bonusAnnual)) out.push(`Bonus income of ${docMoney(inc.bonusAnnual)} p.a. is received.`);
+  if (Number(inc.governmentAnnual || inc.pensionAnnual)) out.push(`Government benefit / Age Pension income of ${docMoney(inc.governmentAnnual || inc.pensionAnnual)} p.a. is received, verified via Centrelink statements and adopted at 100% for servicing.`);
   return out.join(" ");
 }
-function buildRecInputFromCase(caseData) {
-  const apps = (caseData?.applicants || []).filter(Boolean);
+function applicantTotalIncome(a) {
+  const inc = a?.income || {};
+  return ["baseAnnual", "overtimeAnnual", "bonusAnnual", "rentalAnnual", "governmentAnnual", "pensionAnnual"].reduce((s, k) => s + (Number(inc[k]) || 0), 0);
+}
+function buildRecInputFromCase(caseData, opts = {}) {
+  let apps = (caseData?.applicants || []).filter(Boolean);
+  if (opts.single || opts.primaryOnly) { // broker applies with one borrower only (e.g. spouse left off the loan)
+    const p = apps.find((a) => a.role === "primary") || apps[0];
+    apps = p ? [p] : apps;
+  }
   const couple = apps.length > 1;
   const subj = couple ? "The clients are" : "The applicant is";
   const them = couple ? "The applicants" : "The applicant";
@@ -2225,8 +2237,10 @@ function buildRecInputFromCase(caseData) {
   const rate = lender.rate || loan.interestRate || "";
   const term = Number(loan.loanTermYears) || 30;
 
-  // INCOME — one detailed paragraph per applicant
-  const incomeDetails = apps.map(applicantIncomeNarrative).filter(Boolean).join("\n\n");
+  // INCOME — one detailed paragraph per applicant + total
+  const totalIncome = apps.reduce((s, a) => s + applicantTotalIncome(a), 0);
+  const incomeDetails = apps.map(applicantIncomeNarrative).filter(Boolean).join("\n\n")
+    + (totalIncome ? `\n\nTotal gross income adopted for servicing: ${docMoney(totalIncome)} p.a.` : "");
   // RENTAL — only investment, when rental income present
   const rentalIncome = isInvestment
     ? apps.filter((a) => Number(a?.income?.rentalAnnual)).map((a) => `${applicantFullName(a)} receives rental income of ${docMoney(a.income.rentalAnnual)} p.a. from the investment property, supported by a rental appraisal.`).join("\n")
@@ -2315,8 +2329,9 @@ app.post("/api/cases/:caseId/recommendation-notes", async (request, response) =>
   if (!broker) return;
   try {
     const caseData = findCase(request.params.caseId);
-    const prefill = caseData ? buildRecInputFromCase(caseData) : {};
-    const input = { ...prefill, ...(request.body || {}) }; // explicit overrides from the web form win
+    const overrides = request.body || {};
+    const prefill = caseData ? buildRecInputFromCase(caseData, overrides) : {};
+    const input = { ...prefill, ...overrides }; // explicit overrides (single flag, edited fields) win
     const format = String(request.query.format || "pdf").toLowerCase();
     const base = `RECNOTES_${slug(input.clientName)}`;
     if (format === "docx") {
