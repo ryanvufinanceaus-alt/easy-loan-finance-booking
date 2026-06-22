@@ -1854,7 +1854,8 @@ async function handleApi(req, res, url) {
       exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000
     });
     setSessionCookie(req, res, token);
-    return sendJson(res, 200, { ok: true, role: "admin", email: adminEmail, mustChangePassword: adminPasswordMatch.temporary });
+    // token also in body so the Chrome extension (no cookies on the /infinity-aol API) can bear it
+    return sendJson(res, 200, { ok: true, role: "admin", email: adminEmail, name: "Ryan Vu", mustChangePassword: adminPasswordMatch.temporary, token });
   }
 
   if (req.method === "POST" && url.pathname === "/api/auth/logout") {
