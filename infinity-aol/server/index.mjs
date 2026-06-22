@@ -2230,9 +2230,21 @@ function buildRecInputFromCase(caseData, opts = {}) {
   // CURRENT applicants, most reliable first: the live income OWNERSHIP names (real data the broker entered
   // in Infinity), then the scraped Client-Details snapshot, then the loan-form case (customer's original).
   const incomeOwners = [...new Set((liveFin.incomes || []).map((i) => String(i.ownership || "").trim()).filter(Boolean))];
+  const caseApps = (caseData?.applicants || []).filter(Boolean);
+  const nameKey = (s) => String(s || "").toLowerCase().replace(/[^a-z]/g, "");
+  // Enrich a live applicant name with the matching case applicant's residency/employment (matched by a
+  // shared name token), so VISA + employment detail are kept while the count/name come from live data.
+  const enrichApplicant = (name) => {
+    const nk = nameKey(name);
+    const match = caseApps.find((ca) => {
+      const ck = nameKey(applicantFullName(ca));
+      return ck && (nk.includes(ck) || ck.includes(nk) || applicantFullName(ca).split(/\s+/).some((t) => t.length > 2 && nk.includes(nameKey(t))));
+    }) || {};
+    return { firstName: nameFirst(name), lastName: nameLast(name), role: "primary", residencyStatus: match.residencyStatus, employment: match.employment, income: match.income };
+  };
   let apps;
   if (incomeOwners.length) {
-    apps = incomeOwners.map((name) => ({ firstName: nameFirst(name), lastName: nameLast(name), role: "primary" }));
+    apps = incomeOwners.map(enrichApplicant);
   } else if (snapshot && Array.isArray(snapshot.applicants) && snapshot.applicants.length) {
     apps = snapshot.applicants.map((a) => ({ firstName: nameFirst(a.name), lastName: nameLast(a.name), role: "primary" }));
   } else {
