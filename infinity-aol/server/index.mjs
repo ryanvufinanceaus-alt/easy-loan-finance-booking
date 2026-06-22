@@ -2169,27 +2169,77 @@ function sendDocFile(response, buffer, filename, mime) {
   response.send(buffer);
 }
 const slug = (s) => String(s || "client").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) || "CLIENT";
+function getCapture(caseId, key) {
+  const ev = (caseHistory.get(caseId) || []).find((e) => e.type === "capture" && e.key === key);
+  return ev ? ev.data : null;
+}
+// Per-case document history ("last downloaded / not yet"), persisted as a capture so it follows the case
+// across the broker's devices (Windows + Mac). { ytd|recPdf|recDocx: { at, by, count } }.
+function recordDocHistory(caseId, docKey, brokerName) {
+  if (!caseId || caseId === "manual") return;
+  const hist = getCapture(caseId, "docHistory") || {};
+  hist[docKey] = { at: new Date().toISOString(), by: brokerName || "broker", count: ((hist[docKey] && hist[docKey].count) || 0) + 1 };
+  pushCaseHistory(caseId, { type: "capture", key: "docHistory", brokerUser: brokerName || "broker", data: hist });
+}
+function applicantFullName(a) { return [a?.firstName, a?.lastName || a?.surname].filter(Boolean).join(" ").trim(); }
+// Prefill a Recommendation Note from the prepared case so the broker only has to click Download (then
+// refine in the web form). Structured facts are accurate; narrative is a sensible seed.
+function buildRecInputFromCase(caseData) {
+  const apps = (caseData?.applicants || []).filter(Boolean);
+  const couple = apps.length > 1;
+  const category = classifyLoanPurpose(caseData); // refinance | investment | owner-occupied | vacant-land
+  const isInvestment = category === "investment";
+  const lender = getCapture(caseData?.id, "selectedLender") || {};
+  const preApproval = caseData?.loan?.preApproval === true
+    || /pre[- ]?approval/i.test(`${caseData?.loan?.applicationType || ""} ${caseData?.selectedTemplate?.title || ""}`);
+  return {
+    clientName: apps.map(applicantFullName).filter(Boolean).join(" & "),
+    loanType: preApproval ? "pre_approval" : "approval",
+    loanPurpose: category === "refinance" ? "refinance" : "purchase",
+    propertyType: isInvestment ? "investment" : "owner_occupied",
+    lenderName: lender.lender || "",
+    loanAmount: caseData?.loan?.loanAmount || 0,
+    product: lender.product || caseData?.loan?.productPreference || "",
+    interestRate: lender.rate ? `${lender.rate}%` : (caseData?.loan?.interestRate ? `${caseData.loan.interestRate}%` : ""),
+    securityAddress: caseData?.property?.address || "",
+    estimatedValue: caseData?.property?.estimatedValue || caseData?.property?.purchasePrice || 0,
+    proposal: `${couple ? "The clients are" : "The applicant is"} seeking ${preApproval ? "pre-approval" : "formal approval"} to ${category === "refinance" ? "refinance" : "purchase"} an ${isInvestment ? "investment" : "owner-occupied"} property${lender.lender ? ` with ${lender.lender}` : ""}.`,
+    character: `${couple ? "The applicants" : "The applicant"} demonstrate strong repayment capacity, live within their means, and maintain a regular savings habit, with no history of repayment issues.`,
+    collateral: "The security property is located in an acceptable postcode and in good condition. Contract of Sale attached.",
+    otherDebts: []
+  };
+}
 
 app.post("/api/cases/:caseId/ytd-calc", async (request, response) => {
-  if (!requireBroker(request, response)) return;
+  const broker = requireBroker(request, response);
+  if (!broker) return;
   try {
     const input = request.body || {};
-    sendDocFile(response, await buildYtdXlsx(input), `YTD_${slug(input.clientName)}.xlsx`,
+    const buffer = await buildYtdXlsx(input);
+    recordDocHistory(request.params.caseId, "ytd", broker.name);
+    sendDocFile(response, buffer, `YTD_${slug(input.clientName)}.xlsx`,
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   } catch (error) { response.status(500).json({ error: String(error?.message || error) }); }
 });
 
 app.post("/api/cases/:caseId/recommendation-notes", async (request, response) => {
-  if (!requireBroker(request, response)) return;
+  const broker = requireBroker(request, response);
+  if (!broker) return;
   try {
-    const input = request.body || {};
+    const caseData = findCase(request.params.caseId);
+    const prefill = caseData ? buildRecInputFromCase(caseData) : {};
+    const input = { ...prefill, ...(request.body || {}) }; // explicit overrides from the web form win
     const format = String(request.query.format || "pdf").toLowerCase();
     const base = `RECNOTES_${slug(input.clientName)}`;
     if (format === "docx") {
-      sendDocFile(response, await buildRecDocx(input), `${base}.docx`,
+      const buffer = await buildRecDocx(input);
+      recordDocHistory(request.params.caseId, "recDocx", broker.name);
+      sendDocFile(response, buffer, `${base}.docx`,
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     } else {
-      sendDocFile(response, await buildRecPdf(input), `${base}.pdf`, "application/pdf");
+      const buffer = await buildRecPdf(input);
+      recordDocHistory(request.params.caseId, "recPdf", broker.name);
+      sendDocFile(response, buffer, `${base}.pdf`, "application/pdf");
     }
   } catch (error) { response.status(500).json({ error: String(error?.message || error) }); }
 });
