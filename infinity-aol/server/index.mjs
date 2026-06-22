@@ -2375,9 +2375,15 @@ function buildRecInputFromCase(caseData, opts = {}) {
 function buildYtdInputFromCase(caseData) {
   const apps = (caseData?.applicants || []).filter(Boolean);
   const primary = apps.find((a) => a.role === "primary") || apps[0] || {};
+  // Prefer the live "Base Salary" income captured from Infinity (current) over the loan-form base.
+  const snapshot = getCapture(caseData?.id, "liveCaseSnapshot");
+  const liveFin = (snapshot && snapshot.financials) || getCapture(caseData?.id, "infinityFinancials") || {};
+  const baseInc = (liveFin.incomes || []).find((i) => /base|salary|wage|pay\s?as|payg/i.test(i.type || ""));
+  const annual = baseInc ? (() => { const a = Number(baseInc.amount) || 0, f = String(baseInc.frequency || "Annually").toLowerCase(); return /fortnight/.test(f) ? a * 26 : /week/.test(f) ? a * 52 : /month/.test(f) ? a * 12 : a; })() : 0;
+  const liveOwner = baseInc && baseInc.ownership ? baseInc.ownership : "";
   return {
-    clientName: applicantFullName(primary) || apps.map(applicantFullName).filter(Boolean).join(" & "),
-    baseAnnual: primary.income?.baseAnnual || 0,
+    clientName: liveOwner || applicantFullName(primary) || apps.map(applicantFullName).filter(Boolean).join(" & "),
+    baseAnnual: annual || primary.income?.baseAnnual || 0,
     firstPayDay: "", lastPayDay: "", ytdIncome: 0
   };
 }
