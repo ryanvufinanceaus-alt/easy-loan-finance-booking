@@ -14,7 +14,7 @@ import { listTemplates, getTemplate, saveTemplate } from "./lib/caseTemplates.mj
 import { buildTemplateTextPreview } from "./lib/infinityTemplate.mjs";
 import { classifyLoanPurpose } from "./lib/loanPurpose.mjs";
 import { buildYtdXlsx } from "./lib/ytdCalc.mjs";
-import { buildRecPdf, buildRecDocx } from "./lib/recNotes.mjs";
+import { buildRecPdf, buildRecDocx, buildRecNarrative } from "./lib/recNotes.mjs";
 
 export const app = express();
 const port = Number(process.env.PORT || 8797);
@@ -2244,13 +2244,16 @@ function buildRecInputFromCase(caseData) {
     action: l.action || (isRefi ? "To be refinanced" : "Remain open")
   })).filter((d) => d.lenderType || d.balance);
 
-  const proposal = [
-    `${subj} seeking ${preApproval ? "pre-approval" : "formal approval"} to ${isRefi ? "refinance" : "purchase"} an ${isInvestment ? "investment" : "owner-occupied"} property${lenderName ? ` with ${lenderName}` : ""}.`,
-    `The total loan amount is ${docMoney(loanAmount)}${value ? ` against a security valued at ${docMoney(value)} (LVR ${lvrNum}%)` : ""}${rate ? ` on a ${lender.product || loan.productPreference || "variable"} product at ${rate}% p.a.` : "."}`,
-    apps.map((a) => applicantFullName(a)).filter(Boolean).length
-      ? `${them} ${couple ? "are" : "is"} employed and earning consistent income (detailed below) and ${couple ? "do" : "does"} not foresee any changes to their financial position that would affect serviceability.`
-      : ""
-  ].filter(Boolean).join(" ");
+  const cashOut = Boolean(loan.cashOut) || /cash[ -]?out|equity release/i.test(`${loan.purpose || ""} ${loan.opportunityName || ""}`);
+  const firstHomeBuyer = Boolean(loan.firstHomeBuyer || caseData?.clientProfile?.firstHomeBuyer);
+
+  // Scenario-aware narrative (single/couple, OOC/INV/refi, pre/formal approval, cash-out, debt/no-debt).
+  const narrative = buildRecNarrative({
+    applicantCount: apps.length, isInvestment, isRefi, preApproval, cashOut, firstHomeBuyer,
+    lenderName, loanAmount, value, lvr: lvrNum ? `${lvrNum}%` : "", rate: rate ? `${rate}% p.a.` : "",
+    product: lender.product || loan.productPreference || "", security: prop.address || "",
+    debtCount: otherDebts.length, contractPending: preApproval && !isRefi
+  });
 
   return {
     clientName: apps.map(applicantFullName).filter(Boolean).join(" & "),
@@ -2267,14 +2270,16 @@ function buildRecInputFromCase(caseData) {
     lmi: lvrNum > 80 ? "LMI payable (LVR above 80%)" : (lvrNum ? "N/A (LVR 80% or below)" : ""),
     financeDate: loan.financeDate || loan.financeDueDate || "",
     settlementDate: loan.settlementDate || prop.settlementDate || "",
-    proposal,
+    proposal: narrative.proposal,
     visaStatus,
-    capacity: `Servicing evidences ${them.toLowerCase()} ${couple ? "are" : "is"} working and earning consistent income. Please refer to the attached serviceability assessment for full details.`,
+    capacity: narrative.capacity,
     incomeDetails,
     rentalIncome,
-    character: `${them} demonstrate strong repayment capacity, live within their means, and maintain a regular savings habit, with no history of repayment issues. ${couple ? "They do" : "The applicant does"} not foresee any future changes to their financial position that would impact their ability to repay the proposed mortgage.`,
-    collateral: `The security property${prop.address ? ` at ${prop.address}` : ""} is located in an acceptable postcode and in good condition${value ? `, with an estimated value of ${docMoney(value)}` : ""}, suitable for ${lvrNum ? `${lvrNum}%` : "the proposed"} LVR lending. Contract of Sale${isRefi ? " / refinance payout figures" : ""} attached.`,
-    otherDebts
+    character: narrative.character,
+    collateral: narrative.collateral,
+    otherDebts,
+    noDebtsNote: narrative.noDebtsNote,
+    debtsLead: narrative.debtsLead
   };
 }
 

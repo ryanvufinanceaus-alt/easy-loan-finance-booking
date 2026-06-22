@@ -28,6 +28,46 @@ const up = (s) => String(s || "").toUpperCase();
 const safe = (s) => String(s == null ? "" : s)
   .replace(/[‘’‚‛]/g, "'").replace(/[“”„‟]/g, '"').replace(/[–—−]/g, "-").replace(/…/g, "...").replace(/[   ​]/g, " ");
 
+// Scenario-aware narrative templates. Adapts to single/couple (verb agreement), owner-occupied /
+// investment / refinance, pre-approval / formal-approval, cash-out, and debt / no-debt — placeholders
+// filled from the case. INCOME / VISA / RENTAL stay data-driven (per applicant) and are assembled by the
+// caller; this produces the prose sections that change with the deal type.
+export function buildRecNarrative(ctx = {}) {
+  const couple = (ctx.applicantCount || 1) > 1;
+  const v = (s, p) => (couple ? p : s);                 // verb agreement: v("is","are")
+  const subj = couple ? "The clients" : "The applicant";
+  const approval = ctx.preApproval ? "pre-approval" : "formal approval";
+  const withLender = ctx.lenderName ? ` with ${ctx.lenderName}` : "";
+  const dealLine = `The total loan amount is ${money(ctx.loanAmount)}`
+    + (ctx.value ? ` against a security valued at ${money(ctx.value)} (LVR ${ctx.lvr || "TBC"})` : "")
+    + (ctx.rate ? `, on a ${ctx.product || "variable"} product at ${String(ctx.rate).replace(/\.+$/, "")}.` : ".");
+
+  let purpose;
+  if (ctx.isRefi) {
+    purpose = `${subj} ${v("is", "are")} seeking to refinance ${v("their", "their")} existing ${ctx.isInvestment ? "investment" : "home"} loan${withLender}${ctx.cashOut ? ", releasing additional equity for investment/personal use" : ""}.`;
+  } else if (ctx.isInvestment) {
+    purpose = `${subj} ${v("is", "are")} seeking ${approval} to purchase an investment property${withLender}, with a clear strategy to build long-term wealth and capital growth through property investment.`;
+  } else if (ctx.firstHomeBuyer) {
+    purpose = `${subj} ${v("is", "are")} seeking ${approval} to purchase ${v("a", "their")} first owner-occupied home to live in${withLender}.`;
+  } else {
+    purpose = `${subj} ${v("is", "are")} seeking ${approval} to purchase an owner-occupied property to live in${withLender}.`;
+  }
+  const proposal = `${purpose} ${dealLine} ${subj} ${v("is", "are")} employed and ${v("earns", "earn")} consistent income (detailed below), and ${v("does", "do")} not foresee any changes to ${v("their", "their")} financial position that would affect serviceability.`;
+
+  const character = `${subj} ${v("demonstrates", "demonstrate")} strong repayment capacity, ${v("lives", "live")} within ${v("their", "their")} means, and ${v("maintains", "maintain")} a regular savings habit, with no history of repayment issues. ${subj} ${v("does", "do")} not foresee any future changes that would impact ${v("their", "their")} ability to repay the proposed mortgage. This reflects positively on ${v("their", "their")} character and capacity to service the loan.`;
+
+  const collateral = ctx.isRefi
+    ? `The existing security${ctx.security ? ` at ${ctx.security}` : ""} is in an acceptable postcode and good condition${ctx.value ? `, valued at ${money(ctx.value)}` : ""}, suitable for ${ctx.lvr || "the proposed"} LVR lending. Loan statements / payout figures attached.`
+    : `The security property${ctx.security ? ` at ${ctx.security}` : ""} is located in an acceptable postcode and in good condition${ctx.value ? `, with an estimated value of ${money(ctx.value)}` : ""}, suitable for ${ctx.lvr || "the proposed"} LVR lending. Contract of Sale${ctx.contractPending ? " to be provided once a property is chosen" : " attached"}.`;
+
+  const capacity = `Servicing evidences that ${couple ? "the clients are" : "the applicant is"} working and ${v("earns", "earn")} consistent income. Please refer to the attached serviceability assessment for full details.`;
+
+  const noDebtsNote = `${subj} ${v("has", "have")} no additional liabilities or unsecured debts, reflecting strong financial discipline and a positive repayment history.`;
+  const debtsLead = `${subj} ${v("has", "have")} the following existing ${ctx.debtCount > 1 ? "liabilities" : "liability"}, ${ctx.isRefi ? "forming part of this application" : "which ha" + (ctx.debtCount > 1 ? "ve" : "s") + " been allowed for in servicing"}:`;
+
+  return { proposal, character, collateral, capacity, noDebtsNote, debtsLead };
+}
+
 export function normaliseRec(input = {}) {
   const purpose = String(input.loanPurpose || "purchase").toLowerCase();
   const isInvestment = /invest/.test(String(input.propertyType || "")) || /invest/.test(purpose);
@@ -59,12 +99,13 @@ export function normaliseRec(input = {}) {
     brokerEmail: input.brokerEmail || "ryan@easyloanfinance.com.au",
     clientName: input.clientName || "",
     seekingLine: `SEEKING ${approvalWord} ${action} ${propWord}${atLender}`,
-    isInvestment, facts, sections, debts
+    isInvestment, facts, sections, debts,
+    noDebtsNote: input.noDebtsNote || "", debtsLead: input.debtsLead || ""
   };
 }
 
-function debtsLines(debts) {
-  if (!debts.length) return ["The applicant has no additional liabilities or unsecured debts."];
+function debtsLines(debts, noDebtsNote) {
+  if (!debts.length) return [noDebtsNote || "The applicant has no additional liabilities or unsecured debts."];
   return debts.map((d) => {
     const bits = [d.lenderType];
     if (d.balance) bits.push(`balance ${money(d.balance)}`);
@@ -145,7 +186,8 @@ export function buildRecPdf(input = {}) {
     }
     sectionHeading("OTHER DEBTS");
     doc.fillColor(INK).font("Helvetica").fontSize(9.6);
-    debtsLines(r.debts).forEach((ln) => doc.text("•  " + safe(ln), M, doc.y, { width: CW, lineGap: 2 }));
+    if (r.debts.length && r.debtsLead) doc.text(safe(r.debtsLead), M, doc.y, { width: CW, lineGap: 2 });
+    debtsLines(r.debts, r.noDebtsNote).forEach((ln) => doc.text((r.debts.length ? "•  " : "") + safe(ln), M, doc.y, { width: CW, lineGap: 2 }));
 
     // ---- Sign-off ----
     doc.moveDown(1.2);
@@ -227,7 +269,10 @@ export async function buildRecDocx(input = {}) {
     String(body).trim().split(/\n+/).forEach((ln) => kids.push(P(ln, { align: AlignmentType.JUSTIFIED })));
   }
   kids.push(heading("OTHER DEBTS"));
-  debtsLines(r.debts).forEach((ln) => kids.push(new Paragraph({ bullet: { level: 0 }, spacing: { after: 60 }, children: [new TextRun({ text: ln, color: ink, size: 19 })] })));
+  if (r.debts.length && r.debtsLead) kids.push(P(r.debtsLead));
+  debtsLines(r.debts, r.noDebtsNote).forEach((ln) => kids.push(r.debts.length
+    ? new Paragraph({ bullet: { level: 0 }, spacing: { after: 60 }, children: [new TextRun({ text: ln, color: ink, size: 19 })] })
+    : P(ln)));
   kids.push(
     P(r.fileOwner, { bold: true, color: navy, size: 20, before: 240 }),
     P("Broker - Authorised Credit Representative", { color: muted, size: 17, after: 20 }),
