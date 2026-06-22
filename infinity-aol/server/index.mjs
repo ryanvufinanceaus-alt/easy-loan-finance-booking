@@ -2193,29 +2193,88 @@ function recordDocHistory(caseId, docKey, brokerName) {
 function applicantFullName(a) { return [a?.firstName, a?.lastName || a?.surname].filter(Boolean).join(" ").trim(); }
 // Prefill a Recommendation Note from the prepared case so the broker only has to click Download (then
 // refine in the web form). Structured facts are accurate; narrative is a sensible seed.
+const docMoney = (v) => (Number(v) ? "$" + Number(v).toLocaleString("en-AU") : "");
+function applicantIncomeNarrative(a) {
+  const name = applicantFullName(a) || "The applicant";
+  const emp = a?.employment || {}, inc = a?.income || {};
+  const out = [];
+  if (emp.employerName) {
+    out.push(`${name} is employed ${(emp.status || "full-time").toLowerCase()}${emp.occupation ? ` as a ${emp.occupation}` : ""} at ${emp.employerName}${emp.startDate || emp.since ? ` since ${emp.startDate || emp.since}` : ""}. Income is verified from the most recent payslips at a base of ${docMoney(inc.baseAnnual) || "the stated amount"} p.a.`);
+  } else if (inc.baseAnnual) {
+    out.push(`${name} has a verified base income of ${docMoney(inc.baseAnnual)} p.a.`);
+  }
+  if (Number(inc.overtimeAnnual)) out.push(`Overtime of ${docMoney(inc.overtimeAnnual)} p.a. is also received but not required for servicing.`);
+  if (Number(inc.bonusAnnual)) out.push(`Bonus income of ${docMoney(inc.bonusAnnual)} p.a. is received.`);
+  return out.join(" ");
+}
 function buildRecInputFromCase(caseData) {
   const apps = (caseData?.applicants || []).filter(Boolean);
   const couple = apps.length > 1;
+  const subj = couple ? "The clients are" : "The applicant is";
+  const them = couple ? "The applicants" : "The applicant";
   const category = classifyLoanPurpose(caseData); // refinance | investment | owner-occupied | vacant-land
   const isInvestment = category === "investment";
+  const isRefi = category === "refinance";
   const lender = getCapture(caseData?.id, "selectedLender") || {};
-  const preApproval = caseData?.loan?.preApproval === true
-    || /pre[- ]?approval/i.test(`${caseData?.loan?.applicationType || ""} ${caseData?.selectedTemplate?.title || ""}`);
+  const loan = caseData?.loan || {}, prop = caseData?.property || {};
+  const preApproval = loan.preApproval === true || /pre[- ]?approval/i.test(`${loan.applicationType || ""} ${caseData?.selectedTemplate?.title || ""}`);
+  const loanAmount = Number(loan.loanAmount) || 0;
+  const value = Number(prop.estimatedValue || prop.purchasePrice) || 0;
+  const lvrNum = value ? Math.round((loanAmount / value) * 10000) / 100 : 0;
+  const lenderName = lender.lender || "";
+  const rate = lender.rate || loan.interestRate || "";
+  const term = Number(loan.loanTermYears) || 30;
+
+  // INCOME — one detailed paragraph per applicant
+  const incomeDetails = apps.map(applicantIncomeNarrative).filter(Boolean).join("\n\n");
+  // RENTAL — only investment, when rental income present
+  const rentalIncome = isInvestment
+    ? apps.filter((a) => Number(a?.income?.rentalAnnual)).map((a) => `${applicantFullName(a)} receives rental income of ${docMoney(a.income.rentalAnnual)} p.a. from the investment property, supported by a rental appraisal.`).join("\n")
+    : "";
+  // VISA / residency
+  const visaStatus = apps.map((a) => `${applicantFullName(a)}: ${a?.residencyStatus || "Australian Citizen"}.`).join("\n");
+  // OTHER DEBTS from liabilities
+  const otherDebts = (caseData?.liabilities || []).map((l) => ({
+    lenderType: l.lender || l.institution || l.type || l.name || "Existing liability",
+    balance: Number(l.balance || l.outstanding || l.amount) || 0,
+    repayment: Number(l.repayment || l.monthlyRepayment) || 0,
+    repayFreq: l.frequency || "Month",
+    rate: l.rate || l.interestRate || "",
+    security: l.security || "",
+    action: l.action || (isRefi ? "To be refinanced" : "Remain open")
+  })).filter((d) => d.lenderType || d.balance);
+
+  const proposal = [
+    `${subj} seeking ${preApproval ? "pre-approval" : "formal approval"} to ${isRefi ? "refinance" : "purchase"} an ${isInvestment ? "investment" : "owner-occupied"} property${lenderName ? ` with ${lenderName}` : ""}.`,
+    `The total loan amount is ${docMoney(loanAmount)}${value ? ` against a security valued at ${docMoney(value)} (LVR ${lvrNum}%)` : ""}${rate ? ` on a ${lender.product || loan.productPreference || "variable"} product at ${rate}% p.a.` : "."}`,
+    apps.map((a) => applicantFullName(a)).filter(Boolean).length
+      ? `${them} ${couple ? "are" : "is"} employed and earning consistent income (detailed below) and ${couple ? "do" : "does"} not foresee any changes to their financial position that would affect serviceability.`
+      : ""
+  ].filter(Boolean).join(" ");
+
   return {
     clientName: apps.map(applicantFullName).filter(Boolean).join(" & "),
     loanType: preApproval ? "pre_approval" : "approval",
-    loanPurpose: category === "refinance" ? "refinance" : "purchase",
+    loanPurpose: isRefi ? "refinance" : "purchase",
     propertyType: isInvestment ? "investment" : "owner_occupied",
-    lenderName: lender.lender || "",
-    loanAmount: caseData?.loan?.loanAmount || 0,
-    product: lender.product || caseData?.loan?.productPreference || "",
-    interestRate: lender.rate ? `${lender.rate}%` : (caseData?.loan?.interestRate ? `${caseData.loan.interestRate}%` : ""),
-    securityAddress: caseData?.property?.address || "",
-    estimatedValue: caseData?.property?.estimatedValue || caseData?.property?.purchasePrice || 0,
-    proposal: `${couple ? "The clients are" : "The applicant is"} seeking ${preApproval ? "pre-approval" : "formal approval"} to ${category === "refinance" ? "refinance" : "purchase"} an ${isInvestment ? "investment" : "owner-occupied"} property${lender.lender ? ` with ${lender.lender}` : ""}.`,
-    character: `${couple ? "The applicants" : "The applicant"} demonstrate strong repayment capacity, live within their means, and maintain a regular savings habit, with no history of repayment issues.`,
-    collateral: "The security property is located in an acceptable postcode and in good condition. Contract of Sale attached.",
-    otherDebts: []
+    lenderName,
+    loanAmount,
+    product: lender.product || loan.productPreference || "",
+    interestRate: rate ? `${rate}% p.a.` : "",
+    securityAddress: prop.address || "",
+    estimatedValue: value,
+    lvr: lvrNum ? `${lvrNum}%` : "",
+    lmi: lvrNum > 80 ? "LMI payable (LVR above 80%)" : (lvrNum ? "N/A (LVR 80% or below)" : ""),
+    financeDate: loan.financeDate || loan.financeDueDate || "",
+    settlementDate: loan.settlementDate || prop.settlementDate || "",
+    proposal,
+    visaStatus,
+    capacity: `Servicing evidences ${them.toLowerCase()} ${couple ? "are" : "is"} working and earning consistent income. Please refer to the attached serviceability assessment for full details.`,
+    incomeDetails,
+    rentalIncome,
+    character: `${them} demonstrate strong repayment capacity, live within their means, and maintain a regular savings habit, with no history of repayment issues. ${couple ? "They do" : "The applicant does"} not foresee any future changes to their financial position that would impact their ability to repay the proposed mortgage.`,
+    collateral: `The security property${prop.address ? ` at ${prop.address}` : ""} is located in an acceptable postcode and in good condition${value ? `, with an estimated value of ${docMoney(value)}` : ""}, suitable for ${lvrNum ? `${lvrNum}%` : "the proposed"} LVR lending. Contract of Sale${isRefi ? " / refinance payout figures" : ""} attached.`,
+    otherDebts
   };
 }
 
