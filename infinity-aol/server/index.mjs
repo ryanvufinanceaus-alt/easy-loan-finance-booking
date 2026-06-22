@@ -13,6 +13,8 @@ import { buildDocumentDraft, mergeDocumentDraft } from "./lib/documentIntake.mjs
 import { listTemplates, getTemplate, saveTemplate } from "./lib/caseTemplates.mjs";
 import { buildTemplateTextPreview } from "./lib/infinityTemplate.mjs";
 import { classifyLoanPurpose } from "./lib/loanPurpose.mjs";
+import { buildYtdXlsx } from "./lib/ytdCalc.mjs";
+import { buildRecPdf, buildRecDocx } from "./lib/recNotes.mjs";
 
 export const app = express();
 const port = Number(process.env.PORT || 8797);
@@ -64,6 +66,37 @@ function extTokenOk(request) {
   const a = Buffer.from(got), b = Buffer.from(secret);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
+// ---- Per-broker auth ----
+// The root server (server.mjs) issues a signed session token at POST /api/auth/login (HMAC over
+// ADMIN_SESSION_SECRET). We run in the same process, so we verify with the identical secret + fallback
+// chain. The Chrome extension stores the token and sends it as `x-easyflow-broker-token`.
+const SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_PASSWORD || "local-dev-secret-change-me";
+function verifyBrokerToken(token) {
+  try {
+    const [body, sig] = String(token || "").split(".");
+    if (!body || !sig) return null;
+    const expected = crypto.createHmac("sha256", SESSION_SECRET).update(body).digest("base64url");
+    const a = Buffer.from(sig), b = Buffer.from(expected);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+    const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+    if (!payload.exp || payload.exp < Date.now()) return null;
+    return payload;
+  } catch { return null; }
+}
+function brokerFromRequest(request) {
+  const raw = String(request.get("x-easyflow-broker-token") || request.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  return verifyBrokerToken(raw);
+}
+// Guard for endpoints that must be done by a vetted, logged-in broker. Returns the session or sends 401.
+function requireBroker(request, response) {
+  const session = brokerFromRequest(request);
+  if (!session || (session.role !== "broker" && session.role !== "admin")) {
+    response.status(401).json({ error: "login required", code: "BROKER_LOGIN_REQUIRED" });
+    return null;
+  }
+  return session;
+}
+
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 12 } });
 const notificationEmail = process.env.EASYFLOW_NOTIFY_EMAIL || process.env.BOOKING_NOTIFY_EMAIL || process.env.NOTIFY_EMAIL || "hello@easyloanfinance.com.au";
 const notificationFrom = process.env.EASYFLOW_FROM_EMAIL || "Easy Loan Finance <ryan.vufinanceaus@gmail.com>";
@@ -2124,6 +2157,41 @@ app.post("/api/cases/:caseId/prepare-infinity-aol", (request, response) => {
   if (!caseData) return response.status(404).json({ error: "Case not found" });
 
   response.json(prepareCase(caseData, "prepare", request.body || {}));
+});
+
+// ---- Document generation (YTD Calculator + Recommendation Notes) ----
+// Server-side so BOTH the EasyFlow web app and the Chrome extension can trigger a download from the same
+// case data. Auth-gated like the other write endpoints (x-easyflow-ext-token).
+function sendDocFile(response, buffer, filename, mime) {
+  response.setHeader("Content-Type", mime);
+  response.setHeader("Content-Disposition", `attachment; filename="${String(filename).replace(/[^\w.\-]+/g, "_")}"`);
+  response.setHeader("Content-Length", buffer.length);
+  response.send(buffer);
+}
+const slug = (s) => String(s || "client").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) || "CLIENT";
+
+app.post("/api/cases/:caseId/ytd-calc", async (request, response) => {
+  if (!requireBroker(request, response)) return;
+  try {
+    const input = request.body || {};
+    sendDocFile(response, await buildYtdXlsx(input), `YTD_${slug(input.clientName)}.xlsx`,
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  } catch (error) { response.status(500).json({ error: String(error?.message || error) }); }
+});
+
+app.post("/api/cases/:caseId/recommendation-notes", async (request, response) => {
+  if (!requireBroker(request, response)) return;
+  try {
+    const input = request.body || {};
+    const format = String(request.query.format || "pdf").toLowerCase();
+    const base = `RECNOTES_${slug(input.clientName)}`;
+    if (format === "docx") {
+      sendDocFile(response, await buildRecDocx(input), `${base}.docx`,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    } else {
+      sendDocFile(response, await buildRecPdf(input), `${base}.pdf`, "application/pdf");
+    }
+  } catch (error) { response.status(500).json({ error: String(error?.message || error) }); }
 });
 
 app.post("/api/cases/:caseId/template-preview", (request, response) => {

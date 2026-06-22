@@ -1842,7 +1842,9 @@ async function handleApi(req, res, url) {
         exp: Date.now() + SESSION_MAX_AGE_SECONDS * 1000
       });
       setSessionCookie(req, res, token);
-      return sendJson(res, 200, { ok: true, role: "broker", accessLevel: broker.accessLevel || "broker", brokerId: broker.id, email: broker.email });
+      // `token` is also returned in the body so non-cookie clients (the Chrome extension) can store it and
+      // send it as a bearer header on /infinity-aol API calls. Web app keeps using the httpOnly cookie.
+      return sendJson(res, 200, { ok: true, role: "broker", accessLevel: broker.accessLevel || "broker", brokerId: broker.id, email: broker.email, name: broker.name, token });
     }
     const adminEmail = isAdminEmail(loginEmail) ? loginEmail : ADMIN_EMAIL;
     const token = signSession({
@@ -2233,11 +2235,36 @@ async function handleBrokerDeskApi(req, res) {
       redirect: "follow"
     });
     const text = await upstream.text();
-    res.writeHead(upstream.ok ? 200 : upstream.status || 502, {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store"
-    });
-    res.end(text);
+    let payload;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      const low = String(text || "").slice(0, 1200).toLowerCase();
+      const looksAuth =
+        low.includes("access denied") ||
+        low.includes("accounts.google.com") ||
+        low.includes("servicelogin") ||
+        low.includes("sign in - google") ||
+        low.includes("request access");
+      const looksHtml = low.includes("<!doctype") || low.includes("<html");
+      if (looksAuth || upstream.status === 401 || upstream.status === 403) {
+        payload = {
+          ok: false,
+          msg: `Apps Script backend denied access (HTTP ${upstream.status || "?"}). Check the Broker Desk Apps Script deployment: Execute as Me, Who has access Anyone, and confirm APPS_SCRIPT_URL points to the current /exec URL.`
+        };
+      } else if (looksHtml) {
+        payload = {
+          ok: false,
+          msg: `Broker Desk backend returned HTML instead of JSON (HTTP ${upstream.status || "?"}). APPS_SCRIPT_URL is likely not the correct public /exec Web App URL.`
+        };
+      } else {
+        payload = {
+          ok: false,
+          msg: `Broker Desk backend returned a non-JSON response (HTTP ${upstream.status || "?"}).`
+        };
+      }
+    }
+    sendJson(res, upstream.ok ? 200 : upstream.status || 502, payload);
   } catch (error) {
     sendJson(res, 502, {
       ok: false,
