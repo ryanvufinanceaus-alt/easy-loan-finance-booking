@@ -216,9 +216,9 @@ const defaultTemplates = [
   },
   {
     id: "refinance-cashout",
-    name: "Refinance / Cash Out",
-    description: "Refinance existing loan, review equity release purpose, and map existing mortgage details.",
-    applicantMode: "single_or_couple",
+    name: "Single Refinance / Cash Out",
+    description: "Single borrower refinancing an existing loan, review equity release purpose, and map existing mortgage details.",
+    applicantMode: "single",
     scenario: "refinance",
     defaults: {
       hemMonthly: 4000,
@@ -259,6 +259,57 @@ const defaultTemplates = [
         "{Client} requested a refinance loan with a {repayment} repayment type over {loanTerm} years. The proposed structure provides flexibility through offset and redraw while keeping repayments manageable.",
       goalsObjectives:
         "{Client} {be} refinancing to obtain a more suitable loan structure and product features. The client understands the proposed loan, costs, and repayment obligations.",
+      loanFeatures:
+        "{Client} requested features that provide flexibility in managing repayments, reducing interest, and accessing surplus funds if needed.",
+      commissionsConflict: "No conflict of interest has been identified. Standard lender commissions and any referral fees have been disclosed where applicable."
+    },
+    requiredDocs: ["IDs", "Income evidence", "Existing mortgage statements", "Rates notice", "Bank statements"]
+  },
+  {
+    id: "couple-refinance-cashout",
+    name: "Couple Refinance / Cash Out",
+    description: "Two borrowers refinancing an existing loan, review equity release purpose, and map existing mortgage details.",
+    applicantMode: "couple",
+    scenario: "refinance",
+    defaults: {
+      hemMonthly: 5000,
+      financialAssetBuffer: 40000,
+      loanPurpose: "Refinance",
+      repaymentType: "Principal and Interest",
+      productPreference: "Variable",
+      loanTermYears: 30,
+      offsetRequested: true,
+      preApproval: false,
+      expenses: {
+        livingMonthly: 5000,
+        rentMonthly: 0,
+        educationMonthly: 0,
+        insuranceMonthly: 400,
+        transportMonthly: 800,
+        otherMonthly: 1000
+      }
+    },
+    loanFeatures: [
+      { priority: 1, feature: "Variable Rate", reason: "The clients want flexibility with future repayment changes." },
+      { priority: 2, feature: "Offset", reason: "To reduce interest charged and keep surplus funds accessible." },
+      { priority: 3, feature: "Redraw", reason: "Access to extra repayments if required." },
+      { priority: 4, feature: "P & I Repayments", reason: "The clients prefer to reduce principal over time." },
+      { priority: 5, feature: "Monthly Repayments", reason: "Monthly repayments suit the clients' budget." }
+    ],
+    narrativeOverrides: {
+      loanObjectiveExplanation: "{Client} would like to refinance {possessive} existing loan.",
+      circumstancesObjectivesPriorities:
+        "{Client} {be} seeking to refinance {possessive} existing loan to improve the loan structure and access more suitable product features. The applicants have discussed the objective for refinance and confirmed the proposed loan remains affordable.\n\n{Client} prefer a {repayment} option over {loanTerm} years with flexible features such as offset and redraw. The structure supports future repayment flexibility while keeping the loan suitable for the clients' budget.",
+      financialAwarenessPractices:
+        "{Client} already have experience with mortgage products through the existing loan. The refinance purpose, product features, costs, and loan terms have been explained and understood.",
+      lender:
+        "{lender} was chosen because the product and servicing outcome are suitable for the clients' refinance objective and provide the required loan features.",
+      loanAmount: "The refinance loan amount can be serviced by the applicants and is sufficient to meet the confirmed refinance objective.",
+      interestRate: "Variable rate was selected to maintain flexibility if interest rates decrease or the clients wish to make additional repayments.",
+      loanStructure:
+        "{Client} requested a refinance loan with a {repayment} repayment type over {loanTerm} years. The proposed structure provides flexibility through offset and redraw while keeping repayments manageable.",
+      goalsObjectives:
+        "{Client} {be} refinancing to obtain a more suitable loan structure and product features. The clients understand the proposed loan, costs, and repayment obligations.",
       loanFeatures:
         "{Client} requested features that provide flexibility in managing repayments, reducing interest, and accessing surplus funds if needed.",
       commissionsConflict: "No conflict of interest has been identified. Standard lender commissions and any referral fees have been disclosed where applicable."

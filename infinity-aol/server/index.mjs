@@ -1895,7 +1895,7 @@ function pickTemplateIdForCase(caseData) {
   const purpose = `${caseData?.property?.purpose || ""} ${caseData?.property?.occupancy || ""} ${caseData?.loan?.purpose || ""} ${caseData?.loan?.loanPurpose || ""} ${caseData?.loan?.applicationType || ""} ${caseData?.loan?.opportunityName || ""}`.toLowerCase();
   const applicants = Array.isArray(caseData?.applicants) ? caseData.applicants.filter(Boolean) : [];
   const isCouple = applicants.length >= 2;
-  if (/refinance|\brefi\b|cash.?out/.test(purpose)) return "refinance-cashout";
+  if (/refinance|\brefi\b|cash.?out/.test(purpose)) return isCouple ? "couple-refinance-cashout" : "refinance-cashout";
   if (/investment|\binv\b|rental/.test(purpose)) return isCouple ? "couple-investor-preapproval" : "single-investor-preapproval";
   return isCouple ? "couple-owner-occupied-purchase" : "single-owner-occupied-purchase";
 }
