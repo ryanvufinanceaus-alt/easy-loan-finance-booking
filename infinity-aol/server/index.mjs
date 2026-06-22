@@ -2235,15 +2235,27 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const category = classifyLoanPurpose(caseData); // refinance | investment | owner-occupied | vacant-land
   const isInvestment = category === "investment";
   const isRefi = category === "refinance";
-  const lender = getCapture(caseData?.id, "selectedLender") || {};
+  // Lender + rate + product come from the Recommendation / Preferred Loan Features / Scenarios data, in
+  // priority: LIVE scrape of that tab > confirmed selectedLender > the captured lenderScenarios > case.
   const loan = caseData?.loan || {}, prop = caseData?.property || {};
+  const selLender = getCapture(caseData?.id, "selectedLender") || {};
+  const scenarios = getCapture(caseData?.id, "lenderScenarios");
+  const recScenario = (Array.isArray(scenarios) && scenarios.length)
+    ? (scenarios.find((s) => s.recommended || s.selected || s.chosen) || (scenarios.length === 1 ? scenarios[0] : scenarios[0])) : {};
+  const rec = (snapshot && snapshot.recommendation) || {};
+  const cleanRate = (x) => String(x == null ? "" : x).replace(/p\.?\s*a\.?/gi, "").replace(/[%\s]/g, "").trim();
+  const numFrom = (x) => Number(String(x == null ? "" : x).replace(/[^0-9.]/g, "")) || 0;
+  const firstNonEmpty = (...xs) => xs.find((x) => x != null && String(x).trim() !== "") || "";
+
   const preApproval = loan.preApproval === true || /pre[- ]?approval/i.test(`${loan.applicationType || ""} ${caseData?.selectedTemplate?.title || ""}`);
-  const loanAmount = Number(loan.loanAmount) || 0;
-  const value = Number(prop.estimatedValue || prop.purchasePrice) || 0;
-  const lvrNum = value ? Math.round((loanAmount / value) * 10000) / 100 : 0;
-  const lenderName = lender.lender || "";
-  const rate = lender.rate || loan.interestRate || "";
-  const term = Number(loan.loanTermYears) || 30;
+  const lenderName = firstNonEmpty(rec.lender, selLender.lender, recScenario.lender);
+  const rateRaw = cleanRate(firstNonEmpty(rec.rate, selLender.rate, recScenario.rate, loan.interestRate));
+  const product = firstNonEmpty(rec.product, selLender.product, recScenario.product, loan.productPreference);
+  const loanAmount = numFrom(rec.loanAmount) || Number(loan.loanAmount) || numFrom(recScenario.loanAmount) || 0;
+  const value = Number(prop.estimatedValue || prop.purchasePrice) || numFrom(rec.value) || 0;
+  const lvrNum = rec.lvr ? numFrom(rec.lvr) : (value ? Math.round((loanAmount / value) * 10000) / 100 : 0);
+  const rate = rateRaw; // numeric string e.g. "5.82"; formatted as "X% p.a." below
+  const term = parseInt(rec.term, 10) || Number(loan.loanTermYears) || numFrom(recScenario.term) || 30;
 
   // INCOME — PREFER the income captured LIVE from Infinity/AOL (the broker's latest edits are the source of
   // truth; the loan-form employment is the customer's original and may be stale). Fall back to the case only
@@ -2292,7 +2304,7 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const narrative = buildRecNarrative({
     applicantCount: apps.length, isInvestment, isRefi, preApproval, cashOut, firstHomeBuyer,
     lenderName, loanAmount, value, lvr: lvrNum ? `${lvrNum}%` : "", rate: rate ? `${rate}% p.a.` : "",
-    product: lender.product || loan.productPreference || "", security: prop.address || "",
+    product, security: prop.address || "",
     debtCount: otherDebts.length, contractPending: preApproval && !isRefi
   });
 
@@ -2303,14 +2315,14 @@ function buildRecInputFromCase(caseData, opts = {}) {
     propertyType: isInvestment ? "investment" : "owner_occupied",
     lenderName,
     loanAmount,
-    product: lender.product || loan.productPreference || "",
+    product,
     interestRate: rate ? `${rate}% p.a.` : "",
     securityAddress: prop.address || "",
     estimatedValue: value,
     lvr: lvrNum ? `${lvrNum}%` : "",
     lmi: lvrNum > 80 ? "LMI payable (LVR above 80%)" : (lvrNum ? "N/A (LVR 80% or below)" : ""),
-    financeDate: loan.financeDate || loan.financeDueDate || "",
-    settlementDate: loan.settlementDate || prop.settlementDate || "",
+    financeDate: rec.financeDate || loan.financeDate || loan.financeDueDate || "",
+    settlementDate: rec.settlementDate || loan.settlementDate || prop.settlementDate || "",
     proposal: narrative.proposal,
     visaStatus,
     capacity: narrative.capacity,

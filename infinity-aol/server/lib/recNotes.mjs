@@ -141,12 +141,11 @@ export function buildRecPdf(input = {}) {
       .text(`File owner: ${safe(r.fileOwner)}   ·   M ${safe(r.mobileNumber)}   ·   ${safe(r.brokerEmail)}`, M, 70, { width: CW, align: "right" });
 
     let y = 116;
-    // ---- Assessor note strip ----
-    doc.roundedRect(M, y, CW, 30, 4).fill(LIGHT).stroke ? null : null;
-    doc.roundedRect(M, y, CW, 30, 4).fillAndStroke(LIGHT, LINE);
-    doc.fillColor(MUTED).font("Helvetica-Oblique").fontSize(8.5)
-      .text("ATTENTION CREDIT ASSESSOR — please kindly read this note in full before issuing conditions or calling the broker for clarifications.", M + 10, y + 8, { width: CW - 20 });
-    y += 44;
+    // ---- Assessor note strip (prominent) ----
+    doc.roundedRect(M, y, CW, 46, 5).fillAndStroke("#FFF7E6", gold);
+    doc.fillColor(navy).font("Helvetica-Bold").fontSize(13).text("ATTENTION CREDIT ASSESSOR", M + 14, y + 8, { width: CW - 28 });
+    doc.fillColor(INK).font("Helvetica").fontSize(9.5).text("Please kindly read this note IN FULL before issuing conditions or calling the broker for clarifications.", M + 14, y + 27, { width: CW - 28 });
+    y += 58;
 
     // ---- Client + seeking line ----
     doc.fillColor(navy).font("Helvetica-Bold").fontSize(15).text(safe(up(r.clientName)), M, y, { width: CW });
@@ -259,7 +258,8 @@ export async function buildRecDocx(input = {}) {
 
   const kids = [
     headerBar,
-    P("ATTENTION CREDIT ASSESSOR — please kindly read this note in full before issuing conditions or calling the broker for clarifications.", { italics: true, color: muted, size: 16, before: 160 }),
+    new Paragraph({ shading: { type: ShadingType.CLEAR, fill: "FFF7E6", color: "auto" }, border: { top: { style: BorderStyle.SINGLE, size: 8, color: gold }, bottom: { style: BorderStyle.SINGLE, size: 8, color: gold }, left: { style: BorderStyle.SINGLE, size: 8, color: gold }, right: { style: BorderStyle.SINGLE, size: 8, color: gold } }, spacing: { before: 160, after: 40 }, children: [new TextRun({ text: "ATTENTION CREDIT ASSESSOR", bold: true, color: navy, size: 26 })] }),
+    P("Please kindly read this note IN FULL before issuing conditions or calling the broker for clarifications.", { color: ink, size: 18, after: 80 }),
     new Paragraph({ spacing: { before: 120, after: 60 }, children: [new TextRun({ text: up(r.clientName), bold: true, color: navy, size: 28 })] }),
     new Paragraph({ shading: { type: ShadingType.CLEAR, fill: gold, color: "auto" }, spacing: { after: 120 }, children: [new TextRun({ text: " " + r.seekingLine + " ", bold: true, color: navy, size: 19 })] }),
     factsTable
