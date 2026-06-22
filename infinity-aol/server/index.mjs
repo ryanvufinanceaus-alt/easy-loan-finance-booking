@@ -2202,7 +2202,9 @@ function applicantIncomeNarrative(a) {
   if (selfEmployed && emp.employerName) {
     out.push(`${name} is self-employed and operates ${emp.employerName}${emp.abn ? ` (ABN: ${emp.abn})` : ""}${emp.occupation ? ` as a ${emp.occupation}` : ""}. Income has been verified via the accountant's letter and company financials. Annual income = ${docMoney(inc.baseAnnual) || "the stated amount"} p.a.`);
   } else if (emp.employerName) {
-    out.push(`${name} is employed ${(emp.status || "full-time").toLowerCase()}${emp.occupation ? ` as a ${emp.occupation}` : ""} at ${emp.employerName}${emp.startDate || emp.since ? ` since ${emp.startDate || emp.since}` : ""}. Income is verified from the most recent payslips at a base of ${docMoney(inc.baseAnnual) || "the stated amount"} p.a.`);
+    const st = String(emp.status || "").toLowerCase();
+    const basis = /part/.test(st) ? "part-time" : /casual/.test(st) ? "casual" : "full-time"; // payg/paye/salary/blank → full-time
+    out.push(`${name} is employed ${basis}${emp.occupation ? ` as a ${emp.occupation}` : ""} at ${emp.employerName}${emp.startDate || emp.since ? ` since ${emp.startDate || emp.since}` : ""}. Income is verified from the most recent payslips at a base of ${docMoney(inc.baseAnnual) || "the stated amount"} p.a.`);
   } else if (inc.baseAnnual) {
     out.push(`${name} has a verified income of ${docMoney(inc.baseAnnual)} p.a.`);
   }
@@ -2286,10 +2288,18 @@ function buildRecInputFromCase(caseData, opts = {}) {
     : "";
   // VISA / residency
   const visaStatus = apps.map((a) => `${applicantFullName(a)}: ${a?.residencyStatus || "Australian Citizen"}.`).join("\n");
-  // OTHER DEBTS from liabilities
-  const otherDebts = (caseData?.liabilities || []).map((l) => ({
-    lenderType: l.lender || l.institution || l.type || l.name || "Existing liability",
-    balance: Number(l.balance || l.outstanding || l.amount) || 0,
+  // OTHER DEBTS — only REAL liabilities: must have a balance/limit > 0 OR a named lender. An empty/placeholder
+  // row (e.g. just type "Other" with no figures) is NOT a debt, so it must not produce a false entry.
+  const liveLiabs = (liveFin && Array.isArray(liveFin.liabilities) && liveFin.liabilities.length) ? liveFin.liabilities : null;
+  const rawLiabs = liveLiabs || caseData?.liabilities || [];
+  const otherDebts = rawLiabs.filter((l) => {
+    const name = String(l.lender || l.institution || l.name || "").trim();
+    const balance = Number(l.balance || l.outstanding || l.amount || l.limit) || 0;
+    const realName = name && !/^(other|n\/a|none|nil)$/i.test(name);
+    return realName || balance > 0;
+  }).map((l) => ({
+    lenderType: l.lender || l.institution || l.name || l.type || "Existing liability",
+    balance: Number(l.balance || l.outstanding || l.amount || l.limit) || 0,
     repayment: Number(l.repayment || l.monthlyRepayment) || 0,
     repayFreq: l.frequency || "Month",
     rate: l.rate || l.interestRate || "",
