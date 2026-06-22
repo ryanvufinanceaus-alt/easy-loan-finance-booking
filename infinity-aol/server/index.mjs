@@ -2219,11 +2219,26 @@ function buildRecInputFromCase(caseData) {
   };
 }
 
+// Prefill a YTD calc from the prepared case: name + base annual come from the case; the payslip-specific
+// fields (pay dates, YTD income on last payslip) stay blank — they're the yellow input cells the broker
+// completes in Excel. So the extension/web only need to click Download.
+function buildYtdInputFromCase(caseData) {
+  const apps = (caseData?.applicants || []).filter(Boolean);
+  const primary = apps.find((a) => a.role === "primary") || apps[0] || {};
+  return {
+    clientName: applicantFullName(primary) || apps.map(applicantFullName).filter(Boolean).join(" & "),
+    baseAnnual: primary.income?.baseAnnual || 0,
+    firstPayDay: "", lastPayDay: "", ytdIncome: 0
+  };
+}
+
 app.post("/api/cases/:caseId/ytd-calc", async (request, response) => {
   const broker = requireBroker(request, response);
   if (!broker) return;
   try {
-    const input = request.body || {};
+    const caseData = findCase(request.params.caseId);
+    const prefill = caseData ? buildYtdInputFromCase(caseData) : {};
+    const input = { ...prefill, ...(request.body || {}) }; // explicit form values win
     const buffer = await buildYtdXlsx(input);
     recordDocHistory(request.params.caseId, "ytd", broker.name);
     sendDocFile(response, buffer, `YTD_${slug(input.clientName)}.xlsx`,

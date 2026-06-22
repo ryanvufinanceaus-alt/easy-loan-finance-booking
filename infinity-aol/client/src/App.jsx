@@ -398,7 +398,6 @@ function CaseDocuments({ caseData }) {
   const captures = caseData?.captures || {};
   const docHistory = captures.docHistory || {};
   const caseId = caseData?.id;
-  const [ytd, setYtd] = useState({ first: "", last: "", income: "", base: "" });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const clientName = (caseData?.applicants || [])
@@ -427,20 +426,9 @@ function CaseDocuments({ caseData }) {
       <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
         <button type="button" disabled={busy} onClick={() => download(`/api/cases/${encodeURIComponent(caseId)}/recommendation-notes?format=pdf`, `RECNOTES_${fileSlug}.pdf`)}>Rec Notes · PDF</button>
         <button type="button" disabled={busy} onClick={() => download(`/api/cases/${encodeURIComponent(caseId)}/recommendation-notes?format=docx`, `RECNOTES_${fileSlug}.docx`)}>Rec Notes · Word</button>
+        <button type="button" disabled={busy} onClick={() => download(`/api/cases/${encodeURIComponent(caseId)}/ytd-calc`, `YTD_${fileSlug}.xlsx`)}>YTD · Excel</button>
       </div>
-      <details style={{ marginTop: 10 }}>
-        <summary>YTD / Casual income calculator (Excel)</summary>
-        <div style={{ display: "grid", gap: 6, marginTop: 6, maxWidth: 320 }}>
-          <label style={{ fontSize: 12 }}>First pay day / start of FY<input type="date" value={ytd.first} onChange={(e) => setYtd({ ...ytd, first: e.target.value })} /></label>
-          <label style={{ fontSize: 12 }}>Last pay day<input type="date" value={ytd.last} onChange={(e) => setYtd({ ...ytd, last: e.target.value })} /></label>
-          <label style={{ fontSize: 12 }}>YTD income on last payslip<input type="number" value={ytd.income} onChange={(e) => setYtd({ ...ytd, income: e.target.value })} /></label>
-          <label style={{ fontSize: 12 }}>Base income (annually)<input type="number" value={ytd.base} onChange={(e) => setYtd({ ...ytd, base: e.target.value })} /></label>
-          <button type="button" disabled={busy} onClick={() => {
-            if (!ytd.first || !ytd.last || !ytd.income) { setMsg("Fill first/last pay day + YTD income."); return; }
-            download(`/api/cases/${encodeURIComponent(caseId)}/ytd-calc`, `YTD_${fileSlug}.xlsx`, { clientName, firstPayDay: ytd.first, lastPayDay: ytd.last, ytdIncome: Number(ytd.income) || 0, baseAnnual: Number(ytd.base) || 0 });
-          }}>Download YTD (Excel)</button>
-        </div>
-      </details>
+      <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>YTD prefills client + base income from the case; complete the yellow payslip cells in Excel.</div>
       <ul style={{ fontSize: 12, color: "#6b7280", marginTop: 8, paddingLeft: 18 }}>{histLine("YTD Excel", docHistory.ytd)}{histLine("Rec PDF", docHistory.recPdf)}{histLine("Rec Word", docHistory.recDocx)}</ul>
       {msg && <div style={{ fontSize: 12, marginTop: 4, color: "#1f2937" }}>{msg}</div>}
     </div>
