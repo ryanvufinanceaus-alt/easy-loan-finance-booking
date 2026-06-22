@@ -59,6 +59,58 @@ const defaultTemplates = [
     requiredDocs: ["Drivers licence", "Income evidence", "Bank statements", "Contract of sale or property details"]
   },
   {
+    id: "couple-investor-preapproval",
+    name: "Couple Investor Pre-Approval",
+    description: "Two borrowers buying an investment property with variable P&I, redraw, and offset.",
+    applicantMode: "couple",
+    scenario: "investment_purchase",
+    defaults: {
+      hemMonthly: 5000,
+      financialAssetBuffer: 40000,
+      currentHousingSituation: "Own Home Mortgage",
+      loanPurpose: "Purchase Investment Property",
+      repaymentType: "Principal and Interest",
+      productPreference: "Variable",
+      loanTermYears: 30,
+      offsetRequested: true,
+      preApproval: true,
+      expenses: {
+        livingMonthly: 5000,
+        rentMonthly: 0,
+        educationMonthly: 0,
+        insuranceMonthly: 300,
+        transportMonthly: 700,
+        otherMonthly: 4000
+      }
+    },
+    loanFeatures: [
+      { priority: 1, feature: "Variable Rate", reason: "The clients want flexibility if interest rates decrease." },
+      { priority: 2, feature: "Redraw", reason: "Gain access to funds if required." },
+      { priority: 3, feature: "P & I Repayments", reason: "The clients prefer to reduce principal over the loan term." },
+      { priority: 4, feature: "Offset", reason: "To save interest charged." },
+      { priority: 5, feature: "Monthly Repayments", reason: "Personal preference and easier monthly budgeting." }
+    ],
+    narrativeOverrides: {
+      loanObjectiveExplanation: "{Client} would like to buy {possessive} investment property.",
+      circumstancesObjectivesPriorities:
+        "{Client} {be} seeking pre-approval to purchase an investment property. {Subject} {be} looking to have the loan for {loanTerm} years; however {subject} may be able to pay down sooner in the future if {subject} {be} in a position to. The applicants {be} working and earning good income. The applicants do not foresee any changes to {possessive} financial position that may affect {possessive} ability to repay the home loan.\n{lender} was chosen because they provide stronger servicing and offer competitive rates.\n\n{Client} choose a variable option to enable flexibility in reducing debt if {subject} accumulates extra funds during this period. Also, {client} would like to use the redraw option if {subject} needs to gain access to the funds. {Client} prefer a {repayment} option because {subject} would like to pay down the loan over the period of {loanTerm} years to reduce the debt. The repayment monthly is more suitable for {client} to budget.",
+      financialAwarenessPractices:
+        "{Client} already have experience with mortgage products. Loan terms and key features have been fully explained and understood.\n{Client} have a good record of saving. {Client} {be} living within {possessive} means and can save most of {possessive} income.",
+      lender:
+        "{lender} was chosen because they provide a stronger service and better interest rate for the clients. Other lenders do not give enough borrowing capacity and better interest rate for clients to purchase the property {subject} want.",
+      loanAmount: "The loan amount can be serviced by the applicants and is enough for {object} to complete the purchase.",
+      interestRate: "Variable rate to take advantage of when the interest rate decreases.",
+      loanStructure:
+        "{Client} {be} seeking pre-approval to purchase an investment property. {Subject} {be} looking to have the loan for {loanTerm} years; however {subject} may be able to pay down sooner in the future if {subject} {be} in a position to.\nThe applicants {be} working and earning a good income. The applicants do not foresee any changes to {possessive} financial position that may affect {possessive} ability to repay the home loan.\n\n{Client} choose a variable option to enable flexibility in reducing debt if {subject} accumulates extra funds during this period. Also, {client} would like to use the redraw option if {subject} needs to gain access to the fund. {Client} prefer a {repayment} option because {subject} would like to pay down the loan in a period of {loanTerm} years to reduce the debt. The repayment of the monthly amount is more suitable for {client} to budget.",
+      goalsObjectives:
+        "{Client} {be} seeking pre-approval to purchase an investment property. {Subject} {be} looking to have the loan for {loanTerm} years; however {subject} may be able to pay down sooner in the future if {subject} {be} in a position to.\nThe applicants {be} working and earning a good income. The applicants do not foresee any changes to {possessive} financial position that may affect {possessive} ability to repay the home loan.\n\n{Client} choose a variable option to enable flexibility in reducing debt if {subject} accumulates extra funds during this period. Also, {client} would like to use the redraw option if {subject} needs to gain access to the funds. {Client} prefer a {repayment} option because {subject} would like to pay down the loan over the period of {loanTerm} years to reduce the debt. The repayment of the monthly amount is more suitable for {client} to budget.",
+      loanFeatures:
+        "{Subject} {be} looking to have the loan for {loanTerm} years; however {client} may be able to pay down sooner in the future if {subject} {be} in a position to.\nThe applicants {be} working and earning a good income. The applicants do not foresee any changes to {possessive} financial position that may affect {possessive} ability to repay the home loan.\n\n{Client} choose a variable option to enable flexibility in reducing debt if {subject} accumulates extra funds during this period. Also, {client} would like to use the redraw option if {subject} needs to gain access to the funds. {Client} prefer a {repayment} option because {subject} would like to pay down the loan in a period of {loanTerm} years to reduce the debt. The repayment of the monthly amount is more suitable for {client} to budget.",
+      commissionsConflict: "No conflict of interest has been identified. Standard lender commissions and referral fees have been disclosed where applicable."
+    },
+    requiredDocs: ["Drivers licence", "Income evidence", "Bank statements", "Contract of sale or property details"]
+  },
+  {
     id: "couple-owner-occupied-purchase",
     name: "Couple Owner Occupied Purchase",
     description: "Two borrowers buying a home with standard variable P&I and offset.",

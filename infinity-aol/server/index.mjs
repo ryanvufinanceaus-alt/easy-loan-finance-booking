@@ -1896,7 +1896,7 @@ function pickTemplateIdForCase(caseData) {
   const applicants = Array.isArray(caseData?.applicants) ? caseData.applicants.filter(Boolean) : [];
   const isCouple = applicants.length >= 2;
   if (/refinance|\brefi\b|cash.?out/.test(purpose)) return "refinance-cashout";
-  if (/investment|\binv\b|rental/.test(purpose)) return "single-investor-preapproval";
+  if (/investment|\binv\b|rental/.test(purpose)) return isCouple ? "couple-investor-preapproval" : "single-investor-preapproval";
   return isCouple ? "couple-owner-occupied-purchase" : "single-owner-occupied-purchase";
 }
 
