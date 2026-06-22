@@ -2223,19 +2223,22 @@ function applicantTotalIncome(a) {
   return ["baseAnnual", "overtimeAnnual", "bonusAnnual", "rentalAnnual", "governmentAnnual", "pensionAnnual"].reduce((s, k) => s + (Number(inc[k]) || 0), 0);
 }
 function buildRecInputFromCase(caseData, opts = {}) {
-  // LIVE snapshot scraped from the current Infinity Client Details (the broker's up-to-date state) wins
-  // over the loan-form applicants, which are the customer's original submission and may be stale.
   const snapshot = getCapture(caseData?.id, "liveCaseSnapshot") || null;
-  let apps = (caseData?.applicants || []).filter(Boolean);
-  if (snapshot && Array.isArray(snapshot.applicants) && snapshot.applicants.length) {
-    apps = snapshot.applicants.map((a) => {
-      const parts = String(a.name || "").trim().split(/\s+/);
-      return { firstName: parts.slice(0, -1).join(" ") || a.name || "", lastName: parts.length > 1 ? parts[parts.length - 1] : "", role: "primary" };
-    });
+  const liveFin = (snapshot && snapshot.financials) || getCapture(caseData?.id, "infinityFinancials") || getCapture(caseData?.id, "aolFinancials") || {};
+  const nameFirst = (n) => { const p = String(n || "").trim().split(/\s+/); return p.slice(0, -1).join(" ") || String(n || ""); };
+  const nameLast = (n) => { const p = String(n || "").trim().split(/\s+/); return p.length > 1 ? p[p.length - 1] : ""; };
+  // CURRENT applicants, most reliable first: the live income OWNERSHIP names (real data the broker entered
+  // in Infinity), then the scraped Client-Details snapshot, then the loan-form case (customer's original).
+  const incomeOwners = [...new Set((liveFin.incomes || []).map((i) => String(i.ownership || "").trim()).filter(Boolean))];
+  let apps;
+  if (incomeOwners.length) {
+    apps = incomeOwners.map((name) => ({ firstName: nameFirst(name), lastName: nameLast(name), role: "primary" }));
+  } else if (snapshot && Array.isArray(snapshot.applicants) && snapshot.applicants.length) {
+    apps = snapshot.applicants.map((a) => ({ firstName: nameFirst(a.name), lastName: nameLast(a.name), role: "primary" }));
+  } else {
+    apps = (caseData?.applicants || []).filter(Boolean);
   }
-  if (opts.single || opts.primaryOnly) { // broker applies with one borrower only (e.g. spouse left off the loan)
-    apps = apps.slice(0, 1);
-  }
+  if (opts.single || opts.primaryOnly) apps = apps.slice(0, 1); // broker applies with one borrower only
   const couple = apps.length > 1;
   const subj = couple ? "The clients are" : "The applicant is";
   const them = couple ? "The applicants" : "The applicant";
@@ -2266,8 +2269,7 @@ function buildRecInputFromCase(caseData, opts = {}) {
 
   // INCOME — PREFER the income captured LIVE from Infinity/AOL (the broker's latest edits are the source of
   // truth; the loan-form employment is the customer's original and may be stale). Fall back to the case only
-  // if nothing was captured.
-  const liveFin = (snapshot && snapshot.financials) || getCapture(caseData?.id, "infinityFinancials") || getCapture(caseData?.id, "aolFinancials") || {};
+  // if nothing was captured. (liveFin computed at the top.)
   const liveIncomes = (liveFin.incomes || []).filter((i) => Number(i.amount));
   const annualise = (i) => {
     const a = Number(i.amount) || 0, f = String(i.frequency || "Annually").toLowerCase();
@@ -2280,7 +2282,7 @@ function buildRecInputFromCase(caseData, opts = {}) {
   if (liveIncomes.length) {
     const total = liveIncomes.reduce((s, i) => s + annualise(i), 0);
     incomeDetails = "Income has been verified from the most recent payslips / financials provided, as currently recorded in Infinity and AOL, and supports servicing:\n"
-      + liveIncomes.map((i) => `• ${i.type}: ${docMoney(annualise(i))} p.a.`).join("\n")
+      + liveIncomes.map((i) => `• ${i.type}${i.ownership ? ` (${i.ownership})` : ""}: ${docMoney(annualise(i))} p.a.`).join("\n")
       + (total ? `\n\nTotal gross income adopted for servicing: ${docMoney(total)} p.a.` : "");
   } else {
     const totalIncome = apps.reduce((s, a) => s + applicantTotalIncome(a), 0);
