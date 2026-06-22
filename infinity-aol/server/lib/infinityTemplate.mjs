@@ -1,3 +1,5 @@
+import { classifyLoanPurpose, isRefinanceCase } from "./loanPurpose.mjs";
+
 const currency = (value) => Number(value || 0);
 
 function fullName(applicant) {
@@ -79,16 +81,16 @@ function pronouns(applicants) {
 }
 
 function loanPurposeText(caseData) {
-  const purpose = `${caseData.property?.purpose || ""} ${caseData.property?.occupancy || ""} ${caseData.loan?.purpose || ""} ${caseData.loan?.loanPurpose || ""} ${caseData.loan?.applicationType || ""} ${caseData.loan?.opportunityName || ""} ${caseData.selectedTemplate?.id || ""} ${caseData.selectedTemplate?.title || ""}`.toLowerCase();
-  if (purpose.includes("refinance") || /\brefi\b/.test(purpose)) return "Refinance";
-  if (purpose.includes("vacant land")) return "Purchase Vacant Land";
-  if (purpose.includes("investment") || /\binv\b/.test(purpose) || purpose.includes("rental")) return "Purchase Investment Property";
-  if (purpose.includes("owner") || purpose.includes("ooc") || purpose.includes("live in") || !purpose.trim()) return "Purchase Owner Occupied Dwelling";
-  return caseData.property?.purpose || caseData.loan?.applicationType || "Purchase Owner Occupied Dwelling";
+  switch (classifyLoanPurpose(caseData)) { // shared classifier: occupancy-first, never opportunityName
+    case "refinance": return "Refinance";
+    case "vacant-land": return "Purchase Vacant Land";
+    case "investment": return "Purchase Investment Property";
+    default: return "Purchase Owner Occupied Dwelling";
+  }
 }
 
 function isRefinance(caseData) {
-  return /refinance|\brefi\b/i.test(`${caseData.property?.purpose || ""} ${caseData.loan?.purpose || ""} ${caseData.loan?.loanPurpose || ""} ${caseData.loan?.applicationType || ""} ${caseData.loan?.opportunityName || ""} ${caseData.selectedTemplate?.id || ""} ${caseData.selectedTemplate?.title || ""}`);
+  return isRefinanceCase(caseData);
 }
 
 function dateToAu(value) {

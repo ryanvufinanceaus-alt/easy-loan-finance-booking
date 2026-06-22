@@ -1,3 +1,5 @@
+import { classifyLoanPurpose } from "./loanPurpose.mjs";
+
 const money = (value) => Number(value || 0);
 
 function fullName(applicant) {
@@ -54,11 +56,12 @@ function housingSituation(applicant, caseData) {
 }
 
 function loanPurpose(caseData) {
-  const purpose = `${caseData.property?.purpose || caseData.loan?.applicationType || ""}`.toLowerCase();
-  if (purpose.includes("investment")) return "Investment";
-  if (purpose.includes("owner")) return "Owner occupied";
-  if (purpose.includes("refinance")) return "Refinance";
-  return caseData.loan?.applicationType || "Purchase";
+  switch (classifyLoanPurpose(caseData)) { // shared classifier: occupancy-first, never opportunityName
+    case "refinance": return "Refinance";
+    case "investment": return "Investment";
+    case "vacant-land": return "Owner occupied"; // AOL has no vacant-land label; treat as owner occupied
+    default: return "Owner occupied";
+  }
 }
 
 export function buildAolTemplate(caseData, infinity) {
@@ -95,7 +98,7 @@ export function buildAolTemplate(caseData, infinity) {
       creditImpairment: "",
       originatorComments:
         caseData.loan?.originatorComments ||
-        `${primaryName || "Client"} is looking for a pre-approval to purchase an investment property. Please assess together with the prepared Infinity notes.`
+        `${primaryName || "Client"} is looking for a pre-approval to purchase ${classifyLoanPurpose(caseData) === "investment" ? "an investment" : "an owner-occupied"} property. Please assess together with the prepared Infinity notes.`
     },
     applicants: {
       applicantType: "Person",

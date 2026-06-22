@@ -455,6 +455,31 @@ function CaseFacts({ caseData }) {
           )}
         </div>
       )}
+      {Array.isArray(captures.syncHistory) && captures.syncHistory.length > 0 && (
+        <div className="sync-history" style={{ marginBottom: 12, padding: "10px 12px", background: "#eef2ff", border: "1px solid #c7d2fe", borderRadius: 8, color: "#3730a3" }}>
+          <strong>🔁 Sync history (Infinity ⇄ AOL → EasyFlow)</strong>
+          <div style={{ fontSize: 11, color: "#6366f1", marginTop: 2 }}>Each broker push back from the final systems (AOL / Infinity), with the field-level changes it made.</div>
+          <div style={{ marginTop: 8 }}>
+            {captures.syncHistory.slice().reverse().slice(0, 25).map((entry, idx) => (
+              <div key={idx} style={{ borderTop: "1px solid #ddd6fe", padding: "6px 0", fontSize: 12 }}>
+                <div>
+                  <strong>{entry.direction || "Sync"}</strong> · {entry.appliedCount || 0} row(s)
+                  <span style={{ color: "#818cf8" }}> · {entry.at ? new Date(entry.at).toLocaleString() : ""} · {entry.by || "broker"}</span>
+                </div>
+                {Array.isArray(entry.changes) && entry.changes.length > 0 ? (
+                  <ul style={{ margin: "3px 0 0", paddingLeft: 18 }}>
+                    {entry.changes.map((change, ci) => (
+                      <li key={ci}>{change.field}: {change.from == null ? "—" : currency(change.from)} → <strong>{change.to == null ? "—" : currency(change.to)}</strong></li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div style={{ color: "#818cf8", paddingLeft: 4 }}>(no value diffs recorded)</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     <div className="facts-grid">
       <div>
         <span>Primary applicant</span>

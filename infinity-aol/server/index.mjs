@@ -12,6 +12,7 @@ import { validateInfinityPayload } from "./lib/validation.mjs";
 import { buildDocumentDraft, mergeDocumentDraft } from "./lib/documentIntake.mjs";
 import { listTemplates, getTemplate, saveTemplate } from "./lib/caseTemplates.mjs";
 import { buildTemplateTextPreview } from "./lib/infinityTemplate.mjs";
+import { classifyLoanPurpose } from "./lib/loanPurpose.mjs";
 
 export const app = express();
 const port = Number(process.env.PORT || 8797);
@@ -1892,12 +1893,16 @@ function summarizePrepared(prepared, type) {
 }
 
 function pickTemplateIdForCase(caseData) {
-  const purpose = `${caseData?.property?.purpose || ""} ${caseData?.property?.occupancy || ""} ${caseData?.loan?.purpose || ""} ${caseData?.loan?.loanPurpose || ""} ${caseData?.loan?.applicationType || ""} ${caseData?.loan?.opportunityName || ""}`.toLowerCase();
   const applicants = Array.isArray(caseData?.applicants) ? caseData.applicants.filter(Boolean) : [];
   const isCouple = applicants.length >= 2;
-  if (/refinance|\brefi\b|cash.?out/.test(purpose)) return isCouple ? "couple-refinance-cashout" : "refinance-cashout";
-  if (/investment|\binv\b|rental/.test(purpose)) return isCouple ? "couple-investor-preapproval" : "single-investor-preapproval";
-  return isCouple ? "couple-owner-occupied-purchase" : "single-owner-occupied-purchase";
+  const category = classifyLoanPurpose(caseData); // occupancy-first; never the free-text opportunityName
+  const id = category === "refinance" ? (isCouple ? "couple-refinance-cashout" : "refinance-cashout")
+    : category === "investment" ? (isCouple ? "couple-investor-preapproval" : "single-investor-preapproval")
+    : (isCouple ? "couple-owner-occupied-purchase" : "single-owner-occupied-purchase");
+  try {
+    console.log(`[pickTemplate] case=${caseData?.caseId || caseData?.id || "?"} occupancy="${(caseData?.property?.occupancy || "").trim()}" category=${category} couple=${isCouple} -> ${id}`);
+  } catch (_e) { /* logging only */ }
+  return id;
 }
 
 // Apply the broker's captured edits (brokerOverrides, from Infinity OR AOL — symmetric) over the case
