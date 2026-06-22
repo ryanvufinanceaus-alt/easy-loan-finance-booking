@@ -1900,8 +1900,34 @@ function pickTemplateIdForCase(caseData) {
   return isCouple ? "couple-owner-occupied-purchase" : "single-owner-occupied-purchase";
 }
 
+// Apply the broker's captured edits (brokerOverrides, from Infinity OR AOL — symmetric) over the case
+// data BEFORE building the payload, so a re-Prepare carries the broker's latest numbers to BOTH systems.
+// Bounded + safe: only coarse fields that exist in the case data (income now), only when the override has
+// a clear label + numeric value; otherwise the loan-form value stands. Source-agnostic (any platform).
+function applyBrokerFinancialOverrides(caseData) {
+  try {
+    const events = (typeof caseHistory?.get === "function" && caseHistory.get(caseData?.id)) || [];
+    const ev = events.find((e) => e.type === "capture" && e.key === "brokerOverrides");
+    const ov = ev && ev.data && typeof ev.data === "object" ? ev.data : null;
+    if (!ov) return caseData;
+    const applicants = Array.isArray(caseData.applicants) ? caseData.applicants : [];
+    const primary = applicants.find((a) => a && a.role === "primary") || applicants[0];
+    if (!primary) return caseData;
+    primary.income = primary.income || {};
+    for (const o of Object.values(ov)) {
+      if (!o || o.value == null || o.value === "") continue;
+      const label = String(o.label || "").toLowerCase();
+      const num = Number(String(o.value).replace(/[^0-9.]/g, ""));
+      if (!num || !Number.isFinite(num)) continue;
+      if (/rental/.test(label)) primary.income.rentalAnnual = num;
+      else if (/base salary|annual income|gross salary|gross annual|payg income|\bincome p\.?a\b|^salary$|^income$/.test(label)) primary.income.baseAnnual = num;
+    }
+  } catch (error) { console.warn(`broker override merge failed: ${error.message}`); }
+  return caseData;
+}
+
 function prepareCase(caseData, source = "prepare", options = {}) {
-  const sourceCase = hydrateCaseFromLinkedLoanForm(caseData);
+  const sourceCase = applyBrokerFinancialOverrides(hydrateCaseFromLinkedLoanForm(caseData));
   // Auto-pick a scenario-matched template on first prepare; broker can still override by passing templateId.
   if (!options.templateId && !documentDrafts.get(sourceCase.id)) {
     const autoTemplateId = pickTemplateIdForCase(sourceCase);
