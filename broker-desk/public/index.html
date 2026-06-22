@@ -597,10 +597,39 @@ function gs_(fn){
     body: JSON.stringify({ fn: fn, args: args }),
     redirect: 'follow',
   })
-  .then(function(res){ return res.text(); })
-  .then(function(txt){
+  .then(function(res){
+    return res.text().then(function(txt){
+      return { status: res.status, ok: res.ok, txt: txt };
+    });
+  })
+  .then(function(o){
+    var txt = o.txt;
     try { return JSON.parse(txt); }
-    catch(e){ return { ok:false, msg:'Bad server response (not JSON). Check the BACKEND_URL and that the Web App is deployed with access "Anyone".' }; }
+    catch(e){
+      var low = (txt || '').slice(0, 800).toLowerCase();
+      var looksAuth = low.indexOf('access denied') >= 0
+        || low.indexOf('accounts.google.com') >= 0
+        || low.indexOf('servicelogin') >= 0
+        || low.indexOf('sign in - google') >= 0
+        || low.indexOf('request access') >= 0;
+      var looksHtml = low.indexOf('<!doctype') >= 0 || low.indexOf('<html') >= 0;
+      if (o.status === 403 || o.status === 401 || looksAuth) {
+        return {
+          ok: false,
+          msg: 'Apps Script backend denied access (HTTP ' + (o.status || '?') + '). In Apps Script: Deploy -> Manage deployments -> Edit -> Execute as: Me, Who has access: Anyone -> Deploy. Then update APPS_SCRIPT_URL on Render to the current /exec URL.'
+        };
+      }
+      if (looksHtml) {
+        return {
+          ok: false,
+          msg: 'Backend returned a web page, not data (HTTP ' + (o.status || '?') + '). APPS_SCRIPT_URL is likely wrong. It must be the public Web App URL ending in /exec, not /dev or the editor link.'
+        };
+      }
+      return {
+        ok: false,
+        msg: 'Bad server response (not JSON, HTTP ' + (o.status || '?') + '). Check APPS_SCRIPT_URL and confirm the Apps Script Web App is public.'
+      };
+    }
   })
   .catch(function(e){ return { ok:false, msg:'Network error: ' + (e.message||e) }; });
 }
@@ -1588,7 +1617,8 @@ const NAV=[
   {id:'commissions',label:'Commissions',  role:'notsupp', ico:'<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'},
   {id:'invoices',  label:'Invoices',      role:'notsupp', ico:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/>'},
   // \u2500\u2500 TOOLS \u2500\u2500
-  {id:'documents', label:'Documents',     role:'notsupp', section:'Tools', ico:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'},
+  // Documents (YTD Calculator + Recommendation Notes) moved to EasyFlow AI (extension + web). Entry removed.
+  // {id:'documents', label:'Documents',     role:'notsupp', section:'Tools', ico:'...'},
   // \u2500\u2500 REFERENCE \u2500\u2500
   {id:'workflow',  label:'Workflow Guide',role:'all',     section:'Reference', ico:'<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'},
   {id:'lenders',   label:'Lenders',       role:'all',     ico:'<path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/>'},
