@@ -2216,10 +2216,18 @@ function applicantTotalIncome(a) {
   return ["baseAnnual", "overtimeAnnual", "bonusAnnual", "rentalAnnual", "governmentAnnual", "pensionAnnual"].reduce((s, k) => s + (Number(inc[k]) || 0), 0);
 }
 function buildRecInputFromCase(caseData, opts = {}) {
+  // LIVE snapshot scraped from the current Infinity Client Details (the broker's up-to-date state) wins
+  // over the loan-form applicants, which are the customer's original submission and may be stale.
+  const snapshot = getCapture(caseData?.id, "liveCaseSnapshot") || null;
   let apps = (caseData?.applicants || []).filter(Boolean);
+  if (snapshot && Array.isArray(snapshot.applicants) && snapshot.applicants.length) {
+    apps = snapshot.applicants.map((a) => {
+      const parts = String(a.name || "").trim().split(/\s+/);
+      return { firstName: parts.slice(0, -1).join(" ") || a.name || "", lastName: parts.length > 1 ? parts[parts.length - 1] : "", role: "primary" };
+    });
+  }
   if (opts.single || opts.primaryOnly) { // broker applies with one borrower only (e.g. spouse left off the loan)
-    const p = apps.find((a) => a.role === "primary") || apps[0];
-    apps = p ? [p] : apps;
+    apps = apps.slice(0, 1);
   }
   const couple = apps.length > 1;
   const subj = couple ? "The clients are" : "The applicant is";
@@ -2240,7 +2248,7 @@ function buildRecInputFromCase(caseData, opts = {}) {
   // INCOME — PREFER the income captured LIVE from Infinity/AOL (the broker's latest edits are the source of
   // truth; the loan-form employment is the customer's original and may be stale). Fall back to the case only
   // if nothing was captured.
-  const liveFin = getCapture(caseData?.id, "infinityFinancials") || getCapture(caseData?.id, "aolFinancials") || {};
+  const liveFin = (snapshot && snapshot.financials) || getCapture(caseData?.id, "infinityFinancials") || getCapture(caseData?.id, "aolFinancials") || {};
   const liveIncomes = (liveFin.incomes || []).filter((i) => Number(i.amount));
   const annualise = (i) => {
     const a = Number(i.amount) || 0, f = String(i.frequency || "Annually").toLowerCase();
