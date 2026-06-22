@@ -44,28 +44,50 @@ export function buildRecNarrative(ctx = {}) {
 
   let purpose;
   if (ctx.isRefi) {
-    purpose = `${subj} ${v("is", "are")} seeking to refinance ${v("their", "their")} existing ${ctx.isInvestment ? "investment" : "home"} loan${withLender}${ctx.cashOut ? ", releasing additional equity for investment/personal use" : ""}.`;
+    purpose = `${subj} ${v("is", "are")} seeking ${approval} to refinance ${v("their", "their")} existing ${ctx.isInvestment ? "investment" : "owner-occupied"} loan${withLender}${ctx.cashOut ? ", with additional funds to be released as equity for investment or personal use" : ""}. The primary objective of this refinance is to secure a more competitive interest rate and a loan structure that better aligns with ${v("the applicant's", "the clients'")} current financial position and longer-term goals, while improving overall cash flow.`;
   } else if (ctx.isInvestment) {
-    purpose = `${subj} ${v("is", "are")} seeking ${approval} to purchase an investment property${withLender}, with a clear strategy to build long-term wealth and capital growth through property investment.`;
+    purpose = `${subj} ${v("is", "are")} seeking ${approval} to purchase an investment property${withLender}. ${subj} ${v("has", "have")} a clear, considered strategy to build long-term wealth and capital growth through property investment, and ${v("intends", "intend")} to hold the asset over the long term, benefiting from rental income and prospective capital appreciation while diversifying ${v("their", "their")} asset base.`;
   } else if (ctx.firstHomeBuyer) {
-    purpose = `${subj} ${v("is", "are")} seeking ${approval} to purchase ${v("a", "their")} first owner-occupied home to live in${withLender}.`;
+    purpose = `${subj} ${v("is", "are")} seeking ${approval} to purchase ${v("a", "their")} first owner-occupied home to live in${withLender}. As ${v("a first-home buyer", "first-home buyers")}, ${subj.toLowerCase()} ${v("has", "have")} been saving diligently towards this purchase and ${v("is", "are")} entering home ownership in a financially responsible manner.`;
   } else {
-    purpose = `${subj} ${v("is", "are")} seeking ${approval} to purchase an owner-occupied property to live in${withLender}.`;
+    purpose = `${subj} ${v("is", "are")} seeking ${approval} to purchase an owner-occupied property to live in${withLender}. This purchase aligns with ${v("the applicant's", "the clients'")} personal and long-term housing objectives, providing stable, secure accommodation.`;
   }
-  const proposal = `${purpose} ${dealLine} ${subj} ${v("is", "are")} employed and ${v("earns", "earn")} consistent income (detailed below), and ${v("does", "do")} not foresee any changes to ${v("their", "their")} financial position that would affect serviceability.`;
+  const lvrText = ctx.lvr || "a conservative level";
+  const structure = ctx.rate
+    ? `The total loan amount is ${money(ctx.loanAmount)}${ctx.value ? ` against a security valued at ${money(ctx.value)}, representing an LVR of ${lvrText}` : ""}. The facility is structured on a ${ctx.product || "variable"} product at ${String(ctx.rate).replace(/\.$/, "")}${ctx.term ? ` over a ${ctx.term}-year term` : ""}, which is appropriate to ${v("the applicant's", "the clients'")} objectives and repayment capacity.`
+    : `The total loan amount is ${money(ctx.loanAmount)}${ctx.value ? ` against a security valued at ${money(ctx.value)}, representing an LVR of ${lvrText}` : ""}${ctx.term ? `, structured over a ${ctx.term}-year term` : ""}.`;
+  const reassurance = `${subj} ${v("is", "are")} employed and ${v("earns", "earn")} consistent, verifiable income (detailed below), ${v("lives", "live")} within ${v("their", "their")} means, and ${v("does", "do")} not foresee any changes to ${v("their", "their")} financial position that would adversely affect serviceability.`;
+  const proposal = [purpose, structure, reassurance].join(" ");
 
-  const character = `${subj} ${v("demonstrates", "demonstrate")} strong repayment capacity, ${v("lives", "live")} within ${v("their", "their")} means, and ${v("maintains", "maintain")} a regular savings habit, with no history of repayment issues. ${subj} ${v("does", "do")} not foresee any future changes that would impact ${v("their", "their")} ability to repay the proposed mortgage. This reflects positively on ${v("their", "their")} character and capacity to service the loan.`;
+  const character = `${subj} ${v("demonstrates", "demonstrate")} a strong and stable financial position with the clear capacity to service the proposed lending. ${subj} ${v("has", "have")} a clean credit history with no adverse listings, no history of arrears or repayment difficulty, and ${v("lives", "live")} comfortably within ${v("their", "their")} means while maintaining a regular and consistent savings pattern. ${subj} ${v("is", "are")} a responsible borrower who ${v("understands", "understand")} the obligations of the facility and ${v("does", "do")} not foresee any foreseeable changes to ${v("their", "their")} financial circumstances that would impair the ability to meet repayments. Overall, this reflects very positively on ${v("their", "their")} character, reliability, and ongoing capacity to service the loan.`;
 
-  const collateral = ctx.isRefi
-    ? `The existing security${ctx.security ? ` at ${ctx.security}` : ""} is in an acceptable postcode and good condition${ctx.value ? `, valued at ${money(ctx.value)}` : ""}, suitable for ${ctx.lvr || "the proposed"} LVR lending. Loan statements / payout figures attached.`
-    : `The security property${ctx.security ? ` at ${ctx.security}` : ""} is located in an acceptable postcode and in good condition${ctx.value ? `, with an estimated value of ${money(ctx.value)}` : ""}, suitable for ${ctx.lvr || "the proposed"} LVR lending. Contract of Sale${ctx.contractPending ? " to be provided once a property is chosen" : " attached"}.`;
+  const collateral = [
+    `The security offered is ${ctx.isRefi ? "the applicant's existing property" : "the subject property"}${ctx.security ? ` at ${ctx.security}` : ""}, which is considered acceptable for the proposed lending:`,
+    ctx.value ? `• Estimated security value: ${money(ctx.value)}` : "",
+    ctx.lvr ? `• Resulting LVR: ${ctx.lvr}${ctx.isRefi ? "" : ""}` : "",
+    "• Located in an acceptable, established postcode",
+    "• Standard residential dwelling in good condition",
+    ctx.isRefi ? "• Existing loan statements / payout figures attached" : (ctx.contractPending ? "• Contract of Sale to be provided once a property is chosen" : "• Contract of Sale attached"),
+    ctx.lvr && parseFloat(ctx.lvr) <= 80 ? "The conservative LVR provides a strong equity buffer and materially mitigates lender risk." : ""
+  ].filter(Boolean).join("\n");
 
-  const capacity = `Servicing evidences that ${couple ? "the clients are" : "the applicant is"} working and ${v("earns", "earn")} consistent income. Please refer to the attached serviceability assessment for full details.`;
+  const capacity = `Servicing has been assessed and evidences that ${couple ? "the clients are" : "the applicant is"} working and ${v("earns", "earn")} consistent, sustainable income that is sufficient to comfortably meet the proposed principal and interest repayments. Income has been verified through the supporting documents provided, and the position is supported by the lender's serviceability calculator. Please refer to the attached serviceability assessment for full details.`;
 
-  const noDebtsNote = `${subj} ${v("has", "have")} no additional liabilities or unsecured debts, reflecting strong financial discipline and a positive repayment history.`;
-  const debtsLead = `${subj} ${v("has", "have")} the following existing ${ctx.debtCount > 1 ? "liabilities" : "liability"}, ${ctx.isRefi ? "forming part of this application" : "which ha" + (ctx.debtCount > 1 ? "ve" : "s") + " been allowed for in servicing"}:`;
+  // EXIT STRATEGY — included for short-term facilities, cash-out, or where the broker wants it spelled out.
+  let exitStrategy = "";
+  if ((ctx.term && ctx.term <= 10) || ctx.cashOut) {
+    exitStrategy = [
+      `The proposed lending is supported by clear and realistic exit pathways:`,
+      `• Primary strategy — the facility will be serviced and repaid from ${couple ? "the clients'" : "the applicant's"} ongoing income over the loan term, which has been assessed as sufficient and sustainable.`,
+      ctx.value && ctx.lvr && parseFloat(ctx.lvr) < 70 ? `• Secondary strategy — substantial equity is held in the security (LVR ${ctx.lvr}), providing the option to refinance or sell the asset if circumstances change.` : "• Secondary strategy — the option to refinance or realise the secured asset remains available if circumstances change.",
+      `Given the loan amount, structure${ctx.term ? ` and ${ctx.term}-year term` : ""}, repayments are considered manageable and sustainable throughout the life of the facility.`
+    ].filter(Boolean).join("\n");
+  }
 
-  return { proposal, character, collateral, capacity, noDebtsNote, debtsLead };
+  const noDebtsNote = `${subj} ${v("has", "have")} no additional liabilities or unsecured debts — no personal loans, credit cards or buy-now-pay-later facilities are held in ${v("their", "their")} name. This reflects strong financial discipline and a positive, well-managed repayment history.`;
+  const debtsLead = `${subj} ${v("has", "have")} the following existing ${ctx.debtCount > 1 ? "liabilities" : "liability"}, ${ctx.isRefi ? "which form part of this application" : "which ha" + (ctx.debtCount > 1 ? "ve" : "s") + " been considered and allowed for in the servicing assessment"}:`;
+
+  return { proposal, character, collateral, capacity, exitStrategy, noDebtsNote, debtsLead };
 }
 
 export function normaliseRec(input = {}) {
@@ -91,7 +113,7 @@ export function normaliseRec(input = {}) {
   const sections = [
     ["PROPOSAL", input.proposal], ["VISA", input.visaStatus], ["CAPACITY", input.capacity],
     ["INCOME", input.incomeDetails], ["RENTAL INCOME", isInvestment ? input.rentalIncome : ""],
-    ["CHARACTER", input.character], ["COLLATERAL", input.collateral]
+    ["CHARACTER", input.character], ["COLLATERAL", input.collateral], ["EXIT STRATEGY", input.exitStrategy]
   ].filter(([, v]) => v && String(v).trim());
   return {
     fileOwner: input.fileOwner || "Viet Anh Vu",

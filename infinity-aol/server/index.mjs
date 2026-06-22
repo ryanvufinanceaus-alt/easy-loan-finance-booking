@@ -2295,13 +2295,16 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const visaStatus = apps.map((a) => `${applicantFullName(a)}: ${a?.residencyStatus || "Australian Citizen"}.`).join("\n");
   // OTHER DEBTS — only REAL liabilities: must have a balance/limit > 0 OR a named lender. An empty/placeholder
   // row (e.g. just type "Other" with no figures) is NOT a debt, so it must not produce a false entry.
-  const liveLiabs = (liveFin && Array.isArray(liveFin.liabilities) && liveFin.liabilities.length) ? liveFin.liabilities : null;
-  const rawLiabs = liveLiabs || caseData?.liabilities || [];
+  // Use the case liabilities (reliable); the live financials liabilities scrape is unreliable (it can mis-file
+  // an income row), so don't take liabilities from it.
+  const rawLiabs = caseData?.liabilities || [];
   const otherDebts = rawLiabs.filter((l) => {
-    const name = String(l.lender || l.institution || l.name || "").trim();
+    const name = String(l.lender || l.institution || l.name || l.type || "").trim();
     const balance = Number(l.balance || l.outstanding || l.amount || l.limit) || 0;
+    // exclude empty placeholders AND anything that is actually income mis-filed as a liability
+    const isIncome = /salary|wage|\bincome\b|rental|pension|centrelink|allowance|bonus|overtime|benefit/i.test(name);
     const realName = name && !/^(other|n\/a|none|nil)$/i.test(name);
-    return realName || balance > 0;
+    return !isIncome && (realName || balance > 0);
   }).map((l) => ({
     lenderType: l.lender || l.institution || l.name || l.type || "Existing liability",
     balance: Number(l.balance || l.outstanding || l.amount || l.limit) || 0,
@@ -2345,6 +2348,7 @@ function buildRecInputFromCase(caseData, opts = {}) {
     rentalIncome,
     character: narrative.character,
     collateral: narrative.collateral,
+    exitStrategy: narrative.exitStrategy,
     otherDebts,
     noDebtsNote: narrative.noDebtsNote,
     debtsLead: narrative.debtsLead
