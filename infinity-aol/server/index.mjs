@@ -1908,10 +1908,15 @@ function buildComparisonReport(caseId) {
 }
 
 function pushCaseHistory(caseId, event) {
-  const events = caseHistory.get(caseId) || [];
+  let events = caseHistory.get(caseId) || [];
+  // Capture events keep ONE entry per key (latest wins) so frequent live snapshots don't bloat the log or
+  // evict other captures (lender/rate/overrides) within the cap. Audit/non-capture events still append.
+  if (event.type === "capture" && event.key) {
+    events = events.filter((existing) => !(existing.type === "capture" && existing.key === event.key));
+  }
   events.unshift({ ...event, caseId, timestamp: event.timestamp || new Date().toISOString() });
-  caseHistory.set(caseId, events.slice(0, 50));
-  persistHistory();
+  caseHistory.set(caseId, events.slice(0, 80));
+  persistHistory(); // writes to Supabase app_kv (if SUPABASE_ENABLED) or local disk on every capture
 }
 
 function summarizePrepared(prepared, type) {
