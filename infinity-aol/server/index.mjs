@@ -127,6 +127,18 @@ function findCase(caseId) {
   return [...localCases, ...cases].find((item) => item.id === caseId);
 }
 
+// The prepared payload keeps income at its REAL frequency + per-period amount (e.g. Weekly $1,625.83), which
+// Infinity's Financials summary annualises away — so it's the source of truth for the income working.
+function getPreparedPayload(caseId) {
+  const rec = preparedArchive.find((p) => p.caseId === caseId);
+  return (rec && rec.payload) || null;
+}
+function payloadIncomes(caseId) {
+  const p = getPreparedPayload(caseId);
+  return (p && p.infinity && p.infinity.financials && p.infinity.financials.incomes)
+    || (p && p.aol && p.aol.financials && p.aol.financials.incomes) || [];
+}
+
 function summarizeCase(caseData) {
   return {
     id: caseData.id,
@@ -2294,15 +2306,28 @@ function buildRecInputFromCase(caseData, opts = {}) {
   // INCOME — PREFER the income captured LIVE from Infinity/AOL (the broker's latest edits are the source of
   // truth; the loan-form employment is the customer's original and may be stale). Fall back to the case only
   // if nothing was captured. (liveFin computed at the top.)
-  const liveIncomes = (liveFin.incomes || []).filter((i) => Number(i.amount));
   const freqMult = (f) => {
     f = String(f || "Annually").toLowerCase();
-    if (/fortnight/.test(f)) return { n: 26, label: "fortnightly" };
-    if (/week/.test(f)) return { n: 52, label: "weekly" };
-    if (/month/.test(f)) return { n: 12, label: "monthly" };
-    return { n: 1, label: "annual" };
+    if (/fortnight/.test(f)) return { n: 26, label: "fortnightly", rank: 3 };
+    if (/week/.test(f)) return { n: 52, label: "weekly", rank: 4 };
+    if (/month/.test(f)) return { n: 12, label: "monthly", rank: 2 };
+    return { n: 1, label: "annual", rank: 1 };
   };
   const annualise = (i) => (Number(i.amount) || 0) * freqMult(i.frequency).n;
+  // Merge income across sources, keeping for each (type, applicant) the entry with the MOST GRANULAR real
+  // frequency — so a weekly/fortnightly per-period entry from the prepared case beats Infinity's annualised
+  // summary. This makes the working follow the case's actual pay cycle instead of assuming one.
+  const incKey = (i) => `${String(i.type || "").toLowerCase().trim()}|${String(i.ownership || "").toLowerCase().trim()}`;
+  const mergeIncomes = (...lists) => {
+    const map = new Map();
+    for (const list of lists) for (const i of (list || [])) {
+      if (!Number(i.amount)) continue;
+      const k = incKey(i), cur = map.get(k);
+      if (!cur || freqMult(i.frequency).rank > freqMult(cur.frequency).rank) map.set(k, i);
+    }
+    return [...map.values()];
+  };
+  const liveIncomes = mergeIncomes(liveFin.incomes, payloadIncomes(caseData?.id));
   const round2 = (n) => Math.round(n * 100) / 100;
   const fmtNum = (n) => Number(n).toLocaleString("en-AU", { minimumFractionDigits: round2(n) % 1 ? 2 : 0, maximumFractionDigits: 2 });
   // Build the income WORKING as a multiplication that yields the annual figure — matching the broker's samples
@@ -2312,20 +2337,23 @@ function buildRecInputFromCase(caseData, opts = {}) {
     const a = Number(i.amount) || 0, m = freqMult(i.frequency);
     const rate = Number(i.hourlyRate || i.rate), hrs = Number(i.hours || i.hoursPerPeriod);
     if (rate && hrs && m.n > 1) return `$${fmtNum(rate)} x ${fmtNum(hrs)} hrs x ${m.n} (${m.label}) = ${docMoney(round2(rate * hrs * m.n))} p.a.`;
+    // Use the income's ACTUAL pay cycle (weekly/fortnightly/monthly from the case) — never assume one.
     if (m.n > 1) return `$${fmtNum(a)} x ${m.n} (${m.label}) = ${docMoney(round2(a * m.n))} p.a.`;
-    // Annual figure only (Infinity stored it annualised) — auto-derive the standard fortnightly working so EVERY
-    // line reads as an explicit "amount x periods = annual" formula, no extra data needed.
-    return `$${fmtNum(round2(a / 26))} x 26 (fortnightly) = ${docMoney(a)} p.a.`;
+    // Genuinely annual-only (the case itself records it annually) — show it as stated, don't fabricate a split.
+    return `${docMoney(a)} p.a.`;
   };
   // Employment lead-in for an applicant (matches the sample: "NAME - full-time Chef/Cook at EMPLOYER since DATE").
   const employmentLead = (name) => {
     const a = apps.find((x) => nameKey(applicantFullName(x)).includes(nameKey(name.split(/\s+/)[0])) || nameKey(name).includes(nameKey(applicantFullName(x))));
     const emp = (a && a.employment) || {};
-    if (!emp.employerName && !emp.occupation) return "";
+    // Drop placeholder employers (ABC/XYZ/test, or the client's own name echoed back) so we never print junk.
+    let employer = String(emp.employerName || "").trim();
+    if (/\b(abc|xyz|test|n\/?a|tbd|none)\b/i.test(employer) || nameKey(employer).includes(nameKey(name.split(/\s+/)[0]))) employer = "";
+    if (!employer && !emp.occupation) return "";
     const st = String(emp.status || emp.basis || "").toLowerCase();
     const basis = /self|director|sole|abn/.test(st) ? "self-employed" : /part/.test(st) ? "part-time" : /casual/.test(st) ? "casual" : "full-time";
     const since = emp.startDate || emp.since ? ` since ${emp.startDate || emp.since}` : "";
-    return `${basis}${emp.occupation ? ` ${emp.occupation}` : ""}${emp.employerName ? ` at ${emp.employerName}` : ""}${since}; verified on recent payslips. `;
+    return `${basis}${emp.occupation ? ` ${emp.occupation}` : ""}${employer ? ` at ${employer}` : ""}${since}; verified on recent payslips. `;
   };
   let incomeDetails;
   if (liveIncomes.length) {
@@ -2415,27 +2443,43 @@ function buildRecInputFromCase(caseData, opts = {}) {
   };
 }
 
-// Prefill a YTD calc from the prepared case: name + base annual come from the case; the payslip-specific
-// fields (pay dates, YTD income on last payslip) stay blank — they're the yellow input cells the broker
-// completes in Excel. So the extension/web only need to click Download.
+// Prefill a YTD calc from the prepared case: name + base + pay cycle come from the case; the pay-period DATES
+// are auto-derived (financial-year start / today, or employment start if later) so the broker only fills the
+// one yellow cell — the YTD figure on the latest payslip.
+function ddmmyyyy(d) { const p = (n) => String(n).padStart(2, "0"); return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`; }
 function buildYtdInputFromCase(caseData) {
   const apps = (caseData?.applicants || []).filter(Boolean);
   const primary = apps.find((a) => a.role === "primary") || apps[0] || {};
-  // Prefer the live "Base Salary" income captured from Infinity (current) over the loan-form base.
+  // Prefer the live "Base Salary" income; keep its REAL pay cycle (weekly/fortnightly), falling back to the
+  // prepared case which stores the per-period amount + frequency Infinity's summary annualises away.
   const snapshot = getCapture(caseData?.id, "liveCaseSnapshot");
   const liveFin = (snapshot && snapshot.financials) || getCapture(caseData?.id, "infinityFinancials") || {};
-  const baseInc = (liveFin.incomes || []).find((i) => /base|salary|wage|pay\s?as|payg/i.test(i.type || ""));
+  const isBase = (i) => /base|salary|wage|pay\s?as|payg/i.test(i.type || "");
+  const freqRank = (i) => { const f = String(i.frequency || "").toLowerCase(); return /week/.test(f) ? 4 : /fortnight/.test(f) ? 3 : /month/.test(f) ? 2 : 1; };
+  const candidates = [...(liveFin.incomes || []), ...payloadIncomes(caseData?.id)].filter(isBase).filter((i) => Number(i.amount));
+  // Pick the most granular pay cycle (weekly beats the annualised summary) so the working follows the case.
+  const baseInc = candidates.sort((a, b) => freqRank(b) - freqRank(a))[0] || null;
   const freq = baseInc ? String(baseInc.frequency || "Annually") : "";
   const fl = freq.toLowerCase();
   const mult = /fortnight/.test(fl) ? 26 : /week/.test(fl) ? 52 : /month/.test(fl) ? 12 : 1;
   const baseAmount = baseInc ? Number(baseInc.amount) || 0 : 0;
   const annual = baseAmount * mult;
   const liveOwner = baseInc && baseInc.ownership ? baseInc.ownership : "";
+
+  // Auto pay-period dates: First Pay Day = start of the current AU financial year (1 July), or the applicant's
+  // employment start date if they started after that. Last Pay Day = today (the latest data point we have).
+  const now = new Date();
+  const fyStart = new Date(now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1, 6, 1); // 1 July
+  const emp = (primary && primary.employment) || {};
+  let firstPay = fyStart;
+  const empStart = emp.startDate || emp.since;
+  if (empStart) { const es = new Date(empStart); if (!Number.isNaN(es.getTime()) && es > fyStart && es <= now) firstPay = es; }
+
   return {
     clientName: liveOwner || applicantFullName(primary) || apps.map(applicantFullName).filter(Boolean).join(" & "),
     baseAnnual: annual || primary.income?.baseAnnual || 0,
     baseAmount, baseFrequency: freq || "Annually", baseMultiplier: mult,
-    firstPayDay: "", lastPayDay: "", ytdIncome: 0
+    firstPayDay: ddmmyyyy(firstPay), lastPayDay: ddmmyyyy(now), ytdIncome: 0
   };
 }
 

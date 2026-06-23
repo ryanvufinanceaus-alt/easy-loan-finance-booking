@@ -22,7 +22,15 @@ const LOGO = loadLogo();
 
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const round2 = (v) => Math.round(num(v) * 100) / 100;
-function toDate(value) { if (value instanceof Date) return value; const d = new Date(value); return Number.isNaN(d.getTime()) ? null : d; }
+function toDate(value) {
+  if (value instanceof Date) return value;
+  if (value == null || value === "") return null;
+  // Australian dd/mm/yyyy (or dd-mm-yyyy) — JS Date misreads these as mm/dd, so parse explicitly.
+  const m = String(value).trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (m) { const yr = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]); const d = new Date(yr, Number(m[2]) - 1, Number(m[1])); return Number.isNaN(d.getTime()) ? null : d; }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
 function days360(d1, d2) {
   if (!d1 || !d2) return 0;
   let a = d1.getDate(), b = d2.getDate();
@@ -145,8 +153,9 @@ export async function buildYtdXlsx(input = {}) {
   label(`A${R.days}:D${R.days}`, "No. of Days Between (DAYS360)");
   label(`E${R.days}:H${R.days}`, "Annualised Income  ( Income/Day × 365 )");
   value(`A${R.days + 1}:D${R.days + 1}`, { formula: `IFERROR(DAYS360(A${R.fd + 1},A${R.lp + 1}),0)` }, { h: "center", bold: true });
-  // Falls back to the captured base annual when the payslip cells are still blank, so the sheet never reads $0.
-  value(`E${R.days + 1}:H${R.days + 1}`, { formula: `IF(A${R.days + 1}>0,E${R.lp + 1}*365,A${R.base + 1})` }, { numFmt: ACCT, bold: true, fill: LIGHT });
+  // Extrapolate once the broker enters the payslip YTD figure; until then show the captured base annual so the
+  // sheet never reads $0 (the pay dates are auto-filled, so gate on the YTD income cell, not on the day count).
+  value(`E${R.days + 1}:H${R.days + 1}`, { formula: `IF(E${R.fd + 1}>0,E${R.lp + 1}*365,A${R.base + 1})` }, { numFmt: ACCT, bold: true, fill: LIGHT });
 
   label(`A${R.base}:D${R.base}`, "Base Income (Annually)");
   label(`E${R.base}:H${R.base}`, "Over Time / Casual Loading (Annually)");
