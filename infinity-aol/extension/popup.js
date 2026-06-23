@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.18";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.19";
 const REPORT_HISTORY_KEY = "easyflowReportHistory";
 const REPORT_HISTORY_LIMIT = 5;
 
@@ -980,14 +980,9 @@ async function reverseSyncReview() {
   const caseId = state.prepared && state.prepared.caseId;
   if (!caseId) { setStatus("Select a Prepared case first.", "error"); return; }
   const apiBase = els.apiBase.value.replace(/\/$/, "");
-  setStatus("Reading all Infinity tabs…", "muted");
-  // Full read-only sweep of every Infinity tab (Client Details, Financials, Loans & Products, SOCA) so the
-  // review reflects the broker's current live data. Read-only — it does NOT fill/overwrite anything.
-  try {
-    const tabs = await chrome.tabs.query({});
-    if (tabs.some((t) => /infynity|infinity/i.test(t.url || ""))) await efCaptureLive(apiBase, caseId, true);
-  } catch (_e) { /* use captures already on file */ }
-  // Open the review as its own window (a proper table) instead of cramming it into the narrow popup.
+  setStatus("Opening update review…", "muted");
+  // Open the review in its own window — it runs the read-only tab sweep itself (so you see "Scanning…" while
+  // the Infinity tab steps through the tabs) and shows the diff table.
   chrome.windows.create({ url: chrome.runtime.getURL("reverseSync.html?case=" + encodeURIComponent(caseId)), type: "popup", width: 660, height: 680 });
 }
 document.querySelector("#reverseSync")?.addEventListener("click", () => reverseSyncReview());

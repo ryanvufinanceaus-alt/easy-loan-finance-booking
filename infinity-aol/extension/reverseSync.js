@@ -25,8 +25,27 @@
     $("apply").style.display = "inline-block";
   }
 
-  async function load() {
+  // Read-only sweep of every Infinity tab (Client Details, Financials, Loans & Products, SOCA) so the diff is
+  // current. You'll see the Infinity tab switch through the tabs — it only READS, never fills.
+  async function sweepLiveData() {
+    try {
+      const tabs = await chrome.tabs.query({});
+      const inf = tabs.find((t) => /infynity|infinity/i.test(t.url || ""));
+      if (!inf) return;
+      setSub("Scanning all Infinity tabs (read-only)…");
+      const scraped = await chrome.tabs.sendMessage(inf.id, { type: "EF_FULL_CAPTURE", full: true }).catch(() => null);
+      if (scraped && scraped.ok && scraped.snapshot) {
+        await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/live-snapshot`, {
+          method: "POST", headers: { "Content-Type": "application/json", "x-easyflow-broker-token": token },
+          body: JSON.stringify(scraped.snapshot)
+        }).catch(() => {});
+      }
+    } catch (_e) { /* use captures already on file */ }
+  }
+  async function load(skipSweep) {
     if (!caseId) { $("body").innerHTML = '<div class="muted">No case selected.</div>'; return; }
+    if (!skipSweep) await sweepLiveData();
+    setSub("Reading changes…");
     try {
       const r = await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/reverse-sync`, { headers: { "x-easyflow-broker-token": token } });
       const j = await r.json().catch(() => ({}));
@@ -49,9 +68,9 @@
       if (!r.ok) { setSub("Apply failed (" + r.status + ")."); $("apply").disabled = false; return; }
       // Re-prepare so Start uses the updated data immediately.
       await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/prepare-infinity-aol`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {});
-      // Reload the diff — the applied rows should now be gone, confirming it stuck.
+      // Reload the diff (no re-sweep) — the applied rows should now be gone, confirming it stuck.
       $("apply").disabled = false; $("apply").style.display = "none";
-      await load();
+      await load(true);
       setSub(diffs.length ? `✓ Applied. ${diffs.length} item(s) still differ.` : "✓ All changes applied to EasyFlow.");
       if (!diffs.length) $("body").innerHTML = '<div class="muted">✓ EasyFlow case updated from Infinity/AOL and re-prepared. Start now uses the new data. You can close this window.</div>';
     } catch (e) { setSub("Apply failed: " + e.message); $("apply").disabled = false; }
