@@ -2260,7 +2260,11 @@ function reverseSyncDiff(caseData) {
   const ann = (i) => { const a = Number(i.amount) || 0, f = String(i.frequency || "").toLowerCase(); return /week/.test(f) ? a * 52 : /fortnight/.test(f) ? a * 26 : /month/.test(f) ? a * 12 : a; };
   const liveIncomeTotal = incomes.reduce((s, i) => s + ann(i), 0);
   const caseIncomeTotal = (caseData?.applicants || []).reduce((s, a) => s + (Number(a?.income?.baseAnnual) || 0) + (Number(a?.income?.overtimeAnnual) || 0) + (Number(a?.income?.bonusAnnual) || 0), 0);
-  if (liveIncomeTotal) add("Income", "Total gross income (p.a.)", caseIncomeTotal ? docMoney(caseIncomeTotal) : "—", docMoney(liveIncomeTotal), "incomeTotal", liveIncomeTotal);
+  if (liveIncomeTotal && Math.round(liveIncomeTotal) !== Math.round(caseIncomeTotal)) {
+    // Carry the per-source income list so Apply can write it back, plus the annualised total.
+    add("Income", "Annual income (total)", caseIncomeTotal ? docMoney(caseIncomeTotal) : "—", docMoney(liveIncomeTotal), "income",
+      { total: Math.round(liveIncomeTotal), items: incomes.map((i) => ({ type: i.type, ownership: i.ownership, frequency: i.frequency, amount: Number(i.amount) || 0, annual: Math.round(ann(i)) })) });
+  }
   // Employment (primary).
   const pe = ((caseData?.applicants || [])[0] || {}).employment || {};
   add("Employment", "Employer", pe.employerName || "", employment.employerName, "employerName");
@@ -2291,6 +2295,14 @@ function reverseSyncDiff(caseData) {
   const isInv = classifyLoanPurpose(caseData) === "investment";
   let liveProductClean = liveProduct ? (isInv ? liveProduct.replace(/\bowner[- ]?occupied\b/gi, "Investment") : liveProduct.replace(/\binvestment\b/gi, "Owner-Occupied")) : "";
   add("Loan", "Product", loan.productPreference || loan.product || "", liveProductClean, "product", liveProductClean);
+  // Loans & Products tab — repayment type / frequency / features (from the live Loans & Products capture).
+  const lp = snap.loanPrefs || {};
+  const rpMap = (x) => /interest only|\bio\b/i.test(x) ? "Interest Only" : /p\s*&?\s*i|principal/i.test(x) ? "Principal and Interest" : String(x || "");
+  add("Loan", "Repayment type", rpMap(loan.repaymentType || loan.repayment || ""), rpMap(lp.repaymentType || ""), "repaymentType", rpMap(lp.repaymentType || ""));
+  if (lp.repaymentFrequency && /week|fortnight|month/i.test(lp.repaymentFrequency)) add("Loan", "Repayment frequency", loan.repaymentFrequency || "", lp.repaymentFrequency, "repaymentFrequency");
+  const liveFeat = [lp.redraw ? "Redraw" : "", lp.offset ? "Offset" : "", lp.extraRepayments ? "Extra repayments" : ""].filter(Boolean).join(", ");
+  const caseFeat = `${loan.features || ""} ${loan.redraw ? "redraw" : ""} ${loan.offset ? "offset" : ""} ${loan.extraRepayments ? "extra" : ""}`.toLowerCase();
+  if (liveFeat && nk(liveFeat) !== nk(caseFeat)) add("Loan", "Loan features", loan.features || "—", liveFeat, "features", { redraw: !!lp.redraw, offset: !!lp.offset, extraRepayments: !!lp.extraRepayments });
   // Financials — liabilities / expenses / assets (replace the case lists when the broker accepts).
   const num = (x) => Number(String(x == null ? "" : x).replace(/[^0-9.]/g, "")) || 0;
   const monthly = (e) => { const a = num(e.amount), f = String(e.frequency || "Monthly").toLowerCase(); return /year|annual/.test(f) ? a / 12 : /week/.test(f) ? a * 52 / 12 : /fortnight/.test(f) ? a * 26 / 12 : a; };
@@ -2346,9 +2358,26 @@ function applyReverseSyncOverlay(caseData) {
     c.applicants = c.applicants || [{}];
     c.applicants[0] = { ...c.applicants[0], currentAddress: f.address, address: { ...(c.applicants[0]?.address || {}), fullAddress: f.address } };
   }
-  // Loan — confirmed lender / rate / product.
-  if (f.lender || f.interestRate || f.product) {
-    c.loan = { ...(c.loan || {}), ...(f.lender ? { lender: f.lender, selectedLender: f.lender } : {}), ...(f.interestRate ? { interestRate: f.interestRate } : {}), ...(f.product ? { productPreference: f.product, product: f.product } : {}) };
+  // Loan — confirmed lender / rate / product + Loans & Products tab (repayment / features).
+  if (f.lender || f.interestRate || f.product || f.repaymentType || f.repaymentFrequency || f.features) {
+    c.loan = {
+      ...(c.loan || {}),
+      ...(f.lender ? { lender: f.lender, selectedLender: f.lender } : {}),
+      ...(f.interestRate ? { interestRate: f.interestRate } : {}),
+      ...(f.product ? { productPreference: f.product, product: f.product } : {}),
+      ...(f.repaymentType ? { repaymentType: f.repaymentType } : {}),
+      ...(f.repaymentFrequency ? { repaymentFrequency: f.repaymentFrequency } : {}),
+      ...(f.features ? { redraw: !!f.features.redraw, offset: !!f.features.offset, extraRepayments: !!f.features.extraRepayments } : {})
+    };
+  }
+  // Income — set the primary applicant's base annual + keep the per-source list on the case.
+  if (f.income && typeof f.income === "object") {
+    const items = Array.isArray(f.income.items) ? f.income.items : [];
+    const base = items.find((i) => /base|salary|wage|payg/i.test(i.type || "")) || items[0];
+    c.applicants = c.applicants || [{}];
+    if (base) c.applicants[0] = { ...c.applicants[0], income: { ...(c.applicants[0]?.income || {}), baseAnnual: base.annual || base.amount || 0 } };
+    c.infinity = c.infinity || {}; c.infinity.financials = c.infinity.financials || {};
+    c.infinity.financials.incomes = items.map((i) => ({ type: i.type, ownership: i.ownership, frequency: i.frequency, amount: i.amount }));
   }
   // Financials — replace the case lists with the live ones the broker accepted.
   if (Array.isArray(f.liabilities)) c.liabilities = f.liabilities.map((l) => ({ type: l.type, lender: l.lender || l.type, balance: Number(String(l.balance || l.amount || 0).replace(/[^0-9.]/g, "")) || 0 }));
@@ -2896,9 +2925,9 @@ app.post("/api/cases/:caseId/reverse-sync/apply", (request, response) => {
     const prev = getCapture(caseId, "caseUpdatedVersion") || { fields: {} };
     const fields = { ...(prev.fields || {}) };
     // Only accept known, structured keys.
-    ["applicants", "employerName", "occupation", "residencyStatus", "dependants", "incomeTotal",
+    ["applicants", "employerName", "occupation", "residencyStatus", "dependants", "income",
       "maritalStatus", "currentHousing", "address", "lender", "interestRate", "product",
-      "liabilities", "expenses", "assets"].forEach((k) => {
+      "repaymentType", "repaymentFrequency", "features", "liabilities", "expenses", "assets"].forEach((k) => {
       if (incoming[k] !== undefined) fields[k] = incoming[k];
     });
     const overlay = { fields, updatedAt: new Date().toISOString(), updatedBy: broker.name };
