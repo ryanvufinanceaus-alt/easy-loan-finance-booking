@@ -2261,17 +2261,22 @@ function buildRecInputFromCase(caseData, opts = {}) {
   // priority: LIVE scrape of that tab > confirmed selectedLender > the captured lenderScenarios > case.
   const loan = caseData?.loan || {}, prop = caseData?.property || {};
   const selLender = getCapture(caseData?.id, "selectedLender") || {};
+  // The Recommendation tab's CONFIRMED lender is the source of truth for which scenario to use.
+  const rec = (snapshot && snapshot.recommendation) || {};
+  const lk = (s) => String(s || "").toLowerCase().replace(/[^a-z]/g, "");
+  const confirmedLender = rec.lender || selLender.lender || "";
   // Scenarios (lender/product/rate) from the live Preferred-Features/Scenarios scrape, else captured lenderScenarios.
   const scenarios = (snapshot && Array.isArray(snapshot.scenarios) && snapshot.scenarios.length) ? snapshot.scenarios : (getCapture(caseData?.id, "lenderScenarios") || []);
-  // Pick: confirmed lender > a scenario whose product matches the loan purpose (OO vs INV) > first.
+  // Pick the scenario for the CONFIRMED lender; else recommended/selected; else by loan purpose; else first.
   const recScenario = (selLender.lender ? selLender : null)
     || (Array.isArray(scenarios) && scenarios.length
-      ? (scenarios.find((s) => s.recommended || s.selected || s.chosen)
+      ? (scenarios.find((s) => confirmedLender && lk(s.lender) === lk(confirmedLender))
+        || scenarios.find((s) => confirmedLender && (lk(s.lender).includes(lk(confirmedLender)) || lk(confirmedLender).includes(lk(s.lender))))
+        || scenarios.find((s) => s.recommended || s.selected || s.chosen)
         || scenarios.find((s) => (isInvestment ? /invest/i.test(s.product || "") : /\boo\b|owner|occup/i.test(s.product || "")))
         || scenarios[0])
       : null)
     || {};
-  const rec = (snapshot && snapshot.recommendation) || {};
   const cleanRate = (x) => String(x == null ? "" : x).replace(/p\.?\s*a\.?/gi, "").replace(/[%\s]/g, "").trim();
   const numFrom = (x) => Number(String(x == null ? "" : x).replace(/[^0-9.]/g, "")) || 0;
   const firstNonEmpty = (...xs) => xs.find((x) => x != null && String(x).trim() !== "") || "";
