@@ -31,7 +31,7 @@
     try {
       const tabs = await chrome.tabs.query({});
       const inf = tabs.find((t) => /infynity|infinity/i.test(t.url || ""));
-      if (!inf) return;
+      if (!inf) { window._noInfinityTab = true; return; }   // can't read live data without an Infinity tab
       setSub("Scanning all Infinity tabs (read-only)…");
       const scraped = await chrome.tabs.sendMessage(inf.id, { type: "EF_FULL_CAPTURE", full: true }).catch(() => null);
       if (scraped && scraped.ok && scraped.snapshot) {
@@ -56,10 +56,12 @@
     } catch (_e) { $("body").innerHTML = '<div class="muted">Could not read changes.</div>'; return; }
     setSub(diffs.length ? `${diffs.length} change(s) found — tick the ones to apply.` : "No changes.");
     render();
-    if (window._needTabReload) {
-      const warn = '<div style="margin:0 0 10px;padding:9px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;color:#9a3412;font-size:12.5px;">'
-        + '⚠ The Infinity tab is running an older version, so it did <b>not</b> scan all tabs. Reload the Infinity tab (press <b>F5</b>) and click Sync again to read everything.</div>';
-      $("body").insertAdjacentHTML("afterbegin", warn);
+    const banner = (bg, bd, fg, html) => $("body").insertAdjacentHTML("afterbegin",
+      `<div style="margin:0 0 10px;padding:9px 12px;background:${bg};border:1px solid ${bd};border-radius:8px;color:${fg};font-size:12.5px;">${html}</div>`);
+    if (window._noInfinityTab) {
+      banner("#fef2f2", "#fecaca", "#991b1b", "⚠ No Infinity tab is open, so live data could not be read — this shows the last captured data. <b>Open the case in Infinity</b> (in a browser tab), then click Sync again.");
+    } else if (window._needTabReload) {
+      banner("#fff7ed", "#fed7aa", "#9a3412", "⚠ The Infinity tab is running an older version, so it did <b>not</b> scan all tabs. Reload the Infinity tab (press <b>F5</b>) and click Sync again.");
     }
   }
 
