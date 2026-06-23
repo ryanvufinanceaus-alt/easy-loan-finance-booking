@@ -677,9 +677,26 @@ async function fillCurrentPopup() {
 async function checkCurrentPage() {
   await loadPayload();
   const apiBase = els.apiBase.value.replace(/\/$/, "");
+  // Prefer a FRESH scrape of the open Infinity tab (reflects the broker's CURRENT edits) over the server
+  // capture, which lags manual Infinity changes and caused the "extension 3150 vs AOL 3050" mismatch.
+  let freshInf = null;
+  try {
+    const allTabs = await chrome.tabs.query({});
+    const infTab = allTabs.find((t) => /infynity|infinity/i.test(t.url || "") && !/applyonline|loankit/i.test(t.url || ""));
+    if (infTab) {
+      const fin = await chrome.tabs.sendMessage(infTab.id, { type: "EF_GET_FINANCIALS" }).catch(() => null);
+      if (fin && fin.ok && fin.financials && (fin.financials.expenses || []).length) freshInf = fin.financials;
+    }
+  } catch (_e) { /* fall back to the server capture */ }
   // Pull the captured LIVE Infinity financials so the AOL compare uses real Infinity values.
   if (state.prepared?.caseId) {
-    try {
+    if (freshInf) {
+      state.prepared.payload.liveInfinityFinancials = freshInf;
+      fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/capture`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "infinityFinancials", data: freshInf, platform: "infinity" })
+      }).catch(() => {});
+    } else try {
       const r = await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/capture/infinityFinancials`);
       const j = await r.json().catch(() => null);
       if (j?.data) state.prepared.payload.liveInfinityFinancials = j.data;
