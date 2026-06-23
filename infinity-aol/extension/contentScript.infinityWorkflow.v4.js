@@ -3890,7 +3890,14 @@
       try {
         // Financials live on the Financials tab — navigate there first so the scrape finds the rows.
         if (!/financials-tab/i.test(location.hash)) { location.hash = "#!/financials-tab"; await waitForRoute("financials-tab", null, 9000); }
-        var fullDiff = buildFinancialsDiff(payload || {});
+        // Use the FRESHEST live Infinity expenses (server-stored capture) over the stale template payload — so an
+        // expense the broker deleted in Infinity (e.g. "Primary Residence Ongoing Running Costs") shows as an
+        // AOL-only difference instead of a false match against the old template.
+        var pay = payload || {};
+        if (!(objectAtPath(pay, ["liveInfinityFinancials", "expenses"]) || []).length) {
+          try { var infCap = await efGetCapture("infinityFinancials"); if (infCap && (infCap.expenses || []).length) pay = Object.assign({}, pay, { liveInfinityFinancials: { expenses: infCap.expenses } }); } catch (e) { /* use payload */ }
+        }
+        var fullDiff = buildFinancialsDiff(pay);
         expenseDiff = fullDiff.expenses;
         showFinancialsCompare(fullDiff);
         // AUTO-CAPTURE the live AOL financials snapshot to EasyFlow (popup POSTs it) — per-platform, no button.
