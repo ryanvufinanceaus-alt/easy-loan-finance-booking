@@ -2303,17 +2303,44 @@ function buildRecInputFromCase(caseData, opts = {}) {
     return { n: 1, label: "annual" };
   };
   const annualise = (i) => (Number(i.amount) || 0) * freqMult(i.frequency).n;
-  // Show the working, like a payslip extrapolation: "$3,251 × 26 (fortnightly) = $84,543 p.a."
-  const annualiseFormula = (i) => {
+  const round2 = (n) => Math.round(n * 100) / 100;
+  const fmtNum = (n) => Number(n).toLocaleString("en-AU", { minimumFractionDigits: round2(n) % 1 ? 2 : 0, maximumFractionDigits: 2 });
+  // Build the income WORKING as a multiplication that yields the annual figure — matching the broker's samples
+  // ("$25 x 57.12 hrs x 52 = $74,256 p.a." or "$3,251.65 x 26 = $84,543 p.a."). Uses the most granular data
+  // available: hourly rate x hours x periods > per-period amount x periods > (annual only) per-fortnight working.
+  const incomeFormula = (i) => {
     const a = Number(i.amount) || 0, m = freqMult(i.frequency);
-    if (m.n === 1) return `${docMoney(a)} p.a.`;
-    return `${docMoney(a)} × ${m.n} (${m.label}) = ${docMoney(a * m.n)} p.a.`;
+    const rate = Number(i.hourlyRate || i.rate), hrs = Number(i.hours || i.hoursPerPeriod);
+    if (rate && hrs && m.n > 1) return `$${fmtNum(rate)} x ${fmtNum(hrs)} hrs x ${m.n} (${m.label}) = ${docMoney(round2(rate * hrs * m.n))} p.a.`;
+    if (m.n > 1) return `$${fmtNum(a)} x ${m.n} (${m.label}) = ${docMoney(round2(a * m.n))} p.a.`;
+    // Annual figure only (Infinity stored it annualised) — show the standard fortnightly working so there is
+    // still an explicit formula rather than a lone number.
+    return `${docMoney(a)} p.a.  (= $${fmtNum(round2(a / 26))} x 26 fortnightly)`;
+  };
+  // Employment lead-in for an applicant (matches the sample: "NAME - full-time Chef/Cook at EMPLOYER since DATE").
+  const employmentLead = (name) => {
+    const a = apps.find((x) => nameKey(applicantFullName(x)).includes(nameKey(name.split(/\s+/)[0])) || nameKey(name).includes(nameKey(applicantFullName(x))));
+    const emp = (a && a.employment) || {};
+    if (!emp.employerName && !emp.occupation) return "";
+    const st = String(emp.status || emp.basis || "").toLowerCase();
+    const basis = /self|director|sole|abn/.test(st) ? "self-employed" : /part/.test(st) ? "part-time" : /casual/.test(st) ? "casual" : "full-time";
+    const since = emp.startDate || emp.since ? ` since ${emp.startDate || emp.since}` : "";
+    return `${basis}${emp.occupation ? ` ${emp.occupation}` : ""}${emp.employerName ? ` at ${emp.employerName}` : ""}${since}; verified on recent payslips. `;
   };
   let incomeDetails;
   if (liveIncomes.length) {
     const total = liveIncomes.reduce((s, i) => s + annualise(i), 0);
-    incomeDetails = "Income has been verified from the most recent payslips / financials provided, as currently recorded in Infinity and AOL, and supports servicing:\n"
-      + liveIncomes.map((i) => `• ${i.type}${i.ownership ? ` (${i.ownership})` : ""}: ${annualiseFormula(i)}`).join("\n")
+    // Group by applicant (ownership), then list each income source with its working underneath.
+    const owners = [...new Set(liveIncomes.map((i) => String(i.ownership || "").trim()).filter(Boolean))];
+    const groups = owners.length ? owners : [""];
+    const blocks = groups.map((owner) => {
+      const mine = liveIncomes.filter((i) => String(i.ownership || "").trim() === owner || (!owner && !i.ownership));
+      const head = owner ? `${owner.toUpperCase()} — ${employmentLead(owner)}`.trim().replace(/—\s*$/, "").trim() : "";
+      const lines = mine.map((i) => `• ${i.type || "Income"}: ${incomeFormula(i)}`);
+      return (head ? head + "\n" : "") + lines.join("\n");
+    });
+    incomeDetails = "Income has been verified from the most recent payslips / financials provided, as currently recorded in Infinity and AOL, and supports servicing:\n\n"
+      + blocks.join("\n\n")
       + (total ? `\n\nTotal gross income adopted for servicing: ${docMoney(total)} p.a.` : "");
   } else {
     const totalIncome = apps.reduce((s, a) => s + applicantTotalIncome(a), 0);

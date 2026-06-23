@@ -135,13 +135,13 @@ export async function buildYtdXlsx(input = {}) {
   value(`E${R.fd + 1}:H${R.fd + 1}`, c.netYtd ? round2(c.netYtd) : "", { numFmt: ACCT, fill: YELLOW, bold: true });
 
   label(`A${R.lp}:D${R.lp}`, "Last Pay Day as per Payslip");
-  label(`E${R.lp}:H${R.lp}`, "Income per Day");
+  label(`E${R.lp}:H${R.lp}`, "Income per Day  ( YTD ÷ Days )");
   if (c.last) value(`A${R.lp + 1}:D${R.lp + 1}`, c.last, { numFmt: "dd/mm/yyyy", fill: YELLOW, h: "center", bold: true });
   else value(`A${R.lp + 1}:D${R.lp + 1}`, "", { fill: YELLOW });
   value(`E${R.lp + 1}:H${R.lp + 1}`, { formula: `IFERROR(E${R.fd + 1}/A${R.days + 1},0)` }, { numFmt: ACCT });
 
   label(`A${R.days}:D${R.days}`, "No. of Days Between (DAYS360)");
-  label(`E${R.days}:H${R.days}`, "Annualised Income");
+  label(`E${R.days}:H${R.days}`, "Annualised Income  ( Income/Day × 365 )");
   value(`A${R.days + 1}:D${R.days + 1}`, { formula: `IFERROR(DAYS360(A${R.fd + 1},A${R.lp + 1}),0)` }, { h: "center", bold: true });
   // Falls back to the captured base annual when the payslip cells are still blank, so the sheet never reads $0.
   value(`E${R.days + 1}:H${R.days + 1}`, { formula: `IF(A${R.days + 1}>0,E${R.lp + 1}*365,A${R.base + 1})` }, { numFmt: ACCT, bold: true, fill: LIGHT });
