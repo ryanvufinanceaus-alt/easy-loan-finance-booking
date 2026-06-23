@@ -4324,34 +4324,55 @@
   }
   async function efFullCapture(full) {
     var merged = efScrapeCurrent();
-    // SYNC button (full=true): ONE click reads the whole account. We walk the main tabs the SAME way Start
+    // SYNC button (full=true): ONE click reads the WHOLE account. We walk the main tabs the SAME way Start
     // Infinity does — clickMainTab() is the proven, fully-bounded navigation (waitFor/waitForSettle cap every
-    // wait, so a slow tab can't hang) — and scrape each tab, merging as we go. Read-only: we only click tabs
-    // and read values; we never fill. Guarded to run ONLY inside an account: if the broker is on the dashboard
-    // or Loan Case Manager there are no main tabs (findMainTab null), so we skip the walk and keep the current
-    // page instead of bouncing to the generic dashboard.
+    // wait, so a slow tab can't hang) — and scrape each, merging as we go. Read-only: we only click tabs and
+    // read values; we never fill. Guarded to run ONLY inside an account: if the broker is on the dashboard or
+    // Loan Case Manager there are no main tabs (findMainTab null), so we skip the walk and keep the current page
+    // instead of bouncing to the generic dashboard.
     if (full && findMainTab("Client Details")) {
       var scratch = makeResult({});
-      var tabs = ["Client Details", "Financials", "Loans & Products"];
-      for (var t = 0; t < tabs.length; t += 1) {
+      // 1) Client Details (applicants, residency, address) + Financials (income, assets, liabilities, expenses).
+      var mains = ["Client Details", "Financials"];
+      for (var t = 0; t < mains.length; t += 1) {
         try {
-          if (await clickMainTab(tabs[t], scratch)) {
-            await sleep(500);
-            merged = efMergeSnap(merged, efScrapeCurrent());
-          }
+          if (await clickMainTab(mains[t], scratch)) { await sleep(500); merged = efMergeSnap(merged, efScrapeCurrent()); }
         } catch (e) { /* one slow tab can't abort the whole sweep */ }
       }
-      // Land the broker back on Client Details (a real account tab) — not the last tab, never the dashboard.
+      // 2) Loans & Products → drill into EVERY SOCA sub-tab (Needs Analysis, Loans & Securities, Preferred
+      // Features, Recommendation). Clicking the main tab lands inside the active loan's SOCA (hash has
+      // /loans/soca/), so gotoSocaTab can hop each section — exactly the routes Start fills. We scrape each +
+      // grab the 3 lender scenario cards on the Features tab.
+      try {
+        if (await clickMainTab("Loans & Products", scratch)) {
+          await sleep(600); merged = efMergeSnap(merged, efScrapeCurrent());
+          if (/\/loans\/soca\//.test(location.hash || "")) {
+            var soca = ["needs_analysis", "loans_securities", "features", "recommendation"];
+            for (var s = 0; s < soca.length; s += 1) {
+              try {
+                if (gotoSocaTab(soca[s])) {
+                  try { await waitForRoute("/soca/" + soca[s], null, 8000); } catch (e) { /* continue */ }
+                  await sleep(900);
+                  merged = efMergeSnap(merged, efScrapeCurrent());
+                  if (soca[s] === "features") { var cards = scrapeLenderScenarios(); if (cards && cards.length) merged.scenarios = cards; }
+                }
+              } catch (e) { /* one sub-tab can't abort the sweep */ }
+            }
+          }
+        }
+      } catch (e) { /* skip */ }
+      // 3) Land the broker back on Client Details (a real account tab) — not a SOCA sub-tab, never the dashboard.
       try { await clickMainTab("Client Details", scratch); } catch (e) { /* ignore */ }
-    }
-    // On a SOCA loan page, also hop the Recommendation/Features sub-tabs for the selected lender + rate.
-    if (/\/loans\/soca\//.test(location.hash || "")) {
+    } else if (/\/loans\/soca\//.test(location.hash || "")) {
+      // Not a full sweep (e.g. document generation): if we're already inside a SOCA loan, still hop the
+      // Recommendation/Features sub-tabs for the selected lender + rate.
       var sections = ["recommendation", "features"];
       for (var i = 0; i < sections.length; i += 1) {
         if (gotoSocaTab(sections[i])) {
           try { await waitForRoute("/soca/" + sections[i], null, 8000); } catch (e) { /* continue */ }
           await sleep(1100);
           merged = efMergeSnap(merged, efScrapeCurrent());
+          if (sections[i] === "features") { var sc = scrapeLenderScenarios(); if (sc && sc.length) merged.scenarios = sc; }
         }
       }
     }

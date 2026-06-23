@@ -2314,7 +2314,8 @@ function reverseSyncDiff(caseData) {
   const liveExp = fin.expenses || [];
   if (liveExp.length) {
     const liveExpTotal = Math.round(liveExp.reduce((s, e) => s + monthly(e), 0));
-    const caseExpTotal = Math.round((caseData?.expenses || []).reduce((s, e) => s + monthly(e), 0)) || num(caseData?.serviceability?.hemMonthly);
+    const caseExpArr = Array.isArray(caseData?.expenses) ? caseData.expenses : (caseData?.expenses?.breakdown || []);
+    const caseExpTotal = Math.round(caseExpArr.reduce((s, e) => s + monthly(e), 0)) || num(caseData?.expenses?.livingMonthly) || num(caseData?.serviceability?.hemMonthly);
     if (liveExpTotal && liveExpTotal !== caseExpTotal) add("Financials", "Monthly expenses (total)", caseExpTotal ? docMoney(caseExpTotal) : "—", docMoney(liveExpTotal), "expenses", liveExp);
   }
   const liveAssets = fin.assets || [];
@@ -2381,7 +2382,19 @@ function applyReverseSyncOverlay(caseData) {
   }
   // Financials — replace the case lists with the live ones the broker accepted.
   if (Array.isArray(f.liabilities)) c.liabilities = f.liabilities.map((l) => ({ type: l.type, lender: l.lender || l.type, balance: Number(String(l.balance || l.amount || 0).replace(/[^0-9.]/g, "")) || 0 }));
-  if (Array.isArray(f.expenses)) c.expenses = f.expenses.map((e) => ({ type: e.type, amount: Number(String(e.amount || 0).replace(/[^0-9.]/g, "")) || 0, frequency: e.frequency || "Monthly" }));
+  // Expenses — the broker's live Infinity/AOL edits ARE the new HEM. Store BOTH the row breakdown AND the
+  // object shape the Infinity mapper reads (expenses.livingMonthly + hemConfirmed), and tag the source "live"
+  // so the document-draft merge lets it win. Otherwise the applied total never reaches serviceability.hemMonthly
+  // and hemConfirmed stays false → EasyFlow keeps asking the broker to re-confirm HEM against the stale template.
+  if (Array.isArray(f.expenses)) {
+    const eNum = (x) => Number(String(x == null ? "" : x).replace(/[^0-9.]/g, "")) || 0;
+    const eMonthly = (e) => { const a = eNum(e.amount), fr = String(e.frequency || "Monthly").toLowerCase(); return /year|annual/.test(fr) ? a / 12 : /week/.test(fr) ? a * 52 / 12 : /fortnight/.test(fr) ? a * 26 / 12 : a; };
+    const rows = f.expenses.map((e) => ({ type: e.type, expenseType: e.type, amount: eNum(e.amount), frequency: e.frequency || "Monthly", ownership: e.ownership || "100%" }));
+    const liveMonthly = Math.round(rows.reduce((s, e) => s + eMonthly(e), 0));
+    const prevExp = (c.expenses && !Array.isArray(c.expenses)) ? c.expenses : {};
+    c.expenses = { ...prevExp, livingMonthly: liveMonthly, hemConfirmed: true, breakdown: rows, source: "infinity-live" };
+    c.expenseSource = "infinity-live";
+  }
   if (Array.isArray(f.assets)) c.assets = f.assets.map((a) => ({ type: a.type, value: Number(String(a.value || a.amount || 0).replace(/[^0-9.]/g, "")) || 0 }));
   c.reverseSyncedAt = ov.updatedAt;
   return c;

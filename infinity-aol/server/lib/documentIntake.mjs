@@ -618,13 +618,19 @@ export function mergeDocumentDraft(caseData, draft) {
 
   const existingLivingMonthly = Number(merged.expenses?.livingMonthly || 0);
   const draftLivingMonthly = Number(draft.assumptions.hemMonthly || 0);
-  const useExistingLiving = existingLivingMonthly > 0 && draft.assumptions.expenseSource === "template";
+  // Live Infinity/AOL expenses applied via reverse-sync ARE the broker's confirmed HEM: they must WIN over a
+  // stale document-draft template, keep their own row breakdown, and carry the confirmation so EasyFlow does
+  // not re-ask. (Guarded on the "infinity-live" tag the reverse-sync overlay sets, so the normal path is unchanged.)
+  const liveHem = caseData.expenses?.source === "infinity-live" || caseData.expenseSource === "infinity-live";
+  const useExistingLiving = existingLivingMonthly > 0 && (draft.assumptions.expenseSource === "template" || liveHem);
   const livingMonthly = useExistingLiving ? existingLivingMonthly : draftLivingMonthly;
-  const expenseSource = useExistingLiving ? "client supplied" : draft.assumptions.expenseSource;
+  const expenseSource = liveHem ? "infinity-live" : (useExistingLiving ? "client supplied" : draft.assumptions.expenseSource);
   merged.expenses.livingMonthly = livingMonthly;
-  merged.expenses.hemConfirmed = draft.assumptions.hemConfirmed === true;
-  merged.expenses.breakdown = sourceTaggedExpenses(livingMonthly, useExistingLiving ? "generated from client total" : expenseSource);
-  merged.expenses.source = useExistingLiving ? "client supplied" : expenseSource;
+  merged.expenses.hemConfirmed = draft.assumptions.hemConfirmed === true || caseData.expenses?.hemConfirmed === true;
+  merged.expenses.breakdown = (liveHem && Array.isArray(caseData.expenses?.breakdown) && caseData.expenses.breakdown.length)
+    ? caseData.expenses.breakdown
+    : sourceTaggedExpenses(livingMonthly, useExistingLiving ? "generated from client total" : expenseSource);
+  merged.expenses.source = expenseSource;
   merged.assets.breakdown = assetRows;
   merged.assets.source = hasDetailedAssets ? "client supplied" : assetRows[0]?.source || draft.assumptions.assetSource;
   merged.assetSource = hasDetailedAssets ? "client supplied" : assetRows[0]?.source || draft.assumptions.assetSource;
