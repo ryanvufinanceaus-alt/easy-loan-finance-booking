@@ -2258,10 +2258,12 @@ function buildVisaNarrative(apps = []) {
   const ref = (a) => { const g = genderOf(a); return g === "m" ? `Mr ${surname(a)}` : g === "f" ? `Ms ${surname(a)}` : "the applicant"; };
   const poss = (a) => { const g = genderOf(a); return g === "m" ? "his" : g === "f" ? "her" : "their"; };
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-  const subclassPr = (a) => (a?.visaSubclass ? ` (subclass ${a.visaSubclass})` : "");
+  const subclassOf = (a) => a?.visaSubclass || (String(a?.residencyStatus || "").match(/subclass\s*(\d+[a-z]?)/i) || [])[1] || "";
+  const subclassPr = (a) => { const s = subclassOf(a); return s ? ` under subclass ${s}` : ""; };
   const tempDetail = (a) => {
     const type = a?.visaType || "temporary";
-    const sub = a?.visaSubclass ? `, subclass ${a.visaSubclass}` : "";
+    const sc = subclassOf(a);
+    const sub = sc ? `, subclass ${sc}` : "";
     const exp = a?.visaExpiry ? `, with an expiry date of ${a.visaExpiry}` : "";
     return { type, sub, exp, expMissing: !a?.visaExpiry };
   };
@@ -2399,7 +2401,21 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const value = Number(prop.estimatedValue || prop.purchasePrice) || 0;
   const lvrNum = value ? Math.round((loanAmount / value) * 10000) / 100 : 0;
   const term = Number(loan.loanTermYears) || numFrom(recScenario.term) || 30;
-  const preApproval = loan.preApproval === true || /pre[- ]?approval/i.test(`${loan.applicationType || ""} ${caseData?.selectedTemplate?.title || ""}`);
+  // Approval wording: a PURCHASE without a signed/provided Contract of Sale is a pre-approval / ASSESSMENT case
+  // (the broker's rule). Only call it "formal approval" once a contract is actually provided.
+  const contractProvided = Boolean(prop.contractSigned || prop.contractOfSale || prop.contractDate || loan.contractProvided || loan.contractOfSale);
+  const assessment = !isRefi && !contractProvided;
+  const preApproval = assessment || loan.preApproval === true || /pre[- ]?approval/i.test(`${loan.applicationType || ""} ${caseData?.selectedTemplate?.title || ""}`);
+  // Optional case attributes for the proposal — only stated when present (never invented).
+  const fl2 = (x) => String(x || "").toLowerCase();
+  const repaymentType = /interest only|\bio\b/.test(fl2(loan.repaymentType || loan.repayment)) ? "Interest Only" : /p\s*&?\s*i|principal/.test(fl2(loan.repaymentType || loan.repayment)) ? "Principal and Interest" : "";
+  const repaymentFreq = (loan.repaymentFrequency && /week|fortnight|month/i.test(loan.repaymentFrequency)) ? loan.repaymentFrequency : "";
+  const featuresStr = `${fl2(loan.features)} ${fl2(loan.loanFeatures)} ${fl2(loan.productFeatures)}`;
+  const redraw = loan.redraw === true || /redraw/.test(featuresStr);
+  const extraRepayments = loan.extraRepayments === true || /extra repay|additional repay|unlimited repay/.test(featuresStr);
+  const dependants = caseData?.dependants ?? caseData?.numberOfDependants ?? caseData?.clientProfile?.dependants;
+  const depositStrong = Boolean(loan.strongDeposit || caseData?.clientProfile?.strongDeposit) || /strong deposit/i.test(`${loan.notes || ""} ${caseData?.brokerNotes || ""}`);
+  const equifaxLifted = /equifax.{0,30}(lift|remov|clear)/i.test(`${loan.notes || ""} ${caseData?.brokerNotes || ""} ${caseData?.creditNotes || ""}`);
 
   // INCOME — PREFER the income captured LIVE from Infinity/AOL (the broker's latest edits are the source of
   // truth; the loan-form employment is the customer's original and may be stale). Fall back to the case only
@@ -2511,12 +2527,14 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const cashOut = Boolean(loan.cashOut) || /cash[ -]?out|equity release/i.test(`${loan.purpose || ""} ${loan.opportunityName || ""}`);
   const firstHomeBuyer = Boolean(loan.firstHomeBuyer || caseData?.clientProfile?.firstHomeBuyer);
 
-  // Scenario-aware narrative (single/couple, OOC/INV/refi, pre/formal approval, cash-out, debt/no-debt).
+  // Scenario-aware narrative (single/couple, OOC/INV/refi, pre/formal/assessment, cash-out, debt/no-debt).
   const narrative = buildRecNarrative({
-    applicantCount: apps.length, isInvestment, isRefi, preApproval, cashOut, firstHomeBuyer,
+    applicantCount: apps.length, isInvestment, isRefi, preApproval, assessment, cashOut, firstHomeBuyer,
     lenderName, loanAmount, value, lvr: lvrNum ? `${lvrNum}%` : "", rate: rate ? `${rate}% p.a.` : "",
     product, security: prop.address || "",
-    debtCount: otherDebts.length, contractPending: preApproval && !isRefi
+    debtCount: otherDebts.length, contractPending: !contractProvided && !isRefi,
+    repaymentType, repaymentFreq, redraw, extraRepayments, depositStrong, equifaxLifted,
+    dependants, noLiabilities: otherDebts.length === 0
   });
 
   return {
@@ -2546,7 +2564,7 @@ function buildRecInputFromCase(caseData, opts = {}) {
     noDebtsNote: narrative.noDebtsNote,
     debtsLead: narrative.debtsLead,
     // 08 — Final broker recommendation (closing ask to the assessor).
-    brokerComment: `Based on the verified information provided, the application is considered suitable for approval. The proposed loan aligns with the ${couple ? "applicants'" : "applicant's"} stated requirements and objectives, is supported by verified income, demonstrates acceptable serviceability, and is secured by suitable residential property. The broker respectfully requests ${preApproval ? "pre-approval" : "formal approval"}, subject to the lender's standard credit assessment, valuation, and verification requirements.`
+    brokerComment: `Based on the verified information provided, the application is considered suitable to proceed${lenderName ? ` for ${lenderName}` : ""} ${assessment ? "pre-approval / assessment" : preApproval ? "pre-approval" : "formal approval"}. The proposed loan aligns with the ${couple ? "applicants'" : "applicant's"} stated requirements and objectives, is supported by verified income evidence, demonstrates ${lvrNum && lvrNum <= 80 ? "a low LVR position" : "an acceptable security position"}, and is secured by suitable residential property. The broker respectfully requests ${assessment ? "assessment" : preApproval ? "pre-approval" : "formal approval"}, subject to the lender's standard credit assessment, valuation, verification${assessment ? ", Contract of Sale" : ""} and any lender conditions.`
   };
 }
 

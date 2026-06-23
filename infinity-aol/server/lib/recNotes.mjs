@@ -36,7 +36,9 @@ export function buildRecNarrative(ctx = {}) {
   const couple = (ctx.applicantCount || 1) > 1;
   const v = (s, p) => (couple ? p : s);                 // verb agreement: v("is","are")
   const subj = couple ? "The clients" : "The applicant";
-  const approval = ctx.preApproval ? "pre-approval" : "formal approval";
+  // Pre-approval / assessment wording until a signed Contract of Sale is provided (per the broker's rule).
+  const approval = ctx.assessment ? "pre-approval / assessment" : ctx.preApproval ? "pre-approval" : "formal approval";
+  const listJoin = (a) => a.length <= 1 ? (a[0] || "") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1];
   const withLender = ctx.lenderName ? ` with ${ctx.lenderName}` : "";
   const dealLine = `The total loan amount is ${money(ctx.loanAmount)}`
     + (ctx.value ? ` against a security valued at ${money(ctx.value)} (LVR ${ctx.lvr || "TBC"})` : "")
@@ -56,10 +58,23 @@ export function buildRecNarrative(ctx = {}) {
   const structure = ctx.rate
     ? `The total loan amount is ${money(ctx.loanAmount)}${ctx.value ? ` against a security valued at ${money(ctx.value)}, representing an LVR of ${lvrText}` : ""}. The facility is structured on a ${ctx.product || "variable"} product at ${String(ctx.rate).replace(/\.$/, "")}${ctx.term ? ` over a ${ctx.term}-year term` : ""}, which is appropriate to ${v("the applicant's", "the clients'")} objectives and repayment capacity.`
     : `The total loan amount is ${money(ctx.loanAmount)}${ctx.value ? ` against a security valued at ${money(ctx.value)}, representing an LVR of ${lvrText}` : ""}${ctx.term ? `, structured over a ${ctx.term}-year term` : ""}.`;
+  // Repayment preferences + financial strengths — only stated when the case actually records them (no invention).
+  const prefBits = [];
+  if (ctx.repaymentType) prefBits.push(`a ${ctx.repaymentType} repayment structure`);
+  if (ctx.repaymentFreq) prefBits.push(`${String(ctx.repaymentFreq).toLowerCase()} repayments`);
+  if (ctx.redraw) prefBits.push("redraw access");
+  if (ctx.extraRepayments) prefBits.push("the flexibility to make additional repayments where possible");
+  const prefs = prefBits.length ? `${subj} ${v("prefers", "prefer")} ${listJoin(prefBits)} to assist with paying down the loan over time. ` : "";
+  const strengthBits = [];
+  if (ctx.depositStrong) strengthBits.push("a strong deposit position");
+  if (ctx.dependants === 0 || ctx.dependants === "0") strengthBits.push("no dependants");
+  if (ctx.noLiabilities) strengthBits.push("no disclosed liabilities");
+  const strengths = strengthBits.length ? `${subj} ${v("has", "have")} ${listJoin(strengthBits)}. ` : "";
   const reassurance = `${subj} ${v("is", "are")} employed and ${v("earns", "earn")} consistent, verifiable income (detailed below), ${v("lives", "live")} within ${v("their", "their")} means, and ${v("does", "do")} not foresee any changes to ${v("their", "their")} financial position that would adversely affect serviceability.`;
-  const proposal = [purpose, structure, reassurance].join(" ");
+  const proposal = [purpose, structure, (strengths + prefs).trim(), reassurance].filter(Boolean).join(" ");
 
-  const character = `${subj} ${v("demonstrates", "demonstrate")} a strong and stable financial position with the clear capacity to service the proposed lending. ${subj} ${v("has", "have")} a clean credit history with no adverse listings, no history of arrears or repayment difficulty, and ${v("lives", "live")} comfortably within ${v("their", "their")} means while maintaining a regular and consistent savings pattern. ${subj} ${v("is", "are")} a responsible borrower who ${v("understands", "understand")} the obligations of the facility and ${v("does", "do")} not foresee any foreseeable changes to ${v("their", "their")} financial circumstances that would impair the ability to meet repayments. Overall, this reflects very positively on ${v("their", "their")} character, reliability, and ongoing capacity to service the loan.`;
+  // Note: do NOT assert a "clean credit file" (that requires a checked credit report). State disclosed conduct.
+  const character = `${subj} ${v("demonstrates", "demonstrate")} a stable and responsible financial position with the capacity to service the proposed lending. ${subj} ${v("has", "have")} disclosed no adverse credit conduct, arrears or repayment difficulty, and ${v("lives", "live")} within ${v("their", "their")} means while maintaining a consistent savings pattern.${ctx.equifaxLifted ? ` ${subj} ${v("has", "have")} confirmed the Equifax credit file restriction has been lifted.` : ""}${ctx.depositStrong ? ` ${v("The applicant's", "The clients'")} strong deposit position and absence of disclosed liabilities support a disciplined financial position.` : ""} ${subj} ${v("understands", "understand")} the obligations of the facility and ${v("does", "do")} not foresee any changes to ${v("their", "their")} financial circumstances that would impair the ability to meet repayments.`;
 
   const collateral = [
     `The security offered is ${ctx.isRefi ? "the applicant's existing property" : "the subject property"}${ctx.security ? ` at ${ctx.security}` : ""}, which is considered acceptable for the proposed lending:`,
@@ -67,11 +82,11 @@ export function buildRecNarrative(ctx = {}) {
     ctx.lvr ? `• Resulting LVR: ${ctx.lvr}${ctx.isRefi ? "" : ""}` : "",
     "• Located in an acceptable, established postcode",
     "• Standard residential dwelling in good condition",
-    ctx.isRefi ? "• Existing loan statements / payout figures attached" : (ctx.contractPending ? "• Contract of Sale to be provided once a property is chosen" : "• Contract of Sale attached"),
+    ctx.isRefi ? "• Existing loan statements / payout figures attached" : (ctx.contractPending ? "• Contract of Sale to be provided once signed" : "• Contract of Sale attached"),
     ctx.lvr && parseFloat(ctx.lvr) <= 80 ? "The conservative LVR provides a strong equity buffer and materially mitigates lender risk." : ""
   ].filter(Boolean).join("\n");
 
-  const capacity = `Servicing has been assessed and evidences that ${couple ? "the clients are" : "the applicant is"} working and ${v("earns", "earn")} consistent, sustainable income that is sufficient to comfortably meet the proposed principal and interest repayments. Income has been verified through the supporting documents provided, and the position is supported by the lender's serviceability calculator. Please refer to the attached serviceability assessment for full details.`;
+  const capacity = `Serviceability is supported by ${couple ? "the clients'" : "the applicant's"} ${v("income, which", "incomes, which")} ${v("is", "are")} consistent and verifiable from the recent payslips provided, and ${couple ? "the clients are" : "the applicant is"} employed on a full-time permanent basis. ${subj} ${v("has", "have")} advised no foreseeable changes that would adversely impact ${v("their", "their")} income or ability to meet the proposed repayments. The position supports servicing subject to the lender's standard credit assessment and verification requirements; please refer to the serviceability assessment for full details.`;
 
   // EXIT STRATEGY — included for short-term facilities, cash-out, or where the broker wants it spelled out.
   let exitStrategy = "";
@@ -93,8 +108,8 @@ export function buildRecNarrative(ctx = {}) {
 export function normaliseRec(input = {}) {
   const purpose = String(input.loanPurpose || "purchase").toLowerCase();
   const isInvestment = /invest/.test(String(input.propertyType || "")) || /invest/.test(purpose);
-  const isPreApproval = /pre/.test(String(input.loanType || ""));
-  const approvalWord = isPreApproval ? "PRE-APPROVAL" : "FORMAL APPROVAL";
+  const isPreApproval = /pre|assess/.test(String(input.loanType || ""));
+  const approvalWord = isPreApproval ? "PRE-APPROVAL / ASSESSMENT" : "FORMAL APPROVAL";
   const propWord = isInvestment ? "AN INVESTMENT PROPERTY" : "AN OWNER-OCCUPIED PROPERTY";
   const action = /refinance/.test(purpose) ? "TO REFINANCE" : "TO PURCHASE";
   const atLender = input.lenderName ? ` WITH ${up(input.lenderName)}` : "";
