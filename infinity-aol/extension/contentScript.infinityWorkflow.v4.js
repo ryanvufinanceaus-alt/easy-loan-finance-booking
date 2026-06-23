@@ -1615,11 +1615,28 @@
     if (!text || !sample) return text;
     return String(text).split(sample).join("[LENDER]");
   }
+  // Correct the narrative's OCCUPANCY wording to match the loan purpose — a case prepared from the wrong
+  // template can carry "investment property" text on an owner-occupied loan (and vice versa).
+  function fixOccupancyText(text, payload) {
+    if (!text) return text;
+    var t = key((findFirstString(payload, ["loanPurpose", "purpose", "loanObjective", "useOfFunds"]) || "") + " " + (findFirstString(payload, ["occupancy", "propertyOccupancy"]) || ""));
+    if (/refin/.test(t)) return text;                         // don't touch refinance wording
+    if (t.indexOf("invest") >= 0) {
+      return String(text)
+        .replace(/owner[- ]?occupied property to live in/gi, "investment property")
+        .replace(/owner[- ]?occupied property/gi, "investment property")
+        .replace(/an owner[- ]?occupied\b/gi, "an investment");
+    }
+    return String(text)
+      .replace(/an investment property/gi, "an owner-occupied property to live in")
+      .replace(/investment property/gi, "owner-occupied property")
+      .replace(/an investment\b/gi, "an owner-occupied");
+  }
   async function fillLoansSecurities(payload, result) {
     // Wait for the SOCA narrative textareas to render before filling (progressive bind, slow network).
     await waitFor(function () { return first('textarea[ng-model="mvm.soaForm.circunstances_objectives_priorities_description"]'); }, 9000);
     var d = lpcData(payload);
-    fillTextareaNg("mvm.soaForm.circunstances_objectives_priorities_description", lenderPlaceholderText(d.circumstancesObjectivesPriorities, payload), result, "Loans Securities", "Circumstances/Objectives/Priorities");
+    fillTextareaNg("mvm.soaForm.circunstances_objectives_priorities_description", fixOccupancyText(lenderPlaceholderText(d.circumstancesObjectivesPriorities, payload), payload), result, "Loans Securities", "Circumstances/Objectives/Priorities");
     fillTextareaNg("mvm.soaForm.financial_awarness_and_practices_description", d.financialAwarenessPractices, result, "Loans Securities", "Financial Awareness");
     fillTextareaNg("mvm.soaForm.anticipated_significant_changes_description", d.anySignificantChangesAnticipated || "No", result, "Loans Securities", "Significant Changes");
     if (d.otherItemsDiscussed) fillTextareaNg("mvm.soaForm.other_descripton", d.otherItemsDiscussed, result, "Loans Securities", "Other Items");
