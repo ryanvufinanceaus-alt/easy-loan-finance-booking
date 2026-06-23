@@ -125,7 +125,7 @@ export async function buildYtdXlsx(input = {}) {
   const money2 = (n) => "$" + round2(n).toLocaleString("en-AU", { minimumFractionDigits: 2 });
   let working;
   if (baseAmt && mult > 1) working = `${money2(baseAmt)} × ${mult} (${freq.toLowerCase()})  =  ${money2(c.base)} p.a.`;
-  else if (c.base) working = `${money2(c.base / 26)} × 26 (fortnightly)  =  ${money2(c.base)} p.a.`; // auto-derive the formula
+  else if (c.base) working = `${money2(c.base)} p.a.`; // annual as stated by the case — never fabricate a pay cycle
   else working = "(captured from Infinity)";
   value("C7:H7", working, { h: "left", color: MUTE });
   ws.getRow(6).height = 18; ws.getRow(7).height = 16;

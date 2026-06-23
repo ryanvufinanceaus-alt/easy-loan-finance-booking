@@ -2239,9 +2239,14 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const liveFin = (snapshot && snapshot.financials) || getCapture(caseData?.id, "infinityFinancials") || getCapture(caseData?.id, "aolFinancials") || {};
   const nameFirst = (n) => { const p = String(n || "").trim().split(/\s+/); return p.slice(0, -1).join(" ") || String(n || ""); };
   const nameLast = (n) => { const p = String(n || "").trim().split(/\s+/); return p.length > 1 ? p[p.length - 1] : ""; };
+  // A real income row must have a positive amount AND not be a loan/security/submission line that can sneak
+  // into the financials list (e.g. "Prepare Loan Submission $275,000" owned by "PURCHASE OWNER OCCUPIED DWELLING").
+  const INCOME_JUNK = /\b(loan|submission|prepare|purchase|dwelling|security|securit|deposit|lvr|valuation|settlement|refinance|property|liability|liabilit|expense|asset)\b/i;
+  const isRealIncome = (i) => Number(i.amount) > 0 && !INCOME_JUNK.test(`${i.type || ""} ${i.ownership || ""}`);
+  const realLiveIncomes = (liveFin.incomes || []).filter(isRealIncome);
   // CURRENT applicants, most reliable first: the live income OWNERSHIP names (real data the broker entered
   // in Infinity), then the scraped Client-Details snapshot, then the loan-form case (customer's original).
-  const incomeOwners = [...new Set((liveFin.incomes || []).map((i) => String(i.ownership || "").trim()).filter(Boolean))];
+  const incomeOwners = [...new Set(realLiveIncomes.map((i) => String(i.ownership || "").trim()).filter(Boolean))];
   const caseApps = (caseData?.applicants || []).filter(Boolean);
   const nameKey = (s) => String(s || "").toLowerCase().replace(/[^a-z]/g, "");
   // Enrich a live applicant name with the matching case applicant's residency/employment (matched by a
@@ -2321,7 +2326,7 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const mergeIncomes = (...lists) => {
     const map = new Map();
     for (const list of lists) for (const i of (list || [])) {
-      if (!Number(i.amount)) continue;
+      if (!isRealIncome(i)) continue;
       const k = incKey(i), cur = map.get(k);
       if (!cur || freqMult(i.frequency).rank > freqMult(cur.frequency).rank) map.set(k, i);
     }
@@ -2367,7 +2372,7 @@ function buildRecInputFromCase(caseData, opts = {}) {
       const lines = mine.map((i) => `• ${i.type || "Income"}: ${incomeFormula(i)}`);
       return (head ? head + "\n" : "") + lines.join("\n");
     });
-    incomeDetails = "Income has been verified from the most recent payslips / financials provided, as currently recorded in Infinity and AOL, and supports servicing:\n\n"
+    incomeDetails = "Income has been verified from the most recent payslips and supporting financials provided, and supports servicing:\n\n"
       + blocks.join("\n\n")
       + (total ? `\n\nTotal gross income adopted for servicing: ${docMoney(total)} p.a.` : "");
   } else {
