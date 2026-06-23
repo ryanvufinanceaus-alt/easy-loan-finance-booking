@@ -88,10 +88,18 @@ export function buildRecNarrative(ctx = {}) {
     "• Located in an acceptable, established postcode",
     `• ${ctx.dwellingDesc || "Standard residential dwelling in good condition"}`,
     ctx.isRefi ? "• Existing loan statements / payout figures attached" : (ctx.contractPending ? "• Contract of Sale to be provided once signed" : "• Contract of Sale attached"),
-    ctx.lvr && parseFloat(ctx.lvr) <= 80 ? "The conservative LVR provides a strong equity buffer and materially mitigates lender risk." : ""
+    ctx.lvr && parseFloat(ctx.lvr) <= 80
+      ? "The conservative LVR provides a strong equity buffer and materially mitigates lender risk."
+      : (ctx.lvr && parseFloat(ctx.lvr) > 80
+        ? "Although the LVR is higher, the application remains supported by verified income, acceptable serviceability, satisfactory security and the applicant's overall financial position (LMI applies)."
+        : "")
   ].filter(Boolean).join("\n");
 
-  const capacity = `Serviceability is supported by ${couple ? "the clients'" : "the applicant's"} ${v("income, which", "incomes, which")} ${v("is", "are")} consistent and verifiable from the recent payslips provided, and ${couple ? "the clients are" : "the applicant is"} employed on a full-time permanent basis. ${subj} ${v("has", "have")} advised no foreseeable changes that would adversely impact ${v("their", "their")} income or ability to meet the proposed repayments. The position supports servicing subject to the lender's standard credit assessment and verification requirements; please refer to the serviceability assessment for full details.`;
+  const verifSource = ctx.selfEmployed ? "the financials provided" : "the recent payslips provided";
+  const basisClause = ctx.selfEmployed
+    ? `, and ${couple ? "the clients operate" : "the applicant operates"} an established business`
+    : (ctx.employmentBasis ? `, and ${couple ? "the clients are" : "the applicant is"} employed on a ${ctx.employmentBasis} basis` : "");
+  const capacity = `Serviceability is supported by ${couple ? "the clients'" : "the applicant's"} ${v("income, which", "incomes, which")} ${v("is", "are")} consistent and verifiable from ${verifSource}${basisClause}. ${subj} ${v("has", "have")} advised no foreseeable changes that would adversely impact ${v("their", "their")} income or ability to meet the proposed repayments. The position supports servicing subject to the lender's standard credit assessment and verification requirements; please refer to the serviceability assessment for full details.`;
 
   // EXIT STRATEGY — included for short-term facilities, cash-out, or where the broker wants it spelled out.
   let exitStrategy = "";

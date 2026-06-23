@@ -2371,6 +2371,11 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const couple = apps.length > 1;
   const subj = couple ? "The clients are" : "The applicant is";
   const them = couple ? "The applicants" : "The applicant";
+  // Employment basis of the primary applicant — drives PAYG-vs-self-employed wording across income/capacity.
+  const primaryEmp = (apps[0] && apps[0].employment) || {};
+  const empStatusStr = `${primaryEmp.status || ""} ${primaryEmp.basis || ""} ${primaryEmp.type || ""} ${primaryEmp.occupation || ""}`.toLowerCase();
+  const selfEmployed = /self|sole trad|abn|\bdirector\b|business owner|company financ/.test(empStatusStr);
+  const employmentBasis = selfEmployed ? "self-employed" : /casual/.test(empStatusStr) ? "casual" : /part[- ]?time/.test(empStatusStr) ? "part-time" : /full|permanent|payg|paye/.test(empStatusStr) ? "full-time permanent" : "";
   const category = classifyLoanPurpose(caseData); // refinance | investment | owner-occupied | vacant-land
   const isInvestment = category === "investment";
   const isRefi = category === "refinance";
@@ -2477,9 +2482,11 @@ function buildRecInputFromCase(caseData, opts = {}) {
     if (rate && hrs && m.n > 1) return `$${fmtNum(rate)} x ${fmtNum(hrs)} hrs x ${m.n} (${m.label}) = ${docMoney(round2(rate * hrs * m.n))} p.a.`;
     // Income captured at its ACTUAL pay cycle (weekly/fortnightly/monthly) — show that working directly.
     if (m.n > 1) return `$${fmtNum(a)} x ${m.n} (${m.label}) = ${docMoney(round2(a * m.n))} p.a.`;
-    // Infinity stores the figure ANNUALISED, so show how it derives from a weekly gross (52 pays) — the assessor
-    // sees the working, and $annual / 52 reproduces the broker's weekly payslip figure exactly.
-    return `$${fmtNum(round2(a / 52))} x 52 (weekly) = ${docMoney(a)} p.a.`;
+    // The weekly-derivation working only makes sense for WAGE/PAYG income. Rental, pension, government, dividend
+    // and self-employed/business income are inherently annual figures — show them as p.a., no fake pay cycle.
+    const isWage = /base|salary|wage|pay\s?as|payg|ordinary time|gross pay/i.test(i.type || "");
+    if (isWage) return `$${fmtNum(round2(a / 52))} x 52 (weekly) = ${docMoney(a)} p.a.`;
+    return `${docMoney(a)} p.a.`;
   };
   // Employment lead-in for an applicant (matches the sample: "NAME - full-time Chef/Cook at EMPLOYER since DATE").
   const employmentLead = (name) => {
@@ -2490,9 +2497,11 @@ function buildRecInputFromCase(caseData, opts = {}) {
     if (/\b(abc|xyz|test|n\/?a|tbd|none)\b/i.test(employer) || nameKey(employer).includes(nameKey(name.split(/\s+/)[0]))) employer = "";
     if (!employer && !emp.occupation) return "";
     const st = String(emp.status || emp.basis || "").toLowerCase();
-    const basis = /self|director|sole|abn/.test(st) ? "self-employed" : /part/.test(st) ? "part-time" : /casual/.test(st) ? "casual" : "full-time";
+    const selfEmp = /self|director|sole|abn/.test(st);
+    const basis = selfEmp ? "self-employed" : /part/.test(st) ? "part-time" : /casual/.test(st) ? "casual" : "full-time";
     const since = emp.startDate || emp.since ? ` since ${emp.startDate || emp.since}` : "";
-    return `${basis}${emp.occupation ? ` ${emp.occupation}` : ""}${employer ? ` at ${employer}` : ""}${since}; verified on recent payslips. `;
+    const verifiedVia = selfEmp ? "verified on the financials provided" : "verified on recent payslips";
+    return `${basis}${emp.occupation ? ` ${emp.occupation}` : ""}${employer ? ` at ${employer}` : ""}${since}; ${verifiedVia}. `;
   };
   let incomeDetails;
   if (liveIncomes.length) {
@@ -2508,8 +2517,7 @@ function buildRecInputFromCase(caseData, opts = {}) {
     });
     // PAYG → "payslips and employment documentation"; self-employed → "financials" (so the assessor doesn't
     // mistake a PAYG file for self-employed).
-    const selfEmp = apps.some((a) => /self|director|sole|abn|business|company financ/i.test(`${a?.employment?.status || ""} ${a?.employment?.basis || ""} ${a?.employment?.type || ""}`));
-    const verifiedFrom = selfEmp
+    const verifiedFrom = selfEmployed
       ? "Income has been verified from the financials and supporting documentation provided, and supports servicing:"
       : "Income has been verified from the most recent payslips and employment documentation provided, and supports servicing:";
     incomeDetails = verifiedFrom + "\n\n"
@@ -2520,6 +2528,8 @@ function buildRecInputFromCase(caseData, opts = {}) {
     incomeDetails = apps.map(applicantIncomeNarrative).filter(Boolean).join("\n\n")
       + (totalIncome ? `\n\nTotal gross income adopted for servicing: ${docMoney(totalIncome)} p.a.` : "");
   }
+  // Never leave INCOME blank — keep the section present with a neutral note if nothing was captured.
+  if (!String(incomeDetails).trim()) incomeDetails = "Income is to be verified from the employment and income documentation prior to lodgement.";
   // RENTAL — only investment, when rental income present
   const rentalIncome = isInvestment
     ? apps.filter((a) => Number(a?.income?.rentalAnnual)).map((a) => `${applicantFullName(a)} receives rental income of ${docMoney(a.income.rentalAnnual)} p.a. from the investment property, supported by a rental appraisal.`).join("\n")
@@ -2563,7 +2573,8 @@ function buildRecInputFromCase(caseData, opts = {}) {
     product, security: prop.address || "", dwellingDesc,
     debtCount: otherDebts.length, contractPending: !contractProvided && !isRefi,
     repaymentType, repaymentFreq, redraw, extraRepayments, depositStrong, equifaxLifted,
-    dependants, noLiabilities: otherDebts.length === 0
+    dependants, noLiabilities: otherDebts.length === 0,
+    employmentBasis, selfEmployed
   });
 
   return {
