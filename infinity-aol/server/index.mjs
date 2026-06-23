@@ -2402,6 +2402,34 @@ app.post("/api/cases/:caseId/ytd-calc", async (request, response) => {
   } catch (error) { response.status(500).json({ error: String(error?.message || error) }); }
 });
 
+// Receive a live snapshot scraped from Infinity by the extension (broker-token auth, independent of Start),
+// merge it with the existing one (never wipe good data with an empty scrape), and store it as the versioned
+// "updated copy" capture used to build documents.
+app.post("/api/cases/:caseId/live-snapshot", (request, response) => {
+  const broker = requireBroker(request, response);
+  if (!broker) return;
+  const caseId = request.params.caseId;
+  const incoming = request.body || {};
+  const prev = getCapture(caseId, "liveCaseSnapshot") || {};
+  const mergeObj = (p, c) => {
+    const o = { ...(p || {}) };
+    Object.keys(c || {}).forEach((k) => { if (c[k] != null && String(c[k]).trim() !== "") o[k] = c[k]; });
+    return o;
+  };
+  const merged = {
+    platform: "infinity", scrapedAt: new Date().toISOString(),
+    applicants: (Array.isArray(incoming.applicants) && incoming.applicants.length) ? incoming.applicants : (prev.applicants || []),
+    employment: mergeObj(prev.employment, incoming.employment),
+    recommendation: mergeObj(prev.recommendation, incoming.recommendation),
+    financials: (incoming.financials && (incoming.financials.incomes || []).length) ? incoming.financials : (prev.financials || null)
+  };
+  pushCaseHistory(caseId, { type: "capture", key: "liveCaseSnapshot", brokerUser: broker.name, data: merged });
+  if (merged.financials && (merged.financials.incomes || []).length) {
+    pushCaseHistory(caseId, { type: "capture", key: "infinityFinancials", brokerUser: broker.name, data: merged.financials });
+  }
+  response.json({ ok: true, snapshot: merged });
+});
+
 app.post("/api/cases/:caseId/recommendation-notes", async (request, response) => {
   const broker = requireBroker(request, response);
   if (!broker) return;
