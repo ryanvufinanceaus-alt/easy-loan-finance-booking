@@ -24,18 +24,13 @@
       </section>
 
       <div id="appBox" style="display:none;">
-      <div id="loggedInBar" class="logged-in-bar">
-        <span id="loggedInWho"></span>
-        <button id="logoutBtn" class="secondary-action" type="button">Sign out</button>
-      </div>
 
       <!-- 1. Case -->
       <section class="case-picker">
         <label>
-          Prepared case
+          Prepared case <span id="loggedInWho" class="who"></span>
           <select id="casePicker"><option value="">Load prepared cases…</option></select>
         </label>
-        <button id="refreshCases" class="secondary-action" type="button">Refresh cases</button>
       </section>
 
       <!-- 2. Run AutoFill -->
@@ -58,7 +53,8 @@
         <div id="docHistory" class="doc-history"></div>
       </section>
 
-      <!-- 4. Sync back -->
+      <!-- 4. Reconcile -->
+      <button id="comparePage" class="secondary-action" type="button">Compare Infinity / AOL</button>
       <button id="reverseSync" class="secondary-action sync-btn" type="button">Sync live → EasyFlow (update case)</button>
 
       <!-- 5. Secondary tools, collapsed -->
@@ -68,7 +64,7 @@
           <button id="copyInfinityReport" class="secondary-action copy-infinity" type="button">Infinity report</button>
           <button id="copyAolReport" class="secondary-action copy-aol" type="button">AOL report</button>
         </div>
-        <button id="comparePage" class="secondary-action" type="button">Compare Infinity / AOL</button>
+        <button id="refreshCases" class="secondary-action" type="button">Refresh case list</button>
         <button id="roSync" class="secondary-action" type="button">Learn / Apply R&amp;O</button>
         <button id="toggleChecklist" class="secondary-action" type="button">Show / hide checklist</button>
       </details>
@@ -85,6 +81,7 @@
           <button id="runDiagnostics" class="secondary-action diagnostic-row" type="button">Run diagnostic</button>
           <button id="copyDiagnostics" class="secondary-action" type="button" disabled>Copy diagnostic</button>
         </div>
+        <button id="logoutBtn" class="secondary-action" type="button">Sign out</button>
       </details>
 
       <section id="status" class="status muted">Pick a case, open it in Infinity/AOL, then Start.</section>
