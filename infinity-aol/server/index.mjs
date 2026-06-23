@@ -2506,7 +2506,13 @@ function buildRecInputFromCase(caseData, opts = {}) {
       const lines = mine.map((i) => `• ${i.type || "Income"}: ${incomeFormula(i)}`);
       return (head ? head + "\n" : "") + lines.join("\n");
     });
-    incomeDetails = "Income has been verified from the most recent payslips and supporting financials provided, and supports servicing:\n\n"
+    // PAYG → "payslips and employment documentation"; self-employed → "financials" (so the assessor doesn't
+    // mistake a PAYG file for self-employed).
+    const selfEmp = apps.some((a) => /self|director|sole|abn|business|company financ/i.test(`${a?.employment?.status || ""} ${a?.employment?.basis || ""} ${a?.employment?.type || ""}`));
+    const verifiedFrom = selfEmp
+      ? "Income has been verified from the financials and supporting documentation provided, and supports servicing:"
+      : "Income has been verified from the most recent payslips and employment documentation provided, and supports servicing:";
+    incomeDetails = verifiedFrom + "\n\n"
       + blocks.join("\n\n")
       + (total ? `\n\nTotal gross income adopted for servicing: ${docMoney(total)} p.a.` : "");
   } else {
@@ -2546,11 +2552,15 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const cashOut = Boolean(loan.cashOut) || /cash[ -]?out|equity release/i.test(`${loan.purpose || ""} ${loan.opportunityName || ""}`);
   const firstHomeBuyer = Boolean(loan.firstHomeBuyer || caseData?.clientProfile?.firstHomeBuyer);
 
+  // Dwelling description from the property type / address (a unit/apartment is a strata title unit).
+  const isStrata = /\bunit\b|\bapt\b|apartment|townhouse|villa|strata|flat\b|\b\d+\s*\/\s*\d+/i.test(`${prop.propertyType || prop.type || ""} ${prop.address || ""}`);
+  const dwellingDesc = isStrata ? "Established strata title residential unit" : "Standard residential dwelling in good condition";
+
   // Scenario-aware narrative (single/couple, OOC/INV/refi, pre/formal/assessment, cash-out, debt/no-debt).
   const narrative = buildRecNarrative({
     applicantCount: apps.length, isInvestment, isRefi, preApproval, assessment, cashOut, firstHomeBuyer,
     lenderName, loanAmount, value, lvr: lvrNum ? `${lvrNum}%` : "", rate: rate ? `${rate}% p.a.` : "",
-    product, security: prop.address || "",
+    product, security: prop.address || "", dwellingDesc,
     debtCount: otherDebts.length, contractPending: !contractProvided && !isRefi,
     repaymentType, repaymentFreq, redraw, extraRepayments, depositStrong, equifaxLifted,
     dependants, noLiabilities: otherDebts.length === 0

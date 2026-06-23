@@ -86,7 +86,7 @@ export function buildRecNarrative(ctx = {}) {
     ctx.value ? `• Estimated security value: ${money(ctx.value)}` : "",
     ctx.lvr ? `• Resulting LVR: ${ctx.lvr}${ctx.isRefi ? "" : ""}` : "",
     "• Located in an acceptable, established postcode",
-    "• Standard residential dwelling in good condition",
+    `• ${ctx.dwellingDesc || "Standard residential dwelling in good condition"}`,
     ctx.isRefi ? "• Existing loan statements / payout figures attached" : (ctx.contractPending ? "• Contract of Sale to be provided once signed" : "• Contract of Sale attached"),
     ctx.lvr && parseFloat(ctx.lvr) <= 80 ? "The conservative LVR provides a strong equity buffer and materially mitigates lender risk." : ""
   ].filter(Boolean).join("\n");
