@@ -946,8 +946,12 @@
     var s = norm(raw).replace(/,\s*Australia$/i, "");
     var state = stateValue(s);
     var postcode = "";
-    var pm = s.match(/\b(\d{4})\b/);
+    // Postcode = the 4-digit number AFTER the state (e.g. "... NSW 2304"); fall back to the LAST 4-digit run.
+    // This avoids mistaking a 4-digit street number for the postcode. NOTE: the value is copied verbatim from
+    // the source address — a wrong postcode here (e.g. "Mayfield NSW 2034") is a source-data error, not a parse bug.
+    var pm = state && s.match(new RegExp("\\b" + state + "\\b\\D*(\\d{4})\\b", "i"));
     if (pm) postcode = pm[1];
+    else { var all4 = s.match(/\b\d{4}\b/g); if (all4) postcode = all4[all4.length - 1]; }
     var beforeState = state ? s.split(new RegExp("\\b" + state + "\\b", "i"))[0].replace(/[,\s]+$/, "") : s;
     var parts = beforeState.split(",").map(norm).filter(Boolean);
     var line = parts.length > 1 ? parts.slice(0, -1).join(" ") : beforeState;
