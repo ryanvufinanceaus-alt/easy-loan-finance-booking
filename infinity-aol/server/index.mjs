@@ -2271,9 +2271,11 @@ function reverseSyncDiff(caseData) {
   add("Residency", "Dependants", (caseData?.dependants ?? pa?.dependants ?? "") + "", profile.dependants, "dependants");
   add("Residency", "Marital status", pa.maritalStatus || "", profile.maritalStatus, "maritalStatus");
   add("Residency", "Housing", pa.currentHousingSituation || pa.currentResidentialStatus || "", profile.currentHousing, "currentHousing");
-  // Address (client residential).
+  // Address (client residential) — compare on a normalised key so the same address in a different format
+  // ("Unit 1, 79 …" vs "1/79 …", "Street" vs "St") doesn't read as a change; only a real change (e.g. postcode).
   const caseAddrStr = (a) => { const ad = a?.address || {}; return ad.fullAddress || a?.currentAddress || [ad.line1, ad.suburb, ad.state, ad.postcode].filter(Boolean).join(" "); };
-  add("Address", "Residential address", caseAddrStr(pa), profile.address, "address");
+  const addrKey = (s) => String(s || "").toLowerCase().replace(/\baustralia\b/g, "").replace(/\bunit\b/g, "").replace(/\bstreet\b/g, "st").replace(/\broad\b/g, "rd").replace(/\bavenue\b/g, "ave").replace(/[^a-z0-9]/g, "");
+  if (profile.address && addrKey(caseAddrStr(pa)) !== addrKey(profile.address)) add("Address", "Residential address", caseAddrStr(pa), profile.address, "address");
   // Loan — confirmed lender / rate / product (from the selectedLender capture or the recommendation scrape).
   const garbage = /^(limit|ownership|balance|amount|interest|rate|type|value|product|term|lender)$/i;
   const realL = (x) => { const t = String(x || "").trim(); return t && t.length >= 2 && !garbage.test(t); };
@@ -2285,7 +2287,10 @@ function reverseSyncDiff(caseData) {
   const loan = caseData?.loan || {};
   add("Loan", "Lender", loan.lender || loan.selectedLender || "", liveLender, "lender");
   if (/^\d{1,2}(\.\d{1,3})?$/.test(liveRate)) add("Loan", "Interest rate", loan.interestRate || "", `${liveRate}% p.a.`, "interestRate", `${liveRate}% p.a.`);
-  add("Loan", "Product", loan.productPreference || loan.product || "", liveProduct, "product");
+  // Never let the product wording contradict the loan's occupancy (a stale "Investment" label on an OO loan).
+  const isInv = classifyLoanPurpose(caseData) === "investment";
+  let liveProductClean = liveProduct ? (isInv ? liveProduct.replace(/\bowner[- ]?occupied\b/gi, "Investment") : liveProduct.replace(/\binvestment\b/gi, "Owner-Occupied")) : "";
+  add("Loan", "Product", loan.productPreference || loan.product || "", liveProductClean, "product", liveProductClean);
   // Financials — liabilities / expenses / assets (replace the case lists when the broker accepts).
   const num = (x) => Number(String(x == null ? "" : x).replace(/[^0-9.]/g, "")) || 0;
   const monthly = (e) => { const a = num(e.amount), f = String(e.frequency || "Monthly").toLowerCase(); return /year|annual/.test(f) ? a / 12 : /week/.test(f) ? a * 52 / 12 : /fortnight/.test(f) ? a * 26 / 12 : a; };
