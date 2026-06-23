@@ -27,34 +27,17 @@
 
   // Read-only sweep of every Infinity tab (Client Details, Financials, Loans & Products, SOCA) so the diff is
   // current. You'll see the Infinity tab switch through the tabs — it only READS, never fills.
-  function waitForTab(tabId, ms) {
-    return new Promise((resolve) => {
-      const t0 = Date.now();
-      const iv = setInterval(async () => {
-        try { const tb = await chrome.tabs.get(tabId); if (tb.status === "complete" || Date.now() - t0 > ms) { clearInterval(iv); resolve(); } } catch (e) { clearInterval(iv); resolve(); }
-      }, 400);
-    });
-  }
   async function sweepLiveData() {
     try {
       const tabs = await chrome.tabs.query({});
       const inf = tabs.find((t) => /infynity|infinity/i.test(t.url || ""));
       if (!inf) { window._noInfinityTab = true; return; }   // can't read live data without an Infinity tab
       setSub("Scanning all Infinity tabs (read-only)…");
-      let scraped = await chrome.tabs.sendMessage(inf.id, { type: "EF_FULL_CAPTURE", full: true }).catch(() => null);
-      // `swept` is only returned by the NEW content script. If absent (or no response), the Infinity tab still
-      // runs an OLD script — reload that tab once to get the new scanner, then retry. No manual F5 needed.
-      if (!scraped || scraped.swept === undefined) {
-        setSub("Updating the Infinity scanner…");
-        try {
-          await chrome.tabs.reload(inf.id);
-          await waitForTab(inf.id, 14000);
-          await new Promise((r) => setTimeout(r, 1800));
-          setSub("Scanning all Infinity tabs (read-only)…");
-          scraped = await chrome.tabs.sendMessage(inf.id, { type: "EF_FULL_CAPTURE", full: true }).catch(() => null);
-        } catch (e) { /* fall through */ }
-        if (!scraped || scraped.swept === undefined) window._needTabReload = true;
-      }
+      const scraped = await chrome.tabs.sendMessage(inf.id, { type: "EF_FULL_CAPTURE", full: true }).catch(() => null);
+      // `swept` is only returned by the NEW content script. If absent, the Infinity tab still runs an OLD
+      // script — tell the broker to reload that tab (we do NOT auto-reload: reloading an Infinity account URL
+      // drops the account context and lands on the generic dashboard).
+      if (!scraped || scraped.swept === undefined) window._needTabReload = true;
       if (scraped && scraped.ok && scraped.snapshot) {
         await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/live-snapshot`, {
           method: "POST", headers: { "Content-Type": "application/json", "x-easyflow-broker-token": token },

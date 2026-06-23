@@ -2248,7 +2248,7 @@ function reverseSyncDiff(caseData) {
   const owners = [...new Set(incomes.map((i) => String(i.ownership || "").trim()).filter(Boolean))];
   // A real borrower name = Title-Case first+last, and NOT a page-nav / button label the scrape can grab when
   // the broker is on the Loans (not Client Details) page.
-  const JUNK_NAME = /fact find|application|referral|statement|credit assist|create|manual|needs analysis|recommendation|commission|conflict|client form|dashboard|pipeline|overview|compare|loan|product|securit|financ|new lead|new client|return to|prepare|submission/i;
+  const JUNK_NAME = /fact find|application|referral|statement|credit assist|create|manual|needs analysis|recommendation|commission|conflict|client form|dashboard|pipeline|overview|compare|loan|product|securit|financ|new lead|new client|return to|prepare|submission|lodgement|approval|settlement|monthly|weekly|fortnight|annually|opportunit|timeline|overdue|\btask|activit|calculator|resource|report|marketing|education|admin|home|contact/i;
   const looksLikePerson = (n) => { const t = String(n || "").trim(); return /^[A-Za-z][A-Za-z'.-]+(\s+[A-Za-z][A-Za-z'.-]+)+$/.test(t) && t.length <= 46 && !JUNK_NAME.test(t); };
   const liveApps = (owners.length ? owners : (snap.applicants || []).map((a) => String(a.name || "").trim())).filter(looksLikePerson);
   const caseApps = (caseData?.applicants || []).map(applicantFullName).filter(Boolean);
