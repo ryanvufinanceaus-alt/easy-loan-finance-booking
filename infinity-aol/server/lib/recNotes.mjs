@@ -122,7 +122,8 @@ export function normaliseRec(input = {}) {
     clientName: input.clientName || "",
     seekingLine: `SEEKING ${approvalWord} ${action} ${propWord}${atLender}`,
     isInvestment, facts, sections, debts,
-    noDebtsNote: input.noDebtsNote || "", debtsLead: input.debtsLead || ""
+    noDebtsNote: input.noDebtsNote || "", debtsLead: input.debtsLead || "",
+    brokerComment: input.brokerComment || ""
   };
 }
 
@@ -231,6 +232,8 @@ export function buildRecPdf(input = {}) {
     if (r.debts.length && r.debtsLead) { doc.fillColor(INK).font("Helvetica").fontSize(9.6).text(safe(r.debtsLead), M, doc.y, { width: CW, lineGap: 2 }); doc.moveDown(0.3); }
     renderBody(debtsLines(r.debts, r.noDebtsNote).map((ln) => (r.debts.length ? "• " : "") + ln).join("\n"));
 
+    if (r.brokerComment) { doc.moveDown(0.55); sectionHeading("BROKER RECOMMENDATION"); renderBody(r.brokerComment); }
+
     // ---- Sign-off ----
     doc.moveDown(1.2);
     doc.fillColor(navy).font("Helvetica-Bold").fontSize(10).text(safe(r.fileOwner), M, doc.y);
@@ -322,6 +325,7 @@ export async function buildRecDocx(input = {}) {
   debtsLines(r.debts, r.noDebtsNote).forEach((ln) => kids.push(r.debts.length
     ? new Paragraph({ bullet: { level: 0 }, spacing: { after: 60 }, children: [new TextRun({ text: ln, color: ink, size: 19 })] })
     : P(ln)));
+  if (r.brokerComment) { kids.push(heading("BROKER RECOMMENDATION")); bodyParas(r.brokerComment).forEach((p) => kids.push(p)); }
   kids.push(
     P(r.fileOwner, { bold: true, color: navy, size: 20, before: 240 }),
     P("Broker - Authorised Credit Representative", { color: muted, size: 17, after: 20 }),

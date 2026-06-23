@@ -2208,6 +2208,7 @@ function recordDocHistory(caseId, docKey, brokerName) {
   pushCaseHistory(caseId, { type: "capture", key: "docHistory", brokerUser: brokerName || "broker", data: hist });
 }
 function applicantFullName(a) { return [a?.firstName, a?.lastName || a?.surname].filter(Boolean).join(" ").trim(); }
+function applicantLastName(a) { return (a?.lastName || a?.surname || String(a?.firstName || "").trim().split(/\s+/).slice(-1)[0] || "").trim(); }
 // Prefill a Recommendation Note from the prepared case so the broker only has to click Download (then
 // refine in the web form). Structured facts are accurate; narrative is a sensible seed.
 const docMoney = (v) => (Number(v) ? "$" + Number(v).toLocaleString("en-AU") : "");
@@ -2234,6 +2235,80 @@ function applicantTotalIncome(a) {
   const inc = a?.income || {};
   return ["baseAnnual", "overtimeAnnual", "bonusAnnual", "rentalAnnual", "governmentAnnual", "pensionAnnual"].reduce((s, k) => s + (Number(inc[k]) || 0), 0);
 }
+// Expanded, lender-facing VISA / residency narrative — scenario-aware (citizen / PR / temporary / joint),
+// neutral wording by default, gendered only when the case records gender, with missing-data fallbacks.
+function buildVisaNarrative(apps = []) {
+  const list = (apps || []).filter(Boolean);
+  if (!list.length) return "Residency status is to be confirmed and should be verified before lodgement.";
+  const classify = (a) => {
+    const r = String(a?.residencyStatus || "").toLowerCase();
+    if (/citizen/.test(r)) return "citizen";
+    if (/permanent|\bpr\b/.test(r)) return "pr";
+    if (/temporary|temp|bridging|student|subclass|\bvisa\b|\b\d{3}\b/.test(r)) return "temp";
+    if (!r.trim()) return "unknown";
+    return "pr"; // a stated-but-unrecognised status is treated as a residency we name verbatim below
+  };
+  const genderOf = (a) => {
+    const g = `${a?.gender || ""} ${a?.title || ""}`.toLowerCase();
+    if (/\b(male|^m$|^mr$)\b/.test(g) || /\bmr\b/.test(g)) return "m";
+    if (/\b(female|^f$|^ms$|^mrs$|^miss$)\b/.test(g) || /\b(ms|mrs|miss)\b/.test(g)) return "f";
+    return "";
+  };
+  const surname = (a) => applicantLastName(a) || applicantFullName(a) || "the applicant";
+  const ref = (a) => { const g = genderOf(a); return g === "m" ? `Mr ${surname(a)}` : g === "f" ? `Ms ${surname(a)}` : "the applicant"; };
+  const poss = (a) => { const g = genderOf(a); return g === "m" ? "his" : g === "f" ? "her" : "their"; };
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const subclassPr = (a) => (a?.visaSubclass ? ` (subclass ${a.visaSubclass})` : "");
+  const tempDetail = (a) => {
+    const type = a?.visaType || "temporary";
+    const sub = a?.visaSubclass ? `, subclass ${a.visaSubclass}` : "";
+    const exp = a?.visaExpiry ? `, with an expiry date of ${a.visaExpiry}` : "";
+    return { type, sub, exp, expMissing: !a?.visaExpiry };
+  };
+  const single = (a) => {
+    const name = applicantFullName(a) || "The applicant";
+    const k = classify(a);
+    if (k === "citizen") {
+      return `${name} is an Australian citizen. This provides unrestricted rights to live and work in Australia and supports ${poss(a)} long-term residency stability. Based on the information provided, there are no residency or visa-related concerns that would adversely impact ${poss(a)} ability to remain in Australia, maintain employment, or meet the proposed loan obligations.`;
+    }
+    if (k === "temp") {
+      const d = tempDetail(a);
+      return `${name} currently holds a ${d.type} visa${d.sub}${d.exp}.${d.expMissing ? " Visa expiry date is to be confirmed." : ""} The visa permits ${ref(a)} to live and work in Australia, subject to the visa conditions. ${cap(poss(a))} employment, income position, and residency history have been considered in the assessment. Based on the information provided, the applicant's visa position appears acceptable for the proposed lending, subject to lender policy, verification of visa conditions, and any applicable maximum LVR or eligibility restrictions.`;
+    }
+    if (k === "unknown") {
+      return `${name}'s residency status is to be confirmed and should be verified before lodgement.`;
+    }
+    // PR (or a stated residency we name verbatim)
+    const status = /permanent|\bpr\b/i.test(a?.residencyStatus || "") || !a?.residencyStatus ? "an Australian Permanent Resident" : `a ${a.residencyStatus}`;
+    return `${name} is ${status}${subclassPr(a)}. This provides ${ref(a)} with stable and ongoing rights to live and work in Australia. ${cap(poss(a))} residency status supports long-term stability and reduces lender risk from a residency perspective. Based on the information provided, no material visa or residency restrictions have been identified that would adversely affect ${poss(a)} ability to remain in Australia, continue employment, or meet the proposed loan repayments over the loan term.`;
+  };
+  if (list.length === 1) return single(list[0]);
+
+  // Joint — both stable (citizen/PR) vs mixed (one stable, one temporary).
+  const stable = list.filter((a) => classify(a) === "citizen" || classify(a) === "pr");
+  const temps = list.filter((a) => classify(a) === "temp");
+  const statusPhrase = (a) => {
+    const k = classify(a);
+    if (k === "citizen") return "an Australian citizen";
+    if (k === "pr") return "an Australian Permanent Resident";
+    return a?.residencyStatus ? `a ${a.residencyStatus}` : "to be confirmed";
+  };
+  if (temps.length === 0) {
+    const names = list.map(applicantFullName);
+    const allSame = list.every((a) => statusPhrase(a) === statusPhrase(list[0]));
+    const lead = allSame
+      ? `${names.join(" and ")} are ${statusPhrase(list[0]).replace(/^an? /, list.length > 1 ? "" : "")}${allSame && /resident/i.test(statusPhrase(list[0])) ? "s" : ""}.`
+      : list.map((a) => `${applicantFullName(a)} is ${statusPhrase(a)}.`).join(" ");
+    return `${lead} Both applicants have stable rights to live and work in Australia, supporting long-term residency stability and ongoing repayment capacity. Based on the information provided, no material residency or visa-related concerns have been identified that would adversely impact the applicants' ability to remain in Australia or meet the proposed loan obligations.`;
+  }
+  // Mixed residency
+  const prA = stable[0] || list[0];
+  const tmpA = temps[0];
+  const d = tempDetail(tmpA);
+  const lead = `${applicantFullName(prA)} is ${statusPhrase(prA)}. ${applicantFullName(tmpA)} holds a ${d.type} visa${d.sub}${d.exp}.${d.expMissing ? " Visa expiry date is to be confirmed." : ""}`;
+  return `${lead} The applicants' combined residency position has been considered in line with the proposed lending structure. ${applicantFullName(prA)} provides residency stability as ${poss(prA)} status allows ongoing residence and work rights in Australia. ${applicantFullName(tmpA)}'s visa position is subject to lender policy and verification. Based on the information provided, no material issue has been identified that would prevent the application from being assessed, subject to lender visa policy, LVR restrictions, and standard verification.`;
+}
+
 function buildRecInputFromCase(caseData, opts = {}) {
   const snapshot = getCapture(caseData?.id, "liveCaseSnapshot") || null;
   const liveFin = (snapshot && snapshot.financials) || getCapture(caseData?.id, "infinityFinancials") || getCapture(caseData?.id, "aolFinancials") || {};
@@ -2257,7 +2332,12 @@ function buildRecInputFromCase(caseData, opts = {}) {
       const ck = nameKey(applicantFullName(ca));
       return ck && (nk.includes(ck) || ck.includes(nk) || applicantFullName(ca).split(/\s+/).some((t) => t.length > 2 && nk.includes(nameKey(t))));
     }) || {};
-    return { firstName: nameFirst(name), lastName: nameLast(name), role: "primary", residencyStatus: match.residencyStatus, employment: match.employment, income: match.income };
+    return {
+      firstName: nameFirst(name), lastName: nameLast(name), role: "primary",
+      residencyStatus: match.residencyStatus, employment: match.employment, income: match.income,
+      gender: match.gender, title: match.title,
+      visaType: match.visaType, visaSubclass: match.visaSubclass, visaExpiry: match.visaExpiry || match.visaExpiryDate
+    };
   };
   let apps;
   if (incomeOwners.length) {
@@ -2390,8 +2470,9 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const rentalIncome = isInvestment
     ? apps.filter((a) => Number(a?.income?.rentalAnnual)).map((a) => `${applicantFullName(a)} receives rental income of ${docMoney(a.income.rentalAnnual)} p.a. from the investment property, supported by a rental appraisal.`).join("\n")
     : "";
-  // VISA / residency
-  const visaStatus = apps.map((a) => `${applicantFullName(a)}: ${a?.residencyStatus || "Australian Citizen"}.`).join("\n");
+  // VISA / residency — expanded, lender-facing wording per scenario (citizen / PR / temporary / joint), with
+  // neutral "the applicant / their" by default (gendered Mr/Ms · his/her only when the case records gender).
+  const visaStatus = buildVisaNarrative(apps);
   // OTHER DEBTS — only REAL liabilities: must have a balance/limit > 0 OR a named lender. An empty/placeholder
   // row (e.g. just type "Other" with no figures) is NOT a debt, so it must not produce a false entry.
   // Use the case liabilities (reliable); the live financials liabilities scrape is unreliable (it can mis-file
@@ -2450,7 +2531,9 @@ function buildRecInputFromCase(caseData, opts = {}) {
     exitStrategy: narrative.exitStrategy,
     otherDebts,
     noDebtsNote: narrative.noDebtsNote,
-    debtsLead: narrative.debtsLead
+    debtsLead: narrative.debtsLead,
+    // 08 — Final broker recommendation (closing ask to the assessor).
+    brokerComment: `Based on the verified information provided, the application is considered suitable for approval. The proposed loan aligns with the ${couple ? "applicants'" : "applicant's"} stated requirements and objectives, is supported by verified income, demonstrates acceptable serviceability, and is secured by suitable residential property. The broker respectfully requests ${preApproval ? "pre-approval" : "formal approval"}, subject to the lender's standard credit assessment, valuation, and verification requirements.`
   };
 }
 
