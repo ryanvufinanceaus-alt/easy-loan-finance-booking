@@ -2911,7 +2911,9 @@ app.get("/api/cases/:caseId/reverse-sync", (request, response) => {
     const caseData = findCase(request.params.caseId);
     if (!caseData) return response.status(404).json({ error: "case not found" });
     const overlay = getCapture(caseData.id, "caseUpdatedVersion");
-    response.json({ ok: true, diffs: reverseSyncDiff(caseData), appliedAt: overlay?.updatedAt || null });
+    // Diff against the case WITH the already-applied overlay, so fields the broker already accepted drop out
+    // (otherwise every apply leaves the same rows showing and looks like nothing happened).
+    response.json({ ok: true, diffs: reverseSyncDiff(applyReverseSyncOverlay(caseData)), appliedAt: overlay?.updatedAt || null });
   } catch (error) { response.status(500).json({ error: String(error?.message || error) }); }
 });
 

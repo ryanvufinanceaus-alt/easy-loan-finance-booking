@@ -46,11 +46,14 @@
         method: "POST", headers: { "Content-Type": "application/json", "x-easyflow-broker-token": token },
         body: JSON.stringify({ fields })
       });
-      if (!r.ok) { setSub("Apply failed."); $("apply").disabled = false; return; }
+      if (!r.ok) { setSub("Apply failed (" + r.status + ")."); $("apply").disabled = false; return; }
       // Re-prepare so Start uses the updated data immediately.
       await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/prepare-infinity-aol`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {});
-      $("body").innerHTML = '<div class="muted">✓ EasyFlow case updated + re-prepared. Start now uses the new data. You can close this window.</div>';
-      $("apply").style.display = "none"; setSub("Done.");
+      // Reload the diff — the applied rows should now be gone, confirming it stuck.
+      $("apply").disabled = false; $("apply").style.display = "none";
+      await load();
+      setSub(diffs.length ? `✓ Applied. ${diffs.length} item(s) still differ.` : "✓ All changes applied to EasyFlow.");
+      if (!diffs.length) $("body").innerHTML = '<div class="muted">✓ EasyFlow case updated from Infinity/AOL and re-prepared. Start now uses the new data. You can close this window.</div>';
     } catch (e) { setSub("Apply failed: " + e.message); $("apply").disabled = false; }
   }
 
