@@ -2261,9 +2261,16 @@ function buildRecInputFromCase(caseData, opts = {}) {
   // priority: LIVE scrape of that tab > confirmed selectedLender > the captured lenderScenarios > case.
   const loan = caseData?.loan || {}, prop = caseData?.property || {};
   const selLender = getCapture(caseData?.id, "selectedLender") || {};
-  const scenarios = getCapture(caseData?.id, "lenderScenarios");
-  const recScenario = (Array.isArray(scenarios) && scenarios.length)
-    ? (scenarios.find((s) => s.recommended || s.selected || s.chosen) || (scenarios.length === 1 ? scenarios[0] : scenarios[0])) : {};
+  // Scenarios (lender/product/rate) from the live Preferred-Features/Scenarios scrape, else captured lenderScenarios.
+  const scenarios = (snapshot && Array.isArray(snapshot.scenarios) && snapshot.scenarios.length) ? snapshot.scenarios : (getCapture(caseData?.id, "lenderScenarios") || []);
+  // Pick: confirmed lender > a scenario whose product matches the loan purpose (OO vs INV) > first.
+  const recScenario = (selLender.lender ? selLender : null)
+    || (Array.isArray(scenarios) && scenarios.length
+      ? (scenarios.find((s) => s.recommended || s.selected || s.chosen)
+        || scenarios.find((s) => (isInvestment ? /invest/i.test(s.product || "") : /\boo\b|owner|occup/i.test(s.product || "")))
+        || scenarios[0])
+      : null)
+    || {};
   const rec = (snapshot && snapshot.recommendation) || {};
   const cleanRate = (x) => String(x == null ? "" : x).replace(/p\.?\s*a\.?/gi, "").replace(/[%\s]/g, "").trim();
   const numFrom = (x) => Number(String(x == null ? "" : x).replace(/[^0-9.]/g, "")) || 0;
@@ -2421,11 +2428,15 @@ app.post("/api/cases/:caseId/live-snapshot", (request, response) => {
     applicants: (Array.isArray(incoming.applicants) && incoming.applicants.length) ? incoming.applicants : (prev.applicants || []),
     employment: mergeObj(prev.employment, incoming.employment),
     recommendation: mergeObj(prev.recommendation, incoming.recommendation),
+    scenarios: (Array.isArray(incoming.scenarios) && incoming.scenarios.length) ? incoming.scenarios : (prev.scenarios || []),
     financials: (incoming.financials && (incoming.financials.incomes || []).length) ? incoming.financials : (prev.financials || null)
   };
   pushCaseHistory(caseId, { type: "capture", key: "liveCaseSnapshot", brokerUser: broker.name, data: merged });
   if (merged.financials && (merged.financials.incomes || []).length) {
     pushCaseHistory(caseId, { type: "capture", key: "infinityFinancials", brokerUser: broker.name, data: merged.financials });
+  }
+  if (merged.scenarios && merged.scenarios.length) {
+    pushCaseHistory(caseId, { type: "capture", key: "lenderScenarios", brokerUser: broker.name, data: merged.scenarios });
   }
   response.json({ ok: true, snapshot: merged });
 });
