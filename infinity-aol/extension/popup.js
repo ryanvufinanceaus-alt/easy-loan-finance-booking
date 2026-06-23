@@ -971,3 +971,48 @@ async function loadDocHistory() {
   } catch (_e) { el.innerHTML = ""; }
 }
 els.casePicker.addEventListener("change", () => { loadPayload().then(loadDocHistory).catch(() => loadDocHistory()); });
+
+// Reverse sync: capture live Infinity/AOL, show what differs from the EasyFlow case, let the broker tick the
+// changes to apply. Applying writes a versioned "Updated from Infinity/AOL" overlay — the original is kept.
+async function reverseSyncReview() {
+  const panel = document.querySelector("#reverseSyncPanel");
+  if (!brokerToken) { setStatus("Sign in first.", "error"); return; }
+  await loadPayload().catch(() => {});
+  const caseId = state.prepared && state.prepared.caseId;
+  if (!caseId) { setStatus("Select a Prepared case first.", "error"); return; }
+  const apiBase = els.apiBase.value.replace(/\/$/, "");
+  panel.style.display = "block";
+  panel.innerHTML = '<div class="muted">Reading live Infinity/AOL…</div>';
+  await efCaptureLive(apiBase, caseId);                       // refresh the live captures first
+  let diffs = [];
+  try {
+    const r = await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/reverse-sync`, { headers: { "x-easyflow-broker-token": brokerToken } });
+    const j = await r.json().catch(() => ({}));
+    diffs = (j && j.diffs) || [];
+  } catch (_e) { panel.innerHTML = '<div class="muted">Could not read changes.</div>'; return; }
+  if (!diffs.length) { panel.innerHTML = '<div class="muted">EasyFlow already matches the live Infinity/AOL data — nothing to update.</div>'; return; }
+  panel.innerHTML = '<div class="rs-title">Update EasyFlow from live Infinity/AOL</div>'
+    + diffs.map((d, i) => `<label class="rs-row"><input type="checkbox" class="rs-ck" data-i="${i}" checked>`
+      + `<span class="rs-lbl">${d.section} · ${d.label}</span>`
+      + `<span class="rs-vals"><s>${escapeRs(d.easyflow) || "—"}</s> → <b>${escapeRs(d.live)}</b></span></label>`).join("")
+    + '<button id="rsApply" class="primary-action" type="button">Apply selected to EasyFlow</button>'
+    + '<p class="safety">Keeps the customer\'s original case; stores an "Updated from Infinity/AOL" version that re-fills + documents will use.</p>';
+  window._rsDiffs = diffs;
+  document.querySelector("#rsApply").addEventListener("click", () => reverseSyncApply(apiBase, caseId));
+}
+function escapeRs(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+async function reverseSyncApply(apiBase, caseId) {
+  const fields = {};
+  document.querySelectorAll(".rs-ck:checked").forEach((ck) => { const d = (window._rsDiffs || [])[Number(ck.getAttribute("data-i"))]; if (d) fields[d.key] = d.value; });
+  if (!Object.keys(fields).length) { setStatus("Nothing ticked.", "muted"); return; }
+  try {
+    const r = await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/reverse-sync/apply`, {
+      method: "POST", headers: { "Content-Type": "application/json", "x-easyflow-broker-token": brokerToken },
+      body: JSON.stringify({ fields })
+    });
+    if (!r.ok) { setStatus("Apply failed.", "error"); return; }
+    document.querySelector("#reverseSyncPanel").innerHTML = '<div class="muted">✓ EasyFlow case updated from Infinity/AOL. Re-prepare to push the new data.</div>';
+    setStatus("✓ Case updated from live data.", "success");
+  } catch (error) { setStatus("Apply failed: " + error.message, "error"); }
+}
+document.querySelector("#reverseSync")?.addEventListener("click", () => reverseSyncReview());

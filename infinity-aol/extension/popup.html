@@ -14,6 +14,22 @@
         <small id="buildId">Build: loading...</small>
       </header>
 
+      <!-- 0. Broker sign in (security gate — nothing else works until signed in) -->
+      <section id="loginBox" class="action-group">
+        <h2>Broker sign in</h2>
+        <label>Email<input id="loginEmail" type="email" placeholder="you@easyloanfinance.com.au" autocomplete="username" /></label>
+        <label>Access code<input id="loginPassword" type="password" placeholder="access code" autocomplete="current-password" /></label>
+        <button id="loginBtn" class="primary-action" type="button">Sign in</button>
+        <p class="safety">Only vetted Easy Loan Finance brokers can use this extension.</p>
+      </section>
+
+      <div id="appBox" style="display:none;">
+      <div id="loggedInBar" class="logged-in-bar">
+        <span id="loggedInWho"></span>
+        <button id="logoutBtn" class="secondary-action" type="button">Sign out</button>
+      </div>
+
+      <!-- 1. Case -->
       <section class="case-picker">
         <label>
           Prepared case
@@ -21,32 +37,69 @@
             <option value="">Load prepared cases...</option>
           </select>
         </label>
-        <button id="refreshCases" class="secondary-action" type="button">Refresh Cases</button>
+        <button id="refreshCases" class="secondary-action" type="button">Refresh cases</button>
       </section>
 
-      <label>
-        Case ID or token
-        <input id="caseToken" placeholder="ELF-2026-0148 or token" />
-      </label>
+      <!-- 2. Run -->
+      <section class="action-group">
+        <h2>Run AutoFill</h2>
+        <div class="button-row start-row">
+          <button id="startInfinityAutofill" class="primary-action" type="button">Start Infinity</button>
+          <button id="startAolAutofill" class="primary-action aol-action" type="button">Start AOL</button>
+        </div>
+      </section>
 
-      <div class="button-row start-row">
-        <button id="startInfinityAutofill" class="primary-action" type="button">Start Infinity</button>
-        <button id="startAolAutofill" class="primary-action aol-action" type="button">Start AOL</button>
-      </div>
-      <button id="copyDiagnostics" class="secondary-action copy-main" type="button" disabled>Copy Last Report</button>
-      <button id="comparePage" class="secondary-action" type="button">Compare Infinity/AOL</button>
+      <!-- 3. Copy report -->
+      <section class="action-group">
+        <h2>Copy report</h2>
+        <div class="button-row">
+          <button id="copyInfinityReport" class="secondary-action copy-infinity" type="button">Infinity report</button>
+          <button id="copyAolReport" class="secondary-action copy-aol" type="button">AOL report</button>
+        </div>
+      </section>
+
+      <!-- 4. Tools -->
+      <button id="comparePage" class="secondary-action" type="button">Compare Infinity / AOL</button>
+      <button id="roSync" class="secondary-action" type="button">Learn / Apply R&amp;O (open report first)</button>
+      <button id="toggleChecklist" class="secondary-action" type="button">Show / hide broker checklist</button>
+      <button id="reverseSync" class="secondary-action" type="button">Sync live → EasyFlow (update case)</button>
+      <div id="reverseSyncPanel" class="reverse-sync" style="display:none;"></div>
+
+      <!-- 5. Documents -->
+      <section class="action-group" id="docsSection">
+        <h2>Documents <small style="font-weight:400;opacity:.7;">· uses the Prepared case above</small></h2>
+        <ol class="docs-help">
+          <li>Pick the <b>Prepared case</b> in the dropdown above.</li>
+          <li>Open the case in <b>Infinity</b> (so the live lender, rate &amp; income can be read).</li>
+          <li>Click <b>Rec Notes</b> or <b>YTD</b> below — it captures the live data and downloads automatically.</li>
+        </ol>
+        <div class="button-row">
+          <button id="genRecPdf" class="secondary-action" type="button">Rec Notes · PDF</button>
+          <button id="genRecDocx" class="secondary-action" type="button">Rec Notes · Word</button>
+        </div>
+        <button id="genYtd" class="secondary-action" type="button">YTD Calculator · Excel</button>
+        <p class="safety">All prefilled from the selected case. YTD pay dates + payslip YTD are the yellow cells to complete in Excel.</p>
+        <div id="docHistory" class="doc-history"></div>
+      </section>
 
       <details class="advanced">
         <summary>Advanced tools</summary>
+        <label>
+          Case ID or token (override — normally use the dropdown above)
+          <input id="caseToken" placeholder="ELF-2026-0148 or token" />
+        </label>
         <label>
           EasyFlow API
           <input id="apiBase" value="https://booking.easyloanfinance.com.au/infinity-aol" />
         </label>
         <div class="button-row">
-          <button id="fillSection" type="button" disabled>Fill Current Popup</button>
-          <button id="compareCase" type="button" disabled>Compare Case</button>
+          <button id="fillSection" type="button" disabled>Fill current popup</button>
+          <button id="compareCase" type="button" disabled>Compare case</button>
         </div>
-        <button id="runDiagnostics" class="secondary-action diagnostic-row" type="button">Run Diagnostic</button>
+        <div class="button-row">
+          <button id="runDiagnostics" class="secondary-action diagnostic-row" type="button">Run diagnostic</button>
+          <button id="copyDiagnostics" class="secondary-action" type="button" disabled>Copy diagnostic / compare</button>
+        </div>
       </details>
 
       <section id="status" class="status muted">Prepare the case in the web app, open the real Infinity/AOL page, then start.</section>
@@ -56,6 +109,7 @@
         <div id="reviewRows"></div>
         <p class="safety">The extension fills fields only. It does not store passwords, bypass MFA, or submit AOL.</p>
       </section>
+      </div><!-- /appBox -->
     </main>
     <script src="popup.js"></script>
   </body>

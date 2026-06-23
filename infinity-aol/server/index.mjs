@@ -1991,7 +1991,9 @@ function applyBrokerFinancialOverrides(caseData) {
 }
 
 function prepareCase(caseData, source = "prepare", options = {}) {
-  const sourceCase = applyBrokerFinancialOverrides(hydrateCaseFromLinkedLoanForm(caseData));
+  // Apply the broker-approved "Updated from Infinity/AOL" overlay LAST so a re-fill uses the latest data
+  // (e.g. the dropped co-borrower), while the customer's original case stays untouched.
+  const sourceCase = applyReverseSyncOverlay(applyBrokerFinancialOverrides(hydrateCaseFromLinkedLoanForm(caseData)));
   // Auto-pick a scenario-matched template on first prepare; broker can still override by passing templateId.
   if (!options.templateId && !documentDrafts.get(sourceCase.id)) {
     const autoTemplateId = pickTemplateIdForCase(sourceCase);
@@ -2211,6 +2213,77 @@ function recordDocHistory(caseId, docKey, brokerName) {
 }
 function applicantFullName(a) { return [a?.firstName, a?.lastName || a?.surname].filter(Boolean).join(" ").trim(); }
 function applicantLastName(a) { return (a?.lastName || a?.surname || String(a?.firstName || "").trim().split(/\s+/).slice(-1)[0] || "").trim(); }
+
+// ===== Reverse sync: Infinity/AOL LIVE data → EasyFlow case =====
+// The broker edits Infinity/AOL after preparing (e.g. drops a co-borrower). This compares the case against
+// the LIVE captures and lets the broker APPLY chosen changes into a versioned overlay ("Updated from
+// Infinity/AOL") — the customer's original case is never mutated; prepare/fill/docs read the overlay on top.
+const nk = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+function liveCaptureBundle(caseId) {
+  const snap = getCapture(caseId, "liveCaseSnapshot") || {};
+  const infFin = getCapture(caseId, "infinityFinancials") || {};
+  const aolFin = getCapture(caseId, "aolFinancials") || {};
+  const fin = (snap.financials && (snap.financials.incomes || []).length) ? snap.financials
+    : ((infFin.incomes || []).length ? infFin : (aolFin || {}));
+  return { snap, fin: fin || {}, profile: snap.profile || {}, employment: snap.employment || {} };
+}
+// Field-level diff between the case and the live captures (only fields we can actually observe live).
+function reverseSyncDiff(caseData) {
+  const id = caseData?.id;
+  const { snap, fin, profile, employment } = liveCaptureBundle(id);
+  const incomes = (fin.incomes || []).filter((i) => Number(i.amount));
+  const diffs = [];
+  const add = (section, label, easyflow, live, key, value) => {
+    if (live == null || String(live).trim() === "") return;          // no live data → nothing to sync
+    if (nk(easyflow) === nk(live)) return;                            // already matches
+    diffs.push({ section, label, easyflow: String(easyflow || ""), live: String(live), key, value: value === undefined ? live : value });
+  };
+  // Applicants — live = income OWNERSHIP names (real, broker-entered), else the scraped client-details names.
+  const owners = [...new Set(incomes.map((i) => String(i.ownership || "").trim()).filter(Boolean))];
+  const liveApps = owners.length ? owners : (snap.applicants || []).map((a) => String(a.name || "").trim()).filter(Boolean);
+  const caseApps = (caseData?.applicants || []).map(applicantFullName).filter(Boolean);
+  if (liveApps.length && JSON.stringify(liveApps.map(nk).sort()) !== JSON.stringify(caseApps.map(nk).sort())) {
+    add("Applicants", `Borrowers (${caseApps.length} → ${liveApps.length})`, caseApps.join(", "), liveApps.join(", "), "applicants",
+      liveApps.map((n) => { const p = n.split(/\s+/); return { firstName: p.slice(0, -1).join(" ") || n, lastName: p.length > 1 ? p[p.length - 1] : "" }; }));
+  }
+  // Income — total adopted (annualised).
+  const ann = (i) => { const a = Number(i.amount) || 0, f = String(i.frequency || "").toLowerCase(); return /week/.test(f) ? a * 52 : /fortnight/.test(f) ? a * 26 : /month/.test(f) ? a * 12 : a; };
+  const liveIncomeTotal = incomes.reduce((s, i) => s + ann(i), 0);
+  const caseIncomeTotal = (caseData?.applicants || []).reduce((s, a) => s + (Number(a?.income?.baseAnnual) || 0) + (Number(a?.income?.overtimeAnnual) || 0) + (Number(a?.income?.bonusAnnual) || 0), 0);
+  if (liveIncomeTotal) add("Income", "Total gross income (p.a.)", caseIncomeTotal ? docMoney(caseIncomeTotal) : "—", docMoney(liveIncomeTotal), "incomeTotal", liveIncomeTotal);
+  // Employment (primary).
+  const pe = ((caseData?.applicants || [])[0] || {}).employment || {};
+  add("Employment", "Employer", pe.employerName || "", employment.employerName, "employerName");
+  add("Employment", "Occupation", pe.occupation || "", employment.occupation, "occupation");
+  // Residency / visa / dependants.
+  const pa = (caseData?.applicants || [])[0] || {};
+  add("Residency", "Residency status", pa.residencyStatus || "", profile.residencyStatus, "residencyStatus");
+  add("Residency", "Dependants", (caseData?.dependants ?? pa?.dependants ?? "") + "", profile.dependants, "dependants");
+  return diffs;
+}
+// Merge the stored "Updated from Infinity/AOL" overlay onto a case (original preserved; overlay wins).
+function applyReverseSyncOverlay(caseData) {
+  if (!caseData) return caseData;
+  const ov = getCapture(caseData.id, "caseUpdatedVersion");
+  if (!ov || !ov.fields) return caseData;
+  const c = JSON.parse(JSON.stringify(caseData));
+  const f = ov.fields;
+  if (Array.isArray(f.applicants) && f.applicants.length) {
+    // Keep matching applicants' detail, drop the ones no longer present, in the live order.
+    c.applicants = f.applicants.map((la) => {
+      const match = (caseData.applicants || []).find((ca) => nk(applicantFullName(ca)).includes(nk(la.firstName)) || nk(la.firstName).includes(nk(applicantFullName(ca))));
+      return { ...(match || {}), firstName: la.firstName, lastName: la.lastName, role: "primary" };
+    });
+  }
+  if (f.employerName || f.occupation) {
+    c.applicants = c.applicants || [{}];
+    c.applicants[0] = { ...c.applicants[0], employment: { ...(c.applicants[0]?.employment || {}), ...(f.employerName ? { employerName: f.employerName } : {}), ...(f.occupation ? { occupation: f.occupation } : {}) } };
+  }
+  if (f.residencyStatus) { c.applicants = c.applicants || [{}]; c.applicants[0] = { ...c.applicants[0], residencyStatus: f.residencyStatus }; }
+  if (f.dependants != null) c.dependants = f.dependants;
+  c.reverseSyncedAt = ov.updatedAt;
+  return c;
+}
 // Prefill a Recommendation Note from the prepared case so the broker only has to click Download (then
 // refine in the web form). Structured facts are accurate; narrative is a sensible seed.
 const docMoney = (v) => (Number(v) ? "$" + Number(v).toLocaleString("en-AU") : "");
@@ -2726,6 +2799,37 @@ app.post("/api/cases/:caseId/live-snapshot", (request, response) => {
     pushCaseHistory(caseId, { type: "capture", key: "lenderScenarios", brokerUser: broker.name, data: merged.scenarios });
   }
   response.json({ ok: true, snapshot: merged });
+});
+
+// Reverse sync — what differs between the EasyFlow case and the LIVE Infinity/AOL captures (read-only review).
+app.get("/api/cases/:caseId/reverse-sync", (request, response) => {
+  const broker = requireBroker(request, response);
+  if (!broker) return;
+  try {
+    const caseData = findCase(request.params.caseId);
+    if (!caseData) return response.status(404).json({ error: "case not found" });
+    const overlay = getCapture(caseData.id, "caseUpdatedVersion");
+    response.json({ ok: true, diffs: reverseSyncDiff(caseData), appliedAt: overlay?.updatedAt || null });
+  } catch (error) { response.status(500).json({ error: String(error?.message || error) }); }
+});
+
+// Reverse sync — APPLY the broker-approved live values into the versioned overlay (original case untouched).
+app.post("/api/cases/:caseId/reverse-sync/apply", (request, response) => {
+  const broker = requireBroker(request, response);
+  if (!broker) return;
+  try {
+    const caseId = request.params.caseId;
+    const incoming = (request.body && request.body.fields) || {};
+    const prev = getCapture(caseId, "caseUpdatedVersion") || { fields: {} };
+    const fields = { ...(prev.fields || {}) };
+    // Only accept known, structured keys.
+    ["applicants", "employerName", "occupation", "residencyStatus", "dependants", "incomeTotal"].forEach((k) => {
+      if (incoming[k] !== undefined) fields[k] = incoming[k];
+    });
+    const overlay = { fields, updatedAt: new Date().toISOString(), updatedBy: broker.name };
+    pushCaseHistory(caseId, { type: "capture", key: "caseUpdatedVersion", brokerUser: broker.name, data: overlay });
+    response.json({ ok: true, overlay });
+  } catch (error) { response.status(500).json({ error: String(error?.message || error) }); }
 });
 
 app.post("/api/cases/:caseId/recommendation-notes", async (request, response) => {
