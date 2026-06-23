@@ -4085,7 +4085,7 @@
         // Scrape current page + auto-click the SOCA Recommendation/Features tabs to grab selected lender + rate.
         // message.full = sweep EVERY account tab (Sync button), else only fill in missing data (doc generation).
         efFullCapture(message.full)
-          .then(function (s) { sendResponse({ ok: true, snapshot: s }); })
+          .then(function (s) { sendResponse({ ok: true, snapshot: s, swept: !!message.full }); }) // `swept` marks the new full-sweep build
           .catch(function (e) { sendResponse({ ok: false, error: String(e) }); });
         return true;
       }

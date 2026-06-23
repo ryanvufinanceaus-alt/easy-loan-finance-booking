@@ -35,6 +35,9 @@
       setSub("Scanning all Infinity tabs (read-only)…");
       const scraped = await chrome.tabs.sendMessage(inf.id, { type: "EF_FULL_CAPTURE", full: true }).catch(() => null);
       if (scraped && scraped.ok && scraped.snapshot) {
+        // `swept` is only returned by the new content script. If absent, the Infinity tab still runs the OLD
+        // script (it didn't sweep) — tell the broker to reload that tab.
+        if (scraped.swept === undefined) window._needTabReload = true;
         await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/live-snapshot`, {
           method: "POST", headers: { "Content-Type": "application/json", "x-easyflow-broker-token": token },
           body: JSON.stringify(scraped.snapshot)
@@ -53,6 +56,11 @@
     } catch (_e) { $("body").innerHTML = '<div class="muted">Could not read changes.</div>'; return; }
     setSub(diffs.length ? `${diffs.length} change(s) found — tick the ones to apply.` : "No changes.");
     render();
+    if (window._needTabReload) {
+      const warn = '<div style="margin:0 0 10px;padding:9px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;color:#9a3412;font-size:12.5px;">'
+        + '⚠ The Infinity tab is running an older version, so it did <b>not</b> scan all tabs. Reload the Infinity tab (press <b>F5</b>) and click Sync again to read everything.</div>';
+      $("body").insertAdjacentHTML("afterbegin", warn);
+    }
   }
 
   async function apply() {
