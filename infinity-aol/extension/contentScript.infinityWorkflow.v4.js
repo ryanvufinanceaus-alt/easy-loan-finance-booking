@@ -2457,7 +2457,10 @@
           dependants: valByLabel(["number of dependents", "number of dependants", "no. of dependants", "dependants", "dependents"]),
           gender: valByLabel(["gender", "sex"]),
           title: valByLabel(["title"]),
-          dob: valByLabel(["date of birth", "dob"])
+          dob: valByLabel(["date of birth", "dob"]),
+          maritalStatus: valByLabel(["marital status"]),
+          currentHousing: valByLabel(["current housing situation", "housing situation"]),
+          address: valByLabel(["current address", "residential address", "address"])
         };
       })(),
       // Repayment structure + loan features — read on Loans & Products / Preferred Loan Features (the scenario

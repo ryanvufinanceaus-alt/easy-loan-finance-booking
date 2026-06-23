@@ -2255,10 +2255,47 @@ function reverseSyncDiff(caseData) {
   const pe = ((caseData?.applicants || [])[0] || {}).employment || {};
   add("Employment", "Employer", pe.employerName || "", employment.employerName, "employerName");
   add("Employment", "Occupation", pe.occupation || "", employment.occupation, "occupation");
-  // Residency / visa / dependants.
+  // Residency / visa / dependants / marital / housing.
   const pa = (caseData?.applicants || [])[0] || {};
   add("Residency", "Residency status", pa.residencyStatus || "", profile.residencyStatus, "residencyStatus");
   add("Residency", "Dependants", (caseData?.dependants ?? pa?.dependants ?? "") + "", profile.dependants, "dependants");
+  add("Residency", "Marital status", pa.maritalStatus || "", profile.maritalStatus, "maritalStatus");
+  add("Residency", "Housing", pa.currentHousingSituation || pa.currentResidentialStatus || "", profile.currentHousing, "currentHousing");
+  // Address (client residential).
+  const caseAddrStr = (a) => { const ad = a?.address || {}; return ad.fullAddress || a?.currentAddress || [ad.line1, ad.suburb, ad.state, ad.postcode].filter(Boolean).join(" "); };
+  add("Address", "Residential address", caseAddrStr(pa), profile.address, "address");
+  // Loan — confirmed lender / rate / product (from the selectedLender capture or the recommendation scrape).
+  const garbage = /^(limit|ownership|balance|amount|interest|rate|type|value|product|term|lender)$/i;
+  const realL = (x) => { const t = String(x || "").trim(); return t && t.length >= 2 && !garbage.test(t); };
+  const sel = getCapture(id, "selectedLender") || {};
+  const recCap = snap.recommendation || {};
+  const liveLender = realL(sel.lender) ? sel.lender : (realL(recCap.lender) ? recCap.lender : "");
+  const liveRate = String(sel.rate || recCap.rate || "").replace(/[^\d.]/g, "");
+  const liveProduct = sel.product || recCap.product || "";
+  const loan = caseData?.loan || {};
+  add("Loan", "Lender", loan.lender || loan.selectedLender || "", liveLender, "lender");
+  if (/^\d{1,2}(\.\d{1,3})?$/.test(liveRate)) add("Loan", "Interest rate", loan.interestRate || "", `${liveRate}% p.a.`, "interestRate", `${liveRate}% p.a.`);
+  add("Loan", "Product", loan.productPreference || loan.product || "", liveProduct, "product");
+  // Financials — liabilities / expenses / assets (replace the case lists when the broker accepts).
+  const num = (x) => Number(String(x == null ? "" : x).replace(/[^0-9.]/g, "")) || 0;
+  const monthly = (e) => { const a = num(e.amount), f = String(e.frequency || "Monthly").toLowerCase(); return /year|annual/.test(f) ? a / 12 : /week/.test(f) ? a * 52 / 12 : /fortnight/.test(f) ? a * 26 / 12 : a; };
+  const liveLiabs = (fin.liabilities || []).filter((l) => num(l.balance || l.amount) || l.type);
+  const caseLiabs = (caseData?.liabilities || []);
+  if ((fin.liabilities || []).length !== undefined && JSON.stringify(liveLiabs.map((l) => nk(l.type) + num(l.balance || l.amount)).sort()) !== JSON.stringify(caseLiabs.map((l) => nk(l.type || l.lender) + num(l.balance || l.amount || l.limit)).sort())) {
+    add("Financials", `Liabilities (${caseLiabs.length} → ${liveLiabs.length})`, caseLiabs.length ? caseLiabs.map((l) => l.type || l.lender).join(", ") : "none", liveLiabs.length ? liveLiabs.map((l) => l.type).join(", ") : "none", "liabilities", liveLiabs);
+  }
+  const liveExp = fin.expenses || [];
+  if (liveExp.length) {
+    const liveExpTotal = Math.round(liveExp.reduce((s, e) => s + monthly(e), 0));
+    const caseExpTotal = Math.round((caseData?.expenses || []).reduce((s, e) => s + monthly(e), 0)) || num(caseData?.serviceability?.hemMonthly);
+    if (liveExpTotal && liveExpTotal !== caseExpTotal) add("Financials", "Monthly expenses (total)", caseExpTotal ? docMoney(caseExpTotal) : "—", docMoney(liveExpTotal), "expenses", liveExp);
+  }
+  const liveAssets = fin.assets || [];
+  if (liveAssets.length) {
+    const liveAssetTotal = Math.round(liveAssets.reduce((s, a) => s + num(a.value || a.amount), 0));
+    const caseAssetTotal = Math.round((caseData?.assets || []).reduce((s, a) => s + num(a.value || a.amount), 0));
+    if (liveAssetTotal && liveAssetTotal !== caseAssetTotal) add("Financials", "Assets (total)", caseAssetTotal ? docMoney(caseAssetTotal) : "—", docMoney(liveAssetTotal), "assets", liveAssets);
+  }
   return diffs;
 }
 // Merge the stored "Updated from Infinity/AOL" overlay onto a case (original preserved; overlay wins).
@@ -2279,8 +2316,29 @@ function applyReverseSyncOverlay(caseData) {
     c.applicants = c.applicants || [{}];
     c.applicants[0] = { ...c.applicants[0], employment: { ...(c.applicants[0]?.employment || {}), ...(f.employerName ? { employerName: f.employerName } : {}), ...(f.occupation ? { occupation: f.occupation } : {}) } };
   }
-  if (f.residencyStatus) { c.applicants = c.applicants || [{}]; c.applicants[0] = { ...c.applicants[0], residencyStatus: f.residencyStatus }; }
+  if (f.residencyStatus || f.maritalStatus || f.currentHousing) {
+    c.applicants = c.applicants || [{}];
+    c.applicants[0] = {
+      ...c.applicants[0],
+      ...(f.residencyStatus ? { residencyStatus: f.residencyStatus } : {}),
+      ...(f.maritalStatus ? { maritalStatus: f.maritalStatus } : {}),
+      ...(f.currentHousing ? { currentHousingSituation: f.currentHousing } : {})
+    };
+  }
   if (f.dependants != null) c.dependants = f.dependants;
+  // Address — store the live string; downstream formatters split it (structured postcode then wins).
+  if (f.address) {
+    c.applicants = c.applicants || [{}];
+    c.applicants[0] = { ...c.applicants[0], currentAddress: f.address, address: { ...(c.applicants[0]?.address || {}), fullAddress: f.address } };
+  }
+  // Loan — confirmed lender / rate / product.
+  if (f.lender || f.interestRate || f.product) {
+    c.loan = { ...(c.loan || {}), ...(f.lender ? { lender: f.lender, selectedLender: f.lender } : {}), ...(f.interestRate ? { interestRate: f.interestRate } : {}), ...(f.product ? { productPreference: f.product, product: f.product } : {}) };
+  }
+  // Financials — replace the case lists with the live ones the broker accepted.
+  if (Array.isArray(f.liabilities)) c.liabilities = f.liabilities.map((l) => ({ type: l.type, lender: l.lender || l.type, balance: Number(String(l.balance || l.amount || 0).replace(/[^0-9.]/g, "")) || 0 }));
+  if (Array.isArray(f.expenses)) c.expenses = f.expenses.map((e) => ({ type: e.type, amount: Number(String(e.amount || 0).replace(/[^0-9.]/g, "")) || 0, frequency: e.frequency || "Monthly" }));
+  if (Array.isArray(f.assets)) c.assets = f.assets.map((a) => ({ type: a.type, value: Number(String(a.value || a.amount || 0).replace(/[^0-9.]/g, "")) || 0 }));
   c.reverseSyncedAt = ov.updatedAt;
   return c;
 }
@@ -2823,7 +2881,9 @@ app.post("/api/cases/:caseId/reverse-sync/apply", (request, response) => {
     const prev = getCapture(caseId, "caseUpdatedVersion") || { fields: {} };
     const fields = { ...(prev.fields || {}) };
     // Only accept known, structured keys.
-    ["applicants", "employerName", "occupation", "residencyStatus", "dependants", "incomeTotal"].forEach((k) => {
+    ["applicants", "employerName", "occupation", "residencyStatus", "dependants", "incomeTotal",
+      "maritalStatus", "currentHousing", "address", "lender", "interestRate", "product",
+      "liabilities", "expenses", "assets"].forEach((k) => {
       if (incoming[k] !== undefined) fields[k] = incoming[k];
     });
     const overlay = { fields, updatedAt: new Date().toISOString(), updatedBy: broker.name };
