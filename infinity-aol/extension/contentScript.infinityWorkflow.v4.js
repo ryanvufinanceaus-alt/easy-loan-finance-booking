@@ -2426,16 +2426,20 @@
   // documents. Heuristic (applicant tabs are Title-Case names in the tab strip) — refine against live DOM.
   function scrapeInfinityClientDetails() {
     var names = [], seen = {};
-    var EXCLUDE = /client details|client forms|client account|loans|products|securities|commentary|preferred loan|loan features|scenarios|financials|needs analysis|recommendation|commissions|conflict|interest|new lead|new client|dashboard|pipeline|opportunity|calculators|resources|reports|marketing|services|education|admin|contacts|manage accounts|add applicant|loan amount|return to/i;
-    all("a,li,div,span,button").forEach(function (el) {
-      if (!isVisible(el)) return;
-      var r = el.getBoundingClientRect();
-      if (r.top < 170 || r.top > 560 || r.height > 80 || r.width > 340) return;
-      var t = norm(textOf(el).replace(/\s*[x×]$/i, ""));
-      if (t.length < 4 || t.length > 46 || EXCLUDE.test(t)) return;
-      if (!/^[A-Z][a-zA-Z'.-]+(\s+[A-Z][a-zA-Z'.-]+)+$/.test(t)) return; // Title-Case multi-word = a person name
-      if (!seen[key(t)]) { seen[key(t)] = 1; names.push(t); }
-    });
+    var EXCLUDE = /client details|client forms|client account|loans|products|securities|commentary|preferred loan|loan features|scenarios|financials|needs analysis|recommendation|commissions|conflict|interest|new lead|new client|dashboard|pipeline|opportunity|calculators|resources|reports|marketing|services|education|admin|contacts|manage accounts|add applicant|loan amount|return to|fact find|application|referral|statement|credit assist|create|manual|\bbid\b|compare|prepare|submission|overview/i;
+    // ONLY collect borrower names on the Client Details page — on Loans/other pages the same screen region
+    // holds nav/button labels ("Fact Find", "Create Application"…) that would be mistaken for applicants.
+    if (/\/(details|client)/i.test(location.hash || location.href || "")) {
+      all("a,li,div,span,button").forEach(function (el) {
+        if (!isVisible(el)) return;
+        var r = el.getBoundingClientRect();
+        if (r.top < 170 || r.top > 560 || r.height > 80 || r.width > 340) return;
+        var t = norm(textOf(el).replace(/\s*[x×]$/i, ""));
+        if (t.length < 4 || t.length > 46 || EXCLUDE.test(t)) return;
+        if (!/^[A-Z][a-zA-Z'.-]+(\s+[A-Z][a-zA-Z'.-]+)+$/.test(t)) return; // Title-Case multi-word = a person name
+        if (!seen[key(t)]) { seen[key(t)] = 1; names.push(t); }
+      });
+    }
     return {
       platform: "infinity", scrapedAt: new Date().toISOString(),
       applicants: names.map(function (n) { return { name: n }; }),

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Update EasyFlow from Infinity / AOL</title>
+    <style>
+      :root { --navy:#1E2430; --teal:#0d9488; --ink:#222831; --muted:#6b7280; --line:#e2e5ea; }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: system-ui, "Segoe UI", sans-serif; color: var(--ink); background: #f6f7f9; }
+      header { background: var(--navy); color: #fff; padding: 14px 18px; }
+      header h1 { margin: 0; font-size: 15px; }
+      header small { color: #c9ced6; font-size: 11.5px; }
+      main { padding: 14px 18px 90px; }
+      .muted { color: var(--muted); font-size: 13px; }
+      table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+      th { text-align: left; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; padding: 8px 10px; border-bottom: 1px solid var(--line); background: #fbfbfc; }
+      td { padding: 9px 10px; border-bottom: 1px solid #f0f1f3; vertical-align: top; font-size: 13px; }
+      tr:last-child td { border-bottom: none; }
+      .sec { font-weight: 700; color: var(--teal); white-space: nowrap; }
+      .old { color: var(--muted); text-decoration: line-through; word-break: break-word; }
+      .new { color: var(--navy); font-weight: 600; word-break: break-word; }
+      .arrow { color: var(--muted); text-align: center; }
+      td.ck { width: 34px; text-align: center; }
+      input[type=checkbox] { width: 17px; height: 17px; cursor: pointer; }
+      footer { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--line); padding: 12px 18px; display: flex; gap: 10px; align-items: center; }
+      button { font: inherit; border: none; border-radius: 8px; padding: 10px 16px; cursor: pointer; }
+      #apply { background: var(--teal); color: #fff; font-weight: 600; }
+      #close { background: #eef0f3; color: var(--ink); }
+      footer .note { color: var(--muted); font-size: 11.5px; flex: 1; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Update EasyFlow from live Infinity / AOL</h1>
+      <small id="sub">Reading changes…</small>
+    </header>
+    <main><div id="body" class="muted">Loading…</div></main>
+    <footer>
+      <span class="note">Keeps the customer's original case; stores an "Updated from Infinity/AOL" version that re-fills + documents use.</span>
+      <button id="close" type="button">Close</button>
+      <button id="apply" type="button" style="display:none;">Apply selected</button>
+    </footer>
+    <script src="reverseSync.js"></script>
+  </body>
+</html>
