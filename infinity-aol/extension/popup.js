@@ -886,13 +886,13 @@ function filenameFromResponse(res, fallback) {
 }
 // Silently pull the CURRENT Infinity state (applicants / income / selected lender + rate) and merge it
 // server-side, so both documents reflect the broker's live edits. No buttons, no debug output.
-async function efCaptureLive(apiBase, caseId) {
+async function efCaptureLive(apiBase, caseId, full) {
   try {
     const tabs = await chrome.tabs.query({});
     const inf = tabs.find((t) => /infynity|infinity/i.test(t.url || ""));
     if (!inf) return "";
-    setStatus("Reading Infinity…", "muted");
-    const scraped = await chrome.tabs.sendMessage(inf.id, { type: "EF_FULL_CAPTURE" }).catch(() => null);
+    setStatus(full ? "Reading all Infinity tabs…" : "Reading Infinity…", "muted");
+    const scraped = await chrome.tabs.sendMessage(inf.id, { type: "EF_FULL_CAPTURE", full: !!full }).catch(() => null);
     if (!scraped || !scraped.ok || !scraped.snapshot) return "";
     const merged = await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/live-snapshot`, {
       method: "POST", headers: { "Content-Type": "application/json", "x-easyflow-broker-token": brokerToken },
@@ -980,11 +980,12 @@ async function reverseSyncReview() {
   const caseId = state.prepared && state.prepared.caseId;
   if (!caseId) { setStatus("Select a Prepared case first.", "error"); return; }
   const apiBase = els.apiBase.value.replace(/\/$/, "");
-  setStatus("Opening update review…", "muted");
-  // Best-effort: refresh captures from an open Infinity tab so the review is current (not required).
+  setStatus("Reading all Infinity tabs…", "muted");
+  // Full read-only sweep of every Infinity tab (Client Details, Financials, Loans & Products, SOCA) so the
+  // review reflects the broker's current live data. Read-only — it does NOT fill/overwrite anything.
   try {
     const tabs = await chrome.tabs.query({});
-    if (tabs.some((t) => /infynity|infinity/i.test(t.url || ""))) await efCaptureLive(apiBase, caseId);
+    if (tabs.some((t) => /infynity|infinity/i.test(t.url || ""))) await efCaptureLive(apiBase, caseId, true);
   } catch (_e) { /* use captures already on file */ }
   // Open the review as its own window (a proper table) instead of cramming it into the narrow popup.
   chrome.windows.create({ url: chrome.runtime.getURL("reverseSync.html?case=" + encodeURIComponent(caseId)), type: "popup", width: 660, height: 680 });

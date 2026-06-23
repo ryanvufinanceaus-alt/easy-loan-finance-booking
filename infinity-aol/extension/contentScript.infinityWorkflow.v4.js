@@ -4083,7 +4083,8 @@
       }
       if (message.type === "EF_FULL_CAPTURE") {
         // Scrape current page + auto-click the SOCA Recommendation/Features tabs to grab selected lender + rate.
-        efFullCapture()
+        // message.full = sweep EVERY account tab (Sync button), else only fill in missing data (doc generation).
+        efFullCapture(message.full)
           .then(function (s) { sendResponse({ ok: true, snapshot: s }); })
           .catch(function (e) { sendResponse({ ok: false, error: String(e) }); });
         return true;
@@ -4314,9 +4315,11 @@
   // One capture pass: scrape the current page, then (if the SOCA tab bar is present) click the Recommendation
   // + Preferred Loan Features tabs and scrape each — so a single generate on the loan page grabs the selected
   // lender + rate + scenarios. Read-only (clicking tabs doesn't change data).
-  async function efFullCapture() {
+  async function efFullCapture(full) {
     var merged = efScrapeCurrent();
-    // If on a SOCA loan page, hop the hash to recommendation (selected lender + rate) then features (scenarios).
+    var scratch = { issues: [], actions: [] };
+    // If on a SOCA loan page, hop the hash to recommendation (selected lender + rate) then features (scenarios
+    // + repayment/features). Read-only (clicking tabs/hash doesn't change any data).
     if (/\/loans\/soca\//.test(location.hash || "")) {
       var sections = ["recommendation", "features"];
       for (var i = 0; i < sections.length; i += 1) {
@@ -4327,38 +4330,19 @@
         }
       }
     }
-    var scratch = { issues: [], actions: [] };
-    // INCOME lives on the account-level Financials tab (NOT the SOCA loan page). If the current scrape found no
-    // income, open the Financials tab and re-scrape it — so the broker's LIVE edits there are captured, not a
-    // stale value from when Start last ran. Read-only (we only read the table).
-    if (!(merged.financials && (merged.financials.incomes || []).length)) {
-      try {
-        if (findMainTab("Financials") && await clickMainTab("Financials", scratch)) {
-          await sleep(900);
-          var fin = scrapeInfinityFinancials();
-          if (fin && (fin.incomes || []).length) merged.financials = fin;
-        }
-      } catch (e) { /* non-fatal — fall back to whatever was captured */ }
+    // Sweep the account-level tabs. With `full` (the Sync button) ALWAYS visit each so the latest live values
+    // are read; otherwise only visit a tab when its data is still missing (faster for doc generation).
+    // CLIENT DETAILS — applicants / employment / residency / address.
+    if (full || !((merged.profile || {}).residencyStatus || (merged.employment && merged.employment.occupation) || (merged.applicants || []).length)) {
+      try { if (findMainTab("Client Details") && await clickMainTab("Client Details", scratch)) { await sleep(900); merged = efMergeSnap(merged, scrapeInfinityClientDetails()); } } catch (e) { /* non-fatal */ }
     }
-    // RESIDENCY / VISA / DEPENDANTS + EMPLOYMENT live on Client Details. If not yet captured, open it + re-scrape.
-    var prof = merged.profile || {};
-    if (!(prof.residencyStatus || prof.dependants || (merged.employment && merged.employment.occupation))) {
-      try {
-        if (findMainTab("Client Details") && await clickMainTab("Client Details", scratch)) {
-          await sleep(900);
-          merged = efMergeSnap(merged, scrapeInfinityClientDetails());
-        }
-      } catch (e) { /* non-fatal */ }
+    // FINANCIALS — income / assets / liabilities / expenses.
+    if (full || !(merged.financials && (merged.financials.incomes || []).length)) {
+      try { if (findMainTab("Financials") && await clickMainTab("Financials", scratch)) { await sleep(900); var fin = scrapeInfinityFinancials(); if (fin && ((fin.incomes || []).length || (fin.assets || []).length || (fin.expenses || []).length)) merged.financials = fin; } } catch (e) { /* non-fatal */ }
     }
-    // REPAYMENT TYPE / FREQUENCY / FEATURES live on Loans & Products. If not yet captured, open it + re-scrape.
-    var lp = merged.loanPrefs || {};
-    if (!(lp.repaymentType || lp.repaymentFrequency)) {
-      try {
-        if (findMainTab("Loans & Products") && await clickMainTab("Loans & Products", scratch)) {
-          await sleep(900);
-          merged = efMergeSnap(merged, scrapeInfinityClientDetails());
-        }
-      } catch (e) { /* non-fatal */ }
+    // LOANS & PRODUCTS — repayment type / frequency / features (when not already read off the SOCA features tab).
+    if (full || !((merged.loanPrefs || {}).repaymentType || (merged.loanPrefs || {}).repaymentFrequency)) {
+      try { if (findMainTab("Loans & Products") && await clickMainTab("Loans & Products", scratch)) { await sleep(900); merged = efMergeSnap(merged, scrapeInfinityClientDetails()); } } catch (e) { /* non-fatal */ }
     }
     return merged;
   }
