@@ -2562,18 +2562,33 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const cashOut = Boolean(loan.cashOut) || /cash[ -]?out|equity release/i.test(`${loan.purpose || ""} ${loan.opportunityName || ""}`);
   const firstHomeBuyer = Boolean(loan.firstHomeBuyer || caseData?.clientProfile?.firstHomeBuyer);
 
-  // Dwelling description from the property type / address (a unit/apartment is a strata title unit).
+  // Dwelling description from the property type / address (a unit/apartment is a strata title unit). Do NOT
+  // assert condition — that needs a valuation; the collateral section adds "subject to valuation".
   const isStrata = /\bunit\b|\bapt\b|apartment|townhouse|villa|strata|flat\b|\b\d+\s*\/\s*\d+/i.test(`${prop.propertyType || prop.type || ""} ${prop.address || ""}`);
-  const dwellingDesc = isStrata ? "Established strata title residential unit" : "Standard residential dwelling in good condition";
+  const dwellingDesc = isStrata ? "Established strata title residential unit" : "Standard residential dwelling";
 
-  // Scenario-aware narrative (single/couple, OOC/INV/refi, pre/formal/assessment, cash-out, debt/no-debt).
+  // ---- Evidence / stage flags (conservative defaults so the note never overclaims) ----
+  const propertyFound = Boolean(prop.address);
+  const stage = isRefi ? "refinance" : (contractProvided ? "formal" : "pre_approval");
+  const contractStatus = contractProvided ? "attached" : (propertyFound ? "to_be_provided" : "none");
+  const valuationDone = Boolean(prop.valuationDone || /valuation.{0,15}(complete|received|acceptable)/i.test(`${prop.valuationStatus || ""} ${loan.notes || ""}`));
+  const ccrClean = Boolean(caseData?.creditReportClean) || /(ccr|credit report|credit file).{0,30}(clean|clear|no adverse)/i.test(`${caseData?.creditNotes || ""} ${caseData?.brokerNotes || ""}`);
+  const servicingResult = caseData?.servicing?.pass === true ? "pass" : caseData?.servicing?.pass === false ? "tight" : "unknown";
+  const rateBlob = `${product} ${lp.rateType || ""} ${fl2(loan.rateType)} ${fl2(loan.features)}`;
+  const rateType = /\bfixed\b/i.test(rateBlob) ? "fixed" : /\bvariable\b/i.test(rateBlob) ? "variable" : "";
+  const offset = Boolean(lp.offset);
+  const debtConsolidation = /debt consolidation|consolidat/i.test(`${loan.purpose || ""} ${loan.opportunityName || ""} ${caseData?.selectedTemplate?.title || ""}`);
+  const borrowerType = /\b(pty ltd|p\/l|trust|trustee|corporation|company)\b/i.test(caseData?.borrowerType || caseData?.entityType || "") ? "company_trust" : "individual";
+
+  // Scenario-aware narrative — every strong claim is evidence-gated (see buildRecNarrative).
   const narrative = buildRecNarrative({
-    applicantCount: apps.length, isInvestment, isRefi, preApproval, assessment, cashOut, firstHomeBuyer,
-    lenderName, loanAmount, value, lvr: lvrNum ? `${lvrNum}%` : "", rate: rate ? `${rate}% p.a.` : "",
-    product, security: prop.address || "", dwellingDesc,
-    debtCount: otherDebts.length, contractPending: !contractProvided && !isRefi,
-    repaymentType, repaymentFreq, redraw, extraRepayments, depositStrong, equifaxLifted,
-    dependants, noLiabilities: otherDebts.length === 0,
+    applicantCount: apps.length, borrowerType, isInvestment, isRefi, firstHomeBuyer, cashOut,
+    debtConsolidation, stage,
+    lenderName, loanAmount, value, lvr: lvrNum ? `${lvrNum}%` : "",
+    product, rateType, repaymentType, loanTerm: term, redraw, offset, extraRepayments,
+    security: prop.address || "", propertyFound, dwellingDesc, valuationDone, contractStatus,
+    servicingResult, ccrClean, equifaxLifted, depositStrong,
+    dependants, noLiabilities: otherDebts.length === 0, debtCount: otherDebts.length,
     employmentBasis, selfEmployed
   });
 
@@ -2603,8 +2618,16 @@ function buildRecInputFromCase(caseData, opts = {}) {
     otherDebts,
     noDebtsNote: narrative.noDebtsNote,
     debtsLead: narrative.debtsLead,
-    // 08 — Final broker recommendation (closing ask to the assessor).
-    brokerComment: `Based on the verified information provided, the application is considered suitable to proceed${lenderName ? ` for ${lenderName}` : ""} ${assessment ? "pre-approval / assessment" : preApproval ? "pre-approval" : "formal approval"}. The proposed loan aligns with the ${couple ? "applicants'" : "applicant's"} stated requirements and objectives, is supported by verified income evidence, demonstrates ${lvrNum && lvrNum <= 80 ? "a low LVR position" : "an acceptable security position"}, and is secured by suitable residential property. The broker respectfully requests ${assessment ? "assessment" : preApproval ? "pre-approval" : "formal approval"}, subject to the lender's standard credit assessment, valuation, verification${assessment ? ", Contract of Sale" : ""} and any lender conditions.`
+    // 08 — Final broker recommendation (closing ask to the assessor), stage-aware + evidence-safe.
+    brokerComment: (() => {
+      const lead = `Based on the information provided, the application is considered suitable to proceed${lenderName ? ` to ${lenderName}` : ""} for ${stage === "formal" ? "formal approval" : stage === "refinance" ? "assessment of the refinance proposal" : "pre-approval / assessment"}. The proposed loan aligns with the ${couple ? "applicants'" : "applicant's"} stated requirements and objectives${lvrNum && lvrNum <= 80 ? ", demonstrates a low LVR position," : ""} and is supported by the income evidence provided.`;
+      const ask = stage === "formal"
+        ? "The broker respectfully requests formal approval, subject to the lender's standard credit assessment, valuation, verification and any lender conditions."
+        : stage === "refinance"
+          ? "The broker respectfully requests assessment of the refinance proposal, subject to payout verification, valuation and any lender conditions."
+          : "The broker respectfully requests pre-approval / assessment, subject to the lender's credit assessment, valuation, verification, Contract of Sale and any lender conditions.";
+      return `${lead} ${ask}`;
+    })()
   };
 }
 
