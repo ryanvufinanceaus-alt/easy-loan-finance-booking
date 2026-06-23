@@ -2332,7 +2332,13 @@ function buildRecInputFromCase(caseData, opts = {}) {
     }
     return [...map.values()];
   };
-  const liveIncomes = mergeIncomes(liveFin.incomes, payloadIncomes(caseData?.id));
+  // Source of truth = the LIVE Infinity + AOL captures (current data the broker entered there). Merge both and
+  // keep the most granular pay cycle per income. Do NOT use the prepared payload here — it's the pre-fill the
+  // broker may have since changed in Infinity/AOL, so it can be stale (e.g. an old $130,600 vs the live ~$84k).
+  const snapFin = (snapshot && snapshot.financials) || {};
+  const infFin = getCapture(caseData?.id, "infinityFinancials") || {};
+  const aolFin = getCapture(caseData?.id, "aolFinancials") || {};
+  const liveIncomes = mergeIncomes(snapFin.incomes, infFin.incomes, aolFin.incomes);
   const round2 = (n) => Math.round(n * 100) / 100;
   const fmtNum = (n) => Number(n).toLocaleString("en-AU", { minimumFractionDigits: round2(n) % 1 ? 2 : 0, maximumFractionDigits: 2 });
   // Build the income WORKING as a multiplication that yields the annual figure — matching the broker's samples
@@ -2458,10 +2464,13 @@ function buildYtdInputFromCase(caseData) {
   // Prefer the live "Base Salary" income; keep its REAL pay cycle (weekly/fortnightly), falling back to the
   // prepared case which stores the per-period amount + frequency Infinity's summary annualises away.
   const snapshot = getCapture(caseData?.id, "liveCaseSnapshot");
-  const liveFin = (snapshot && snapshot.financials) || getCapture(caseData?.id, "infinityFinancials") || {};
-  const isBase = (i) => /base|salary|wage|pay\s?as|payg/i.test(i.type || "");
+  const snapFin = (snapshot && snapshot.financials) || {};
+  const infFin = getCapture(caseData?.id, "infinityFinancials") || {};
+  const aolFin = getCapture(caseData?.id, "aolFinancials") || {};
+  const isBase = (i) => /base|salary|wage|pay\s?as|payg/i.test(i.type || "") && !/loan|submission|prepare|purchase|dwelling/i.test(`${i.type || ""} ${i.ownership || ""}`);
   const freqRank = (i) => { const f = String(i.frequency || "").toLowerCase(); return /week/.test(f) ? 4 : /fortnight/.test(f) ? 3 : /month/.test(f) ? 2 : 1; };
-  const candidates = [...(liveFin.incomes || []), ...payloadIncomes(caseData?.id)].filter(isBase).filter((i) => Number(i.amount));
+  // LIVE Infinity + AOL only (the current source of truth); the prepared payload can be stale.
+  const candidates = [...(snapFin.incomes || []), ...(infFin.incomes || []), ...(aolFin.incomes || [])].filter(isBase).filter((i) => Number(i.amount));
   // Pick the most granular pay cycle (weekly beats the annualised summary) so the working follows the case.
   const baseInc = candidates.sort((a, b) => freqRank(b) - freqRank(a))[0] || null;
   const freq = baseInc ? String(baseInc.frequency || "Annually") : "";
