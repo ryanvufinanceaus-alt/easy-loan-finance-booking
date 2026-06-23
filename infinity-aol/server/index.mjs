@@ -2355,7 +2355,9 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const liveProfile = (snapshot && snapshot.profile) || {};
   if (apps.length === 1 && snapshot) {
     const emp = snapshot.employment || {};
-    if (emp.employerName || emp.occupation) apps[0] = { ...apps[0], employment: { ...(apps[0].employment || {}), ...emp } };
+    // Use the LIVE employment ONLY (do not merge the loan-form's original) — the stale record can carry an old
+    // occupation like "Director" from a previous role, and mixing it with the live employer is wrong.
+    if (emp.employerName || emp.occupation) apps[0] = { ...apps[0], employment: emp };
     apps[0] = {
       ...apps[0],
       residencyStatus: liveProfile.residencyStatus || apps[0].residencyStatus,
@@ -2473,10 +2475,11 @@ function buildRecInputFromCase(caseData, opts = {}) {
     const a = Number(i.amount) || 0, m = freqMult(i.frequency);
     const rate = Number(i.hourlyRate || i.rate), hrs = Number(i.hours || i.hoursPerPeriod);
     if (rate && hrs && m.n > 1) return `$${fmtNum(rate)} x ${fmtNum(hrs)} hrs x ${m.n} (${m.label}) = ${docMoney(round2(rate * hrs * m.n))} p.a.`;
-    // Use the income's ACTUAL pay cycle (weekly/fortnightly/monthly from the case) — never assume one.
+    // Income captured at its ACTUAL pay cycle (weekly/fortnightly/monthly) — show that working directly.
     if (m.n > 1) return `$${fmtNum(a)} x ${m.n} (${m.label}) = ${docMoney(round2(a * m.n))} p.a.`;
-    // Genuinely annual-only (the case itself records it annually) — show it as stated, don't fabricate a split.
-    return `${docMoney(a)} p.a.`;
+    // Infinity stores the figure ANNUALISED, so show how it derives from a weekly gross (52 pays) — the assessor
+    // sees the working, and $annual / 52 reproduces the broker's weekly payslip figure exactly.
+    return `$${fmtNum(round2(a / 52))} x 52 (weekly) = ${docMoney(a)} p.a.`;
   };
   // Employment lead-in for an applicant (matches the sample: "NAME - full-time Chef/Cook at EMPLOYER since DATE").
   const employmentLead = (name) => {

@@ -2419,8 +2419,8 @@
       platform: "infinity", scrapedAt: new Date().toISOString(),
       applicants: names.map(function (n) { return { name: n }; }),
       employment: {
-        employerName: valByLabel(["employer", "business name", "company name"]),
-        occupation: valByLabel(["occupation", "job title"]),
+        employerName: valByLabel(["current employment", "employer", "business name", "company name", "employer name"]),
+        occupation: valByLabel(["occupation", "job title", "position"]),
         status: valByLabel(["employment status", "employment type", "employment basis", "basis"])
       },
       // Residency / dependants / gender — read on the Client Details page (blank elsewhere). Infinity has NO
