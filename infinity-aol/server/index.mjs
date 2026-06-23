@@ -3741,10 +3741,15 @@ app.get("/api/infinity/prepared-cases", (_request, response) => {
       const secondary = applicants.secondary || {};
       const primaryName = [primary.firstName, primary.lastName].filter(Boolean).join(" ") || prepared.caseId;
       const secondaryName = [secondary.firstName, secondary.lastName].filter(Boolean).join(" ");
+      // If the broker reverse-synced applicants (e.g. dropped a co-borrower), reflect that in the label.
+      const ovApps = getCapture(prepared.caseId, "caseUpdatedVersion")?.fields?.applicants;
+      const label = (Array.isArray(ovApps) && ovApps.length)
+        ? ovApps.map((a) => [a.firstName, a.lastName].filter(Boolean).join(" ")).filter(Boolean).join(" & ")
+        : (secondaryName ? `${primaryName} & ${secondaryName}` : primaryName);
       return {
         token: prepared.token,
         caseId: prepared.caseId,
-        label: secondaryName ? `${primaryName} & ${secondaryName}` : primaryName,
+        label: label || primaryName,
         loanAmount: prepared.payload?.loan?.loanAmount || 0,
         security: prepared.payload?.property?.address || "",
         okToAutofill: Boolean(prepared.validation?.okToAutofill),
