@@ -857,6 +857,16 @@ function downloadBlob(blob, filename) {
   a.href = url; a.download = filename; document.body.appendChild(a); a.click();
   setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1500);
 }
+// The server names the file from the CASE client name (e.g. RECNOTES_ARSALAN_SALEEM); prefer that over the
+// popup's own guess, which can fall back to "CLIENT" when the prepared payload has no applicant names.
+function filenameFromResponse(res, fallback) {
+  try {
+    const cd = res.headers.get("content-disposition") || "";
+    const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+    if (m && m[1]) { const n = decodeURIComponent(m[1].trim()); if (n && !/_CLIENT\.[a-z]+$/i.test(n)) return n; }
+  } catch (_e) { /* fall back */ }
+  return fallback;
+}
 // Silently pull the CURRENT Infinity state (applicants / income / selected lender + rate) and merge it
 // server-side, so both documents reflect the broker's live edits. No buttons, no debug output.
 async function efCaptureLive(apiBase, caseId) {
@@ -897,7 +907,7 @@ async function generateYtd() {
     });
     if (res.status === 401) { setStatus("Session expired — sign in again.", "error"); showAuthState(null); return; }
     if (!res.ok) { const t = await res.text().catch(() => ""); setStatus("YTD failed: " + t.slice(0, 140), "error"); return; }
-    downloadBlob(await res.blob(), `YTD_${(preparedClientName() || "client").toUpperCase().replace(/[^A-Z0-9]+/g, "_")}.xlsx`);
+    downloadBlob(await res.blob(), filenameFromResponse(res, `YTD_${(preparedClientName() || "client").toUpperCase().replace(/[^A-Z0-9]+/g, "_")}.xlsx`));
     setStatus("✓ YTD Excel downloaded.", "success");
     loadDocHistory();
   } catch (error) { setStatus("YTD failed: " + error.message, "error"); }
@@ -921,7 +931,7 @@ async function generateRec(format) {
     });
     if (res.status === 401) { setStatus("Session expired — sign in again.", "error"); showAuthState(null); return; }
     if (!res.ok) { const t = await res.text().catch(() => ""); setStatus("Rec Notes failed: " + t.slice(0, 140), "error"); return; }
-    const name = `RECNOTES_${(preparedClientName() || "client").toUpperCase().replace(/[^A-Z0-9]+/g, "_")}.${format === "docx" ? "docx" : "pdf"}`;
+    const name = filenameFromResponse(res, `RECNOTES_${(preparedClientName() || "client").toUpperCase().replace(/[^A-Z0-9]+/g, "_")}.${format === "docx" ? "docx" : "pdf"}`);
     downloadBlob(await res.blob(), name);
     setStatus("✓ Rec Notes downloaded.", "success");
     loadDocHistory();

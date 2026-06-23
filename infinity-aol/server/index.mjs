@@ -2191,6 +2191,8 @@ app.post("/api/cases/:caseId/prepare-infinity-aol", (request, response) => {
 function sendDocFile(response, buffer, filename, mime) {
   response.setHeader("Content-Type", mime);
   response.setHeader("Content-Disposition", `attachment; filename="${String(filename).replace(/[^\w.\-]+/g, "_")}"`);
+  // Expose the header so the extension (cross-origin fetch) can read the case-named filename.
+  response.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
   response.setHeader("Content-Length", buffer.length);
   response.send(buffer);
 }

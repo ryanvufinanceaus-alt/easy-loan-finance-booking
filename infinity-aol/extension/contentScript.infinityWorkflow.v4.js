@@ -3862,8 +3862,22 @@
     if (/applyonline|loankit/i.test(location.href)) {
       if (!/financials-tab/i.test(location.hash)) { location.hash = "#!/financials-tab"; await waitForRoute("financials-tab", null, 9000); }
       var diff = buildExpenseDiff({ liveInfinityFinancials: { expenses: asArray(sourceExpenses) } });
-      diff.forEach(function (d) { if (d.input && d.status !== "match" && d.target != null) { setInputCommit(d.input, String(d.target)); applied += 1; } });
+      // 1) Set the amount on categories Infinity ALSO has (so the figures match).
+      diff.forEach(function (d) { if (d.input && (d.status === "differ" || d.status === "missing-aol") && d.target != null) { setInputCommit(d.input, String(d.target)); applied += 1; } });
       if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      // 2) DELETE the EXTRA AOL rows Infinity does NOT have — so the AOL HEM total lines up with Infinity's
+      //    (e.g. "Primary Residence Ongoing Running Costs" deleted from AOL when it's not in Infinity).
+      var dropCats = diff.filter(function (d) { return d.status === "aol-only"; }).map(function (d) { return key(d.label); });
+      var guard = 0;
+      while (dropCats.length && guard++ < 25) {
+        var rows = scrapeAolExpenseRows();
+        var row = rows.find(function (r) { return r.trash && dropCats.indexOf(key(r.category)) >= 0; });
+        if (!row) break;
+        clickOnce(row.trash); applied += 1; await sleep(900);
+        var ok = all("button,a").find(function (b) { return /^(ok|yes|delete|confirm|remove)$/i.test(norm(textOf(b))) && isVisible(b); });
+        if (ok) { clickOnce(ok); await sleep(700); }
+        dropCats.splice(dropCats.indexOf(key(row.category)), 1);
+      }
     } else {
       var diff2 = buildInfinityExpenseDiff(asArray(sourceExpenses));
       for (var i = 0; i < diff2.length; i += 1) { if (diff2[i].status !== "match") { try { if (await setInfinityExpenseAmount(diff2[i].label, diff2[i].target)) applied += 1; } catch (e) { /* skip */ } } }
