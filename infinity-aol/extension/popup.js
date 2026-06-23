@@ -982,15 +982,20 @@ async function reverseSyncReview() {
   if (!caseId) { setStatus("Select a Prepared case first.", "error"); return; }
   const apiBase = els.apiBase.value.replace(/\/$/, "");
   panel.style.display = "block";
-  panel.innerHTML = '<div class="muted">Reading live Infinity/AOL…</div>';
-  await efCaptureLive(apiBase, caseId);                       // refresh the live captures first
+  panel.innerHTML = '<div class="muted">Checking for updates…</div>';
+  // No live scrape needed — uses the data already captured during Start Infinity/AOL + document generation.
+  // If an Infinity tab is open we refresh in the background (best-effort), but it is NOT required.
+  try {
+    const tabs = await chrome.tabs.query({});
+    if (tabs.some((t) => /infynity|infinity/i.test(t.url || ""))) await efCaptureLive(apiBase, caseId);
+  } catch (_e) { /* use captures already on file */ }
   let diffs = [];
   try {
     const r = await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/reverse-sync`, { headers: { "x-easyflow-broker-token": brokerToken } });
     const j = await r.json().catch(() => ({}));
     diffs = (j && j.diffs) || [];
   } catch (_e) { panel.innerHTML = '<div class="muted">Could not read changes.</div>'; return; }
-  if (!diffs.length) { panel.innerHTML = '<div class="muted">EasyFlow already matches the live Infinity/AOL data — nothing to update.</div>'; return; }
+  if (!diffs.length) { panel.innerHTML = '<div class="muted">EasyFlow already matches the captured Infinity/AOL data — nothing to update.<br><span class="muted">(Data is captured when you run Start or generate a document.)</span></div>'; return; }
   panel.innerHTML = '<div class="rs-title">Update EasyFlow from live Infinity/AOL</div>'
     + diffs.map((d, i) => `<label class="rs-row"><input type="checkbox" class="rs-ck" data-i="${i}" checked>`
       + `<span class="rs-lbl">${d.section} · ${d.label}</span>`
