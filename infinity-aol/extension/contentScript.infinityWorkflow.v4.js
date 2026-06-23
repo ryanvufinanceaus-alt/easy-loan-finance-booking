@@ -4085,8 +4085,8 @@
         // Scrape current page + auto-click the SOCA Recommendation/Features tabs to grab selected lender + rate.
         // message.full = sweep EVERY account tab (Sync button), else only fill in missing data (doc generation).
         efFullCapture(message.full)
-          .then(function (s) { sendResponse({ ok: true, snapshot: s, swept: !!message.full }); }) // `swept` marks the new full-sweep build
-          .catch(function (e) { sendResponse({ ok: false, error: String(e) }); });
+          .then(function (s) { sendResponse({ ok: true, snapshot: s, swept: true }); }) // `swept` marks the new build
+          .catch(function (e) { sendResponse({ ok: false, error: String(e), swept: true }); }); // still the new build, just errored
         return true;
       }
       if (message.type === "INFINITY_AOL_RETRY_STEP") {
@@ -4337,18 +4337,19 @@
         }
       }
     }
-    // Sweep the account-level tabs (via hash so it works even from inside a SOCA loan page). With `full` (the
-    // Sync button) ALWAYS visit each for the latest live values; else only when a tab's data is still missing.
+    // Visit an account tab ONLY when its data isn't already captured (keeps it fast + can't freeze on a long
+    // 3-tab walk). `full` no longer forces a re-walk — the current page is always scraped fresh above, and the
+    // rest comes from data captured earlier (Start / previous visits). Each nav is a single tab click.
     // CLIENT DETAILS — applicants / employment / residency / address. Only scrape if we actually got there.
-    if (full || !((merged.profile || {}).residencyStatus || (merged.employment && merged.employment.occupation) || (merged.applicants || []).length)) {
+    if (!((merged.profile || {}).residencyStatus || (merged.employment && merged.employment.occupation) || (merged.applicants || []).length)) {
       try { if (await efGotoAccountTab("Client Details", "details", scratch)) merged = efMergeSnap(merged, scrapeInfinityClientDetails()); } catch (e) { /* non-fatal */ }
     }
     // FINANCIALS — income / assets / liabilities / expenses.
-    if (full || !(merged.financials && (merged.financials.incomes || []).length)) {
+    if (!(merged.financials && (merged.financials.incomes || []).length)) {
       try { if (await efGotoAccountTab("Financials", "financials", scratch)) { var fin = scrapeInfinityFinancials(); if (fin && ((fin.incomes || []).length || (fin.assets || []).length || (fin.expenses || []).length)) merged.financials = fin; } } catch (e) { /* non-fatal */ }
     }
     // LOANS & PRODUCTS — repayment type / frequency / features (when not already read off the SOCA features tab).
-    if (full || !((merged.loanPrefs || {}).repaymentType || (merged.loanPrefs || {}).repaymentFrequency)) {
+    if (!((merged.loanPrefs || {}).repaymentType || (merged.loanPrefs || {}).repaymentFrequency)) {
       try { if (await efGotoAccountTab("Loans & Products", "loans", scratch)) merged = efMergeSnap(merged, scrapeInfinityClientDetails()); } catch (e) { /* non-fatal */ }
     }
     return merged;
