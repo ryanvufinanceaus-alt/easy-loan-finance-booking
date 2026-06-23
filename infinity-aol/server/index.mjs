@@ -2391,28 +2391,32 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const validRate = (x) => { const n = cleanRate(x); return /^\d{1,2}(\.\d{1,3})?$/.test(n) ? n : ""; };
   const numFrom = (x) => Number(String(x == null ? "" : x).replace(/[^0-9.]/g, "")) || 0;
   const firstNonEmpty = (...xs) => xs.find((x) => x != null && String(x).trim() !== "") || "";
+  // "Limit", "Ownership", "Balance" etc. are FINANCIALS-GRID column headers that the lender/scenario scrape can
+  // mis-capture — they are never real lender names, so block them everywhere (the broker saw "WITH LIMIT").
+  const GARBAGE_LENDER = /^(limit|ownership|balance|amount|interest|interest rate|rate|type|value|description|lender|product|term|repayment|frequency|monthly|annually|loan amount|total|security|lvr)$/i;
+  const realLender = (x) => { const t = String(x || "").trim(); return !!t && t.length >= 2 && !GARBAGE_LENDER.test(t); };
   // Scenarios (lender/product/rate) from the live Preferred-Features/Scenarios scrape, else captured lenderScenarios.
-  const scenarios = (snapshot && Array.isArray(snapshot.scenarios) && snapshot.scenarios.length) ? snapshot.scenarios : (getCapture(caseData?.id, "lenderScenarios") || []);
-  // Only trust the Recommendation "confirmed lender" if it's actually one of the scenario lenders (filters out
-  // stray words the label-scrape can grab off other tabs, e.g. "Limit"/"Ownership").
+  // Drop any scenario whose "lender" is grid-header garbage so it can't become the chosen lender.
+  const scenarios = ((snapshot && Array.isArray(snapshot.scenarios) && snapshot.scenarios.length) ? snapshot.scenarios : (getCapture(caseData?.id, "lenderScenarios") || [])).filter((s) => realLender(s.lender));
+  // Only trust the Recommendation "confirmed lender" if it's a REAL lender that matches a scenario lender.
   const scenLenders = scenarios.map((s) => s.lender).filter(Boolean);
-  const knownLender = (x) => x && scenLenders.some((L) => lk(L) === lk(x) || lk(L).includes(lk(x)) || lk(x).includes(lk(L)));
-  const confirmedLender = (knownLender(rec.lender) ? rec.lender : "") || (knownLender(selLender.lender) ? selLender.lender : selLender.lender) || "";
+  const knownLender = (x) => realLender(x) && scenLenders.some((L) => lk(L) === lk(x) || lk(L).includes(lk(x)) || lk(x).includes(lk(L)));
+  const confirmedLender = (knownLender(rec.lender) ? rec.lender : "") || (realLender(selLender.lender) ? selLender.lender : "") || "";
   // Match the loan's OCCUPANCY so we never pick (or print) an "Investment" product on an owner-occupied loan.
   const purposeMatch = (s) => (isInvestment ? /invest/i.test(s.product || "") : /\boo\b|owner|occup/i.test(s.product || ""));
   const purposeContradicts = (s) => (isInvestment ? /\boo\b|owner|occup/i.test(s.product || "") : /invest/i.test(s.product || ""));
   const lenderScens = scenarios.filter((s) => confirmedLender && (lk(s.lender) === lk(confirmedLender) || lk(s.lender).includes(lk(confirmedLender)) || lk(confirmedLender).includes(lk(s.lender))));
   // Confirmed lender + matching occupancy > confirmed lender not contradicting > confirmed lender any >
   // recommended > occupancy match across all > first.
-  const recScenario = (selLender.lender && validRate(selLender.rate) && !purposeContradicts(selLender) ? selLender : null)
+  const recScenario = (realLender(selLender.lender) && validRate(selLender.rate) && !purposeContradicts(selLender) ? selLender : null)
     || lenderScens.find(purposeMatch)
     || lenderScens.find((s) => !purposeContradicts(s))
     || lenderScens[0]
     || scenarios.find((s) => s.recommended || s.selected || s.chosen)
     || scenarios.find(purposeMatch)
     || scenarios[0] || {};
-  // Lender/rate/product all come from the CHOSEN SCENARIO (internally consistent), not the noisy label-scrape.
-  const lenderName = firstNonEmpty(recScenario.lender, knownLender(selLender.lender) ? selLender.lender : "");
+  // Lender/rate/product all come from the CHOSEN SCENARIO (internally consistent) — and never a garbage word.
+  const lenderName = firstNonEmpty(realLender(recScenario.lender) ? recScenario.lender : "", realLender(selLender.lender) ? selLender.lender : "");
   const rate = validRate(recScenario.rate) || validRate(selLender.rate) || validRate(loan.interestRate);
   let product = firstNonEmpty(recScenario.product, selLender.product, loan.productPreference);
   // Never let the product wording contradict the loan's occupancy (a stale "Investment" label on an OO loan).
