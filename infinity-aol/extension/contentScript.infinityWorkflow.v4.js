@@ -2423,6 +2423,25 @@
         occupation: valByLabel(["occupation", "job title"]),
         status: valByLabel(["employment status", "employment type", "employment basis", "basis"])
       },
+      // Residency / visa / dependants / gender — read by label on the Client Details page (blank elsewhere).
+      profile: {
+        residencyStatus: valByLabel(["residency status", "residency", "citizenship status", "residency/citizenship", "citizenship"]),
+        visaType: valByLabel(["visa type", "visa"]),
+        visaSubclass: valByLabel(["visa subclass", "subclass"]),
+        visaExpiry: valByLabel(["visa expiry date", "visa expiry", "visa expiry/grant"]),
+        dependants: valByLabel(["number of dependants", "no. of dependants", "no of dependants", "dependants", "dependents"]),
+        gender: valByLabel(["gender", "sex"]),
+        title: valByLabel(["title"]),
+        dob: valByLabel(["date of birth", "dob"])
+      },
+      // Repayment structure + loan features — read by label on Loans & Products / Needs Analysis (blank elsewhere).
+      loanPrefs: {
+        repaymentType: valByLabel(["repayment type", "repayment method", "loan repayment type", "principal & interest / interest only"]),
+        repaymentFrequency: valByLabel(["repayment frequency", "repayment freq", "frequency of repayments"]),
+        redraw: /redraw/i.test(document.body.innerText || ""),
+        offset: /offset/i.test(document.body.innerText || ""),
+        extraRepayments: /additional repayment|extra repayment|unlimited repayment/i.test(document.body.innerText || "")
+      },
       // Lender/rate/product — ONLY trusted on the Recommendation tab. On any other page the same labels
       // ("Lender", "Limit", "Ownership"…) appear as financials/grid headers and would poison the note, so we
       // leave recommendation blank elsewhere and let the server fall back to the captured lenderScenarios.
@@ -4211,6 +4230,8 @@
       platform: "infinity", scrapedAt: new Date().toISOString(),
       applicants: (b.applicants && b.applicants.length) ? b.applicants : (a.applicants || []),
       employment: efMergeObj(a.employment, b.employment),
+      profile: efMergeObj(a.profile, b.profile),
+      loanPrefs: efMergeObj(a.loanPrefs, b.loanPrefs),
       recommendation: efMergeObj(a.recommendation, b.recommendation),
       scenarios: (b.scenarios && b.scenarios.length) ? b.scenarios : (a.scenarios || []),
       financials: (b.financials && (b.financials.incomes || []).length) ? b.financials : (a.financials || null)
@@ -4232,18 +4253,38 @@
         }
       }
     }
+    var scratch = { issues: [], actions: [] };
     // INCOME lives on the account-level Financials tab (NOT the SOCA loan page). If the current scrape found no
     // income, open the Financials tab and re-scrape it — so the broker's LIVE edits there are captured, not a
     // stale value from when Start last ran. Read-only (we only read the table).
     if (!(merged.financials && (merged.financials.incomes || []).length)) {
       try {
-        var scratch = { issues: [], actions: [] };
         if (findMainTab("Financials") && await clickMainTab("Financials", scratch)) {
           await sleep(900);
           var fin = scrapeInfinityFinancials();
           if (fin && (fin.incomes || []).length) merged.financials = fin;
         }
       } catch (e) { /* non-fatal — fall back to whatever was captured */ }
+    }
+    // RESIDENCY / VISA / DEPENDANTS + EMPLOYMENT live on Client Details. If not yet captured, open it + re-scrape.
+    var prof = merged.profile || {};
+    if (!(prof.residencyStatus || prof.dependants || (merged.employment && merged.employment.occupation))) {
+      try {
+        if (findMainTab("Client Details") && await clickMainTab("Client Details", scratch)) {
+          await sleep(900);
+          merged = efMergeSnap(merged, scrapeInfinityClientDetails());
+        }
+      } catch (e) { /* non-fatal */ }
+    }
+    // REPAYMENT TYPE / FREQUENCY / FEATURES live on Loans & Products. If not yet captured, open it + re-scrape.
+    var lp = merged.loanPrefs || {};
+    if (!(lp.repaymentType || lp.repaymentFrequency)) {
+      try {
+        if (findMainTab("Loans & Products") && await clickMainTab("Loans & Products", scratch)) {
+          await sleep(900);
+          merged = efMergeSnap(merged, scrapeInfinityClientDetails());
+        }
+      } catch (e) { /* non-fatal */ }
     }
     return merged;
   }

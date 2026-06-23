@@ -2350,10 +2350,21 @@ function buildRecInputFromCase(caseData, opts = {}) {
     apps = (caseData?.applicants || []).filter(Boolean);
   }
   if (opts.single || opts.primaryOnly) apps = apps.slice(0, 1); // broker applies with one borrower only
-  // Prefer the LIVE Infinity employment (current role, e.g. "Shift Supervisor") over the loan-form's original,
-  // which can be stale (e.g. an old "Director"). Single applicant only — the scrape reads the active applicant.
-  if (apps.length === 1 && snapshot && snapshot.employment && (snapshot.employment.employerName || snapshot.employment.occupation)) {
-    apps[0] = { ...apps[0], employment: { ...(apps[0].employment || {}), ...snapshot.employment } };
+  // Prefer the LIVE Infinity employment + profile (current role, residency/visa, gender) over the loan-form's
+  // original, which can be stale. Single applicant only — the scrape reads the active applicant.
+  const liveProfile = (snapshot && snapshot.profile) || {};
+  if (apps.length === 1 && snapshot) {
+    const emp = snapshot.employment || {};
+    if (emp.employerName || emp.occupation) apps[0] = { ...apps[0], employment: { ...(apps[0].employment || {}), ...emp } };
+    apps[0] = {
+      ...apps[0],
+      residencyStatus: liveProfile.residencyStatus || apps[0].residencyStatus,
+      visaSubclass: liveProfile.visaSubclass || apps[0].visaSubclass,
+      visaType: liveProfile.visaType || apps[0].visaType,
+      visaExpiry: liveProfile.visaExpiry || apps[0].visaExpiry,
+      gender: liveProfile.gender || apps[0].gender,
+      title: liveProfile.title || apps[0].title
+    };
   }
   const couple = apps.length > 1;
   const subj = couple ? "The clients are" : "The applicant is";
@@ -2406,14 +2417,18 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const contractProvided = Boolean(prop.contractSigned || prop.contractOfSale || prop.contractDate || loan.contractProvided || loan.contractOfSale);
   const assessment = !isRefi && !contractProvided;
   const preApproval = assessment || loan.preApproval === true || /pre[- ]?approval/i.test(`${loan.applicationType || ""} ${caseData?.selectedTemplate?.title || ""}`);
-  // Optional case attributes for the proposal — only stated when present (never invented).
+  // Optional case attributes for the proposal — from the LIVE Loans & Products capture first, then the case;
+  // only stated when present (never invented).
+  const lp = (snapshot && snapshot.loanPrefs) || {};
   const fl2 = (x) => String(x || "").toLowerCase();
-  const repaymentType = /interest only|\bio\b/.test(fl2(loan.repaymentType || loan.repayment)) ? "Interest Only" : /p\s*&?\s*i|principal/.test(fl2(loan.repaymentType || loan.repayment)) ? "Principal and Interest" : "";
-  const repaymentFreq = (loan.repaymentFrequency && /week|fortnight|month/i.test(loan.repaymentFrequency)) ? loan.repaymentFrequency : "";
+  const rpSrc = fl2(lp.repaymentType || loan.repaymentType || loan.repayment);
+  const repaymentType = /interest only|\bio\b/.test(rpSrc) ? "Interest Only" : /p\s*&?\s*i|principal/.test(rpSrc) ? "Principal and Interest" : "";
+  const rfSrc = lp.repaymentFrequency || loan.repaymentFrequency;
+  const repaymentFreq = (rfSrc && /week|fortnight|month/i.test(rfSrc)) ? rfSrc : "";
   const featuresStr = `${fl2(loan.features)} ${fl2(loan.loanFeatures)} ${fl2(loan.productFeatures)}`;
-  const redraw = loan.redraw === true || /redraw/.test(featuresStr);
-  const extraRepayments = loan.extraRepayments === true || /extra repay|additional repay|unlimited repay/.test(featuresStr);
-  const dependants = caseData?.dependants ?? caseData?.numberOfDependants ?? caseData?.clientProfile?.dependants;
+  const redraw = lp.redraw === true || loan.redraw === true || /redraw/.test(featuresStr);
+  const extraRepayments = lp.extraRepayments === true || loan.extraRepayments === true || /extra repay|additional repay|unlimited repay/.test(featuresStr);
+  const dependants = liveProfile.dependants ?? caseData?.dependants ?? caseData?.numberOfDependants ?? caseData?.clientProfile?.dependants;
   const depositStrong = Boolean(loan.strongDeposit || caseData?.clientProfile?.strongDeposit) || /strong deposit/i.test(`${loan.notes || ""} ${caseData?.brokerNotes || ""}`);
   const equifaxLifted = /equifax.{0,30}(lift|remov|clear)/i.test(`${loan.notes || ""} ${caseData?.brokerNotes || ""} ${caseData?.creditNotes || ""}`);
 
@@ -2643,6 +2658,8 @@ app.post("/api/cases/:caseId/live-snapshot", (request, response) => {
     platform: "infinity", scrapedAt: new Date().toISOString(),
     applicants: (Array.isArray(incoming.applicants) && incoming.applicants.length) ? incoming.applicants : (prev.applicants || []),
     employment: mergeObj(prev.employment, incoming.employment),
+    profile: mergeObj(prev.profile, incoming.profile),
+    loanPrefs: mergeObj(prev.loanPrefs, incoming.loanPrefs),
     recommendation: mergeObj(prev.recommendation, incoming.recommendation),
     scenarios: (Array.isArray(incoming.scenarios) && incoming.scenarios.length) ? incoming.scenarios : (prev.scenarios || []),
     financials: (incoming.financials && (incoming.financials.incomes || []).length) ? incoming.financials : (prev.financials || null)
