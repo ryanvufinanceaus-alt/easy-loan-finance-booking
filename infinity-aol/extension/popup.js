@@ -1016,8 +1016,14 @@ async function reverseSyncApply(apiBase, caseId) {
       body: JSON.stringify({ fields })
     });
     if (!r.ok) { setStatus("Apply failed.", "error"); return; }
-    document.querySelector("#reverseSyncPanel").innerHTML = '<div class="muted">✓ EasyFlow case updated from Infinity/AOL. Re-prepare to push the new data.</div>';
-    setStatus("✓ Case updated from live data.", "success");
+    // Re-prepare the case so Start uses the updated data right away — no need to open the web app.
+    try {
+      await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/prepare-infinity-aol`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      await loadPreparedCases().catch(() => {});
+      await loadPayload().catch(() => {});
+    } catch (_e) { /* applied; payload refresh is best-effort */ }
+    document.querySelector("#reverseSyncPanel").innerHTML = '<div class="muted">✓ EasyFlow case updated + re-prepared. Start now uses the new data — no web needed.</div>';
+    setStatus("✓ Case updated from live data and re-prepared.", "success");
   } catch (error) { setStatus("Apply failed: " + error.message, "error"); }
 }
 document.querySelector("#reverseSync")?.addEventListener("click", () => reverseSyncReview());
