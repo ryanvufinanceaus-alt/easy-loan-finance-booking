@@ -30,7 +30,12 @@ const els = {
   buildId: document.querySelector("#buildId")
 };
 
-if (els.buildId) els.buildId.textContent = `Build: ${EASYFLOW_EXTENSION_BUILD_ID}`;
+// Show the REAL installed version straight from the manifest (chrome.runtime.getManifest) — so after a reload
+// the badge is literally what Chrome loaded, never a stale hand-typed number. One number, big, top-right.
+const EF_VERSION = (() => { try { return chrome.runtime.getManifest().version; } catch (_e) { return ""; } })();
+const efVerBadge = document.querySelector("#versionBadge");
+if (efVerBadge) efVerBadge.textContent = EF_VERSION ? `v${EF_VERSION}` : "v?";
+if (els.buildId) els.buildId.textContent = `v${EF_VERSION} · ${EASYFLOW_EXTENSION_BUILD_ID}`;
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
