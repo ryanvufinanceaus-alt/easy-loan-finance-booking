@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.24";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.25";
 const REPORT_HISTORY_KEY = "easyflowReportHistory";
 const REPORT_HISTORY_LIMIT = 5;
 
@@ -983,9 +983,9 @@ async function reverseSyncReview() {
   if (!caseId) { setStatus("Select a Prepared case first.", "error"); return; }
   const apiBase = els.apiBase.value.replace(/\/$/, "");
   panel.style.display = "block";
-  panel.innerHTML = '<div class="muted">Reading the current Infinity page…</div>';
-  // Read-only: capture whatever Infinity tab/page the broker is on (works on any extension version), merge it.
-  await efCaptureLive(apiBase, caseId).catch(() => {});
+  panel.innerHTML = '<div class="muted">Scanning all Infinity tabs (Client Details → Financials → Loans &amp; Products)… this takes ~15s.</div>';
+  // Read-only: ONE click walks every Infinity tab (full=true) the same way Start does, scrapes each, merges.
+  await efCaptureLive(apiBase, caseId, true).catch(() => {});
   await reverseSyncLoad(apiBase, caseId, false);
 }
 async function reverseSyncLoad(apiBase, caseId, skipCapture) {
@@ -998,7 +998,7 @@ async function reverseSyncLoad(apiBase, caseId, skipCapture) {
   } catch (_e) { panel.innerHTML = '<div class="muted">Could not read changes.</div>'; return; }
   window._rsDiffs = diffs;
   if (!diffs.length) {
-    panel.innerHTML = '<div class="rs-ok">✓ EasyFlow matches the captured Infinity data — nothing to update.<br><span class="muted">Tip: open the Client Details / Financials tab in Infinity, then Sync, to capture that tab.</span></div>';
+    panel.innerHTML = '<div class="rs-ok">✓ EasyFlow matches the live Infinity data — nothing to update.<br><span class="muted">Scanned Client Details, Financials and Loans &amp; Products. Make sure the case is open in an Infinity tab before syncing.</span></div>';
     return;
   }
   panel.innerHTML = '<div class="rs-title">' + diffs.length + ' change(s) — tick to apply</div>'

@@ -4323,11 +4323,28 @@
     return false;
   }
   async function efFullCapture(full) {
-    // Read the CURRENT page only (plus, on a SOCA loan page, the light hash-based Recommendation/Features hops
-    // for lender/rate). We do NOT walk the account tabs — that froze on slow SPA loads and could drop the
-    // account context. The broker reads each tab simply by being on it: navigate to Client Details / Financials
-    // / Loans & Products and click Sync, and that page's data is captured (works on any extension version).
     var merged = efScrapeCurrent();
+    // SYNC button (full=true): ONE click reads the whole account. We walk the main tabs the SAME way Start
+    // Infinity does — clickMainTab() is the proven, fully-bounded navigation (waitFor/waitForSettle cap every
+    // wait, so a slow tab can't hang) — and scrape each tab, merging as we go. Read-only: we only click tabs
+    // and read values; we never fill. Guarded to run ONLY inside an account: if the broker is on the dashboard
+    // or Loan Case Manager there are no main tabs (findMainTab null), so we skip the walk and keep the current
+    // page instead of bouncing to the generic dashboard.
+    if (full && findMainTab("Client Details")) {
+      var scratch = makeResult({});
+      var tabs = ["Client Details", "Financials", "Loans & Products"];
+      for (var t = 0; t < tabs.length; t += 1) {
+        try {
+          if (await clickMainTab(tabs[t], scratch)) {
+            await sleep(500);
+            merged = efMergeSnap(merged, efScrapeCurrent());
+          }
+        } catch (e) { /* one slow tab can't abort the whole sweep */ }
+      }
+      // Land the broker back on Client Details (a real account tab) — not the last tab, never the dashboard.
+      try { await clickMainTab("Client Details", scratch); } catch (e) { /* ignore */ }
+    }
+    // On a SOCA loan page, also hop the Recommendation/Features sub-tabs for the selected lender + rate.
     if (/\/loans\/soca\//.test(location.hash || "")) {
       var sections = ["recommendation", "features"];
       for (var i = 0; i < sections.length; i += 1) {
