@@ -2313,9 +2313,9 @@ function buildRecInputFromCase(caseData, opts = {}) {
     const rate = Number(i.hourlyRate || i.rate), hrs = Number(i.hours || i.hoursPerPeriod);
     if (rate && hrs && m.n > 1) return `$${fmtNum(rate)} x ${fmtNum(hrs)} hrs x ${m.n} (${m.label}) = ${docMoney(round2(rate * hrs * m.n))} p.a.`;
     if (m.n > 1) return `$${fmtNum(a)} x ${m.n} (${m.label}) = ${docMoney(round2(a * m.n))} p.a.`;
-    // Annual figure only (Infinity stored it annualised) — show the standard fortnightly working so there is
-    // still an explicit formula rather than a lone number.
-    return `${docMoney(a)} p.a.  (= $${fmtNum(round2(a / 26))} x 26 fortnightly)`;
+    // Annual figure only (Infinity stored it annualised) — auto-derive the standard fortnightly working so EVERY
+    // line reads as an explicit "amount x periods = annual" formula, no extra data needed.
+    return `$${fmtNum(round2(a / 26))} x 26 (fortnightly) = ${docMoney(a)} p.a.`;
   };
   // Employment lead-in for an applicant (matches the sample: "NAME - full-time Chef/Cook at EMPLOYER since DATE").
   const employmentLead = (name) => {

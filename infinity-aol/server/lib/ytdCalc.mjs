@@ -114,9 +114,11 @@ export async function buildYtdXlsx(input = {}) {
   value("C6:H6", c.clientName, { h: "left", bold: true });
   const baseAmt = num(input.baseAmount), mult = num(input.baseMultiplier) || 1, freq = input.baseFrequency || "Annually";
   label("A7:B7", "BASE INCOME", { h: "left" });
-  const working = baseAmt && mult > 1
-    ? `$${baseAmt.toLocaleString("en-AU", { minimumFractionDigits: 2 })} × ${mult} (${freq.toLowerCase()})  =  $${round2(c.base).toLocaleString("en-AU", { minimumFractionDigits: 2 })} p.a.`
-    : (c.base ? `$${round2(c.base).toLocaleString("en-AU", { minimumFractionDigits: 2 })} p.a.` : "(captured from Infinity)");
+  const money2 = (n) => "$" + round2(n).toLocaleString("en-AU", { minimumFractionDigits: 2 });
+  let working;
+  if (baseAmt && mult > 1) working = `${money2(baseAmt)} × ${mult} (${freq.toLowerCase()})  =  ${money2(c.base)} p.a.`;
+  else if (c.base) working = `${money2(c.base / 26)} × 26 (fortnightly)  =  ${money2(c.base)} p.a.`; // auto-derive the formula
+  else working = "(captured from Infinity)";
   value("C7:H7", working, { h: "left", color: MUTE });
   ws.getRow(6).height = 18; ws.getRow(7).height = 16;
 
