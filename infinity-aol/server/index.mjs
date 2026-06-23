@@ -2429,7 +2429,8 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const redraw = lp.redraw === true || loan.redraw === true || /redraw/.test(featuresStr);
   const extraRepayments = lp.extraRepayments === true || loan.extraRepayments === true || /extra repay|additional repay|unlimited repay/.test(featuresStr);
   const dependants = liveProfile.dependants ?? caseData?.dependants ?? caseData?.numberOfDependants ?? caseData?.clientProfile?.dependants;
-  const depositStrong = Boolean(loan.strongDeposit || caseData?.clientProfile?.strongDeposit) || /strong deposit/i.test(`${loan.notes || ""} ${caseData?.brokerNotes || ""}`);
+  // Common sense: a low LVR means a large deposit / strong equity, so a low LVR IS a strong deposit position.
+  const depositStrong = (lvrNum > 0 && lvrNum <= 80) || Boolean(loan.strongDeposit || caseData?.clientProfile?.strongDeposit) || /strong deposit/i.test(`${loan.notes || ""} ${caseData?.brokerNotes || ""}`);
   const equifaxLifted = /equifax.{0,30}(lift|remov|clear)/i.test(`${loan.notes || ""} ${caseData?.brokerNotes || ""} ${caseData?.creditNotes || ""}`);
 
   // INCOME — PREFER the income captured LIVE from Infinity/AOL (the broker's latest edits are the source of

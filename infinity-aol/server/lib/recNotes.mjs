@@ -74,7 +74,12 @@ export function buildRecNarrative(ctx = {}) {
   const proposal = [purpose, structure, (strengths + prefs).trim(), reassurance].filter(Boolean).join(" ");
 
   // Note: do NOT assert a "clean credit file" (that requires a checked credit report). State disclosed conduct.
-  const character = `${subj} ${v("demonstrates", "demonstrate")} a stable and responsible financial position with the capacity to service the proposed lending. ${subj} ${v("has", "have")} disclosed no adverse credit conduct, arrears or repayment difficulty, and ${v("lives", "live")} within ${v("their", "their")} means while maintaining a consistent savings pattern.${ctx.equifaxLifted ? ` ${subj} ${v("has", "have")} confirmed the Equifax credit file restriction has been lifted.` : ""}${ctx.depositStrong ? ` ${v("The applicant's", "The clients'")} strong deposit position and absence of disclosed liabilities support a disciplined financial position.` : ""} ${subj} ${v("understands", "understand")} the obligations of the facility and ${v("does", "do")} not foresee any changes to ${v("their", "their")} financial circumstances that would impair the ability to meet repayments.`;
+  // Deposit/liabilities line follows the real data: strong deposit (low LVR) and/or no disclosed liabilities.
+  const strengthParts = [];
+  if (ctx.depositStrong) strengthParts.push("strong deposit position");
+  if (ctx.noLiabilities) strengthParts.push("absence of disclosed liabilities");
+  const dispLine = strengthParts.length ? ` ${v("The applicant's", "The clients'")} ${listJoin(strengthParts)} support${strengthParts.length > 1 ? "" : "s"} a disciplined financial position.` : "";
+  const character = `${subj} ${v("demonstrates", "demonstrate")} a stable and responsible financial position with the capacity to service the proposed lending. ${subj} ${v("has", "have")} disclosed no adverse credit conduct, arrears or repayment difficulty, and ${v("lives", "live")} within ${v("their", "their")} means while maintaining a consistent savings pattern.${ctx.equifaxLifted ? ` ${subj} ${v("has", "have")} confirmed the Equifax credit file restriction has been lifted.` : ""}${dispLine} ${subj} ${v("understands", "understand")} the obligations of the facility and ${v("does", "do")} not foresee any changes to ${v("their", "their")} financial circumstances that would impair the ability to meet repayments.`;
 
   const collateral = [
     `The security offered is ${ctx.isRefi ? "the applicant's existing property" : "the subject property"}${ctx.security ? ` at ${ctx.security}` : ""}, which is considered acceptable for the proposed lending:`,
