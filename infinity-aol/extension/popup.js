@@ -18,8 +18,12 @@ const els = {
   startAolAutofill: document.querySelector("#startAolAutofill"),
   runDiagnostics: document.querySelector("#runDiagnostics"),
   copyDiagnostics: document.querySelector("#copyDiagnostics"),
+  copyInfinityReport: document.querySelector("#copyInfinityReport"),
+  copyAolReport: document.querySelector("#copyAolReport"),
+  toggleChecklist: document.querySelector("#toggleChecklist"),
   fillSection: document.querySelector("#fillSection"),
   comparePage: document.querySelector("#comparePage"),
+  roSync: document.querySelector("#roSync"),
   compareCase: document.querySelector("#compareCase"),
   status: document.querySelector("#status"),
   reviewRows: document.querySelector("#reviewRows"),
@@ -27,6 +31,10 @@ const els = {
 };
 
 if (els.buildId) els.buildId.textContent = `Build: ${EASYFLOW_EXTENSION_BUILD_ID}`;
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
 
 chrome.storage.local.get(["apiBase", "caseToken", REPORT_HISTORY_KEY], (stored) => {
   if (stored.apiBase) {
@@ -171,10 +179,10 @@ function renderReview() {
   ];
 
   if (state.lastResult?.fieldsFilled) {
-    rows.push(["Filled", String(state.lastResult.fieldsFilled.length)]);
-    rows.push(["Skipped", String(state.lastResult.fieldsSkipped.length)]);
-    rows.push(["Errors", String(state.lastResult.errors.length)]);
-    rows.push(["Verify", String(state.lastResult.verificationFailures?.length || 0)]);
+    rows.push(["Filled", String(asArray(state.lastResult.fieldsFilled).length)]);
+    rows.push(["Skipped", String(asArray(state.lastResult.fieldsSkipped).length)]);
+    rows.push(["Errors", String(asArray(state.lastResult.errors).length)]);
+    rows.push(["Verify", String(asArray(state.lastResult.verificationFailures).length)]);
   }
 
   if (state.lastDiagnostics?.summary) {
@@ -281,7 +289,7 @@ function runtimeErrorMessage() {
 async function injectContentScript(tabId) {
   await chrome.scripting.executeScript({
     target: { tabId },
-    files: ["contentScript.js"]
+    files: ["contentScript.infinityWorkflow.v4.js"]
   });
 }
 
@@ -395,20 +403,54 @@ async function startAutofill(targetPlatform = "auto") {
     renderReview();
 
     const apiBase = els.apiBase.value.replace(/\/$/, "");
+    // For AOL, pull the lender scenarios captured earlier on Infinity from EasyFlow AI
+    // (internal source of truth) so the content script can fill the Product Selector.
+    if (targetPlatform !== "infinity" && state.prepared?.caseId) {
+      try {
+        const capRes = await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/capture/lenderScenarios`);
+        const capJson = await capRes.json().catch(() => null);
+        if (capJson?.data) state.prepared.payload.lenderScenarios = capJson.data;
+      } catch (_e) { /* non-fatal */ }
+    }
     setStatus(`${targetPlatform === "aol" ? "AOL" : "Infinity"} AutoFill is running on the active tab. Review before Push AOL or Submit.`, "muted");
     const result = await sendToContent({
-      type: "INFINITY_AOL_RUN_ALL_PAGES",
+      type: "INFINITY_AOL_AUTOFILL",
       targetPlatform,
       payload: state.prepared.payload,
       mapping: state.mapping,
-      apiBase
+      apiBase,
+      caseId: state.prepared?.caseId || ""
     });
 
     state.lastResult = result;
     state.lastDiagnostics = null;
     persistReport("autofill", result);
+    if (Array.isArray(result?.loanFormMismatches) && result.loanFormMismatches.length && state.prepared?.caseId) {
+      const noteBase = els.apiBase.value.replace(/\/$/, "");
+      fetch(`${noteBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/loan-form-note`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mismatches: result.loanFormMismatches, brokerUser: state.prepared?.brokerUser })
+      }).catch(() => {});
+    }
+    // Lender scenarios scraped on Infinity → store in EasyFlow AI for the AOL Product Selector.
+    if (Array.isArray(result?.lenderScenarios) && result.lenderScenarios.length && state.prepared?.caseId) {
+      fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/capture`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "lenderScenarios", data: result.lenderScenarios, platform: "infinity", brokerUser: state.prepared?.brokerUser })
+      }).catch(() => {});
+    }
+    // Live Infinity financials scraped during Start Infinity → store for the AOL Financials compare.
+    if (result?.infinityFinancials && state.prepared?.caseId) {
+      fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/capture`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "infinityFinancials", data: result.infinityFinancials, platform: "infinity", brokerUser: state.prepared?.brokerUser })
+      }).catch(() => {});
+    }
     els.copyDiagnostics.disabled = false;
-    const issues = (result.errors?.length || 0) + (result.verificationFailures?.length || 0);
+    const issues = asArray(result?.errors).length + asArray(result?.verificationFailures).length;
     setStatus(
       issues
         ? `${result.message || `AutoFill stopped with ${issues} item(s) to review.`}`
@@ -460,14 +502,15 @@ async function retryWorkflowStep(step) {
       stepId: step.id,
       payload: state.prepared.payload,
       mapping: state.mapping,
-      apiBase
+      apiBase,
+      caseId: state.prepared?.caseId || ""
     });
 
     state.lastResult = result;
     state.lastDiagnostics = null;
     persistReport("retry-step", result);
     els.copyDiagnostics.disabled = false;
-    const issues = (result.errors?.length || 0) + (result.verificationFailures?.length || 0);
+    const issues = asArray(result?.errors).length + asArray(result?.verificationFailures).length;
     setStatus(
       issues ? `${result.message || `${step.label || step.id} retry still needs review.`}` : `${step.label || step.id} retry finished.`,
       issues ? "error" : "success"
@@ -600,6 +643,21 @@ async function copyDiagnostics() {
   setStatus("Report copied. Paste it into Codex for the next fix.", "success");
 }
 
+// Copy the most recent autofill report for a specific platform ("infinity" or "aol")
+// from the saved history, so Infinity and AOL reports can be copied separately.
+async function copyReportByTarget(target) {
+  const stored = await chrome.storage.local.get([REPORT_HISTORY_KEY]);
+  const history = Array.isArray(stored[REPORT_HISTORY_KEY]) ? stored[REPORT_HISTORY_KEY] : [];
+  const entry = history.find((e) => (e.report?.target || "") === target);
+  if (!entry?.report) {
+    setStatus(`No ${target.toUpperCase()} report yet — run ${target === "aol" ? "Start AOL" : "Start Infinity"} first.`, "error");
+    return;
+  }
+  const text = autofillReportText(entry.report);
+  await navigator.clipboard.writeText(text);
+  setStatus(`${target === "aol" ? "AOL" : "Infinity"} report copied (${new Date(entry.savedAt).toLocaleTimeString()}).`, "success");
+}
+
 async function fillCurrentPopup() {
   await loadPayload();
   const result = await sendToContent({
@@ -618,6 +676,21 @@ async function fillCurrentPopup() {
 
 async function checkCurrentPage() {
   await loadPayload();
+  const apiBase = els.apiBase.value.replace(/\/$/, "");
+  // Pull the captured LIVE Infinity financials so the AOL compare uses real Infinity values.
+  if (state.prepared?.caseId) {
+    try {
+      const r = await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/capture/infinityFinancials`);
+      const j = await r.json().catch(() => null);
+      if (j?.data) state.prepared.payload.liveInfinityFinancials = j.data;
+    } catch (_e) { /* non-fatal */ }
+    // Also pull the captured LIVE AOL financials so the Infinity-side compare (AOL ➜ Infinity) has data.
+    try {
+      const r2 = await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/capture/aolFinancials`);
+      const j2 = await r2.json().catch(() => null);
+      if (j2?.data) state.prepared.payload.liveAolFinancials = j2.data;
+    } catch (_e) { /* non-fatal */ }
+  }
   const result = await sendToContent({
     type: "INFINITY_AOL_COMPARE",
     mode: "visible",
@@ -625,16 +698,43 @@ async function checkCurrentPage() {
     mapping: state.mapping
   });
 
-  const apiBase = els.apiBase.value.replace(/\/$/, "");
+  // Store the scraped live financials in EasyFlow (per-platform snapshot for the compare / sync-back).
+  if (result?.infinityFinancials && state.prepared?.caseId) {
+    fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/capture`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "infinityFinancials", data: result.infinityFinancials, platform: "infinity" })
+    }).catch(() => {});
+  }
+  if (result?.aolFinancials && state.prepared?.caseId) {
+    fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/capture`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "aolFinancials", data: result.aolFinancials, platform: "aol" })
+    }).catch(() => {});
+  }
   await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/comparison-snapshot`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(result)
-  });
+  }).catch(() => {});
 
   state.lastResult = result;
   persistReport("compare-visible", result);
-  setStatus(`${result.matched.length} matched, ${result.mismatched.length} mismatched, ${result.missing.length} missing.`, result.mismatched.length || result.missing.length ? "error" : "success");
+  if (result?.infinityFinancials) {
+    const n = result.infinityFinancials.expenses?.length || 0;
+    setStatus(`Captured ${n} live Infinity expense(s) → now open the AOL Financials tab and click Compare to sync.`, "success");
+  } else if (result?.compareSummary) {
+    const { total, differences } = result.compareSummary;
+    setStatus(
+      differences
+        ? `Expenses: ${differences}/${total} differ between Infinity and AOL — see the compare panel to sync.`
+        : `Expenses match (${total} categories). `,
+      differences ? "error" : "success"
+    );
+  } else if (result?.matched) {
+    setStatus(`${result.matched.length} matched, ${result.mismatched.length} mismatched, ${result.missing.length} missing.`, result.mismatched.length || result.missing.length ? "error" : "success");
+  } else {
+    setStatus("Open the AOL Financials tab, then click Compare to diff against Infinity.", "muted");
+  }
   renderReview();
 }
 
@@ -650,10 +750,39 @@ async function compareCase() {
   renderReview();
 }
 
+async function roSync() {
+  await loadPayload();
+  const apiBase = els.apiBase.value.replace(/\/$/, "");
+  const result = await sendToContent({
+    type: "INFINITY_AOL_RO_SYNC",
+    apiBase,
+    caseId: state.prepared?.caseId || "",
+    payload: state.prepared?.payload || {}
+  });
+  if (!result?.ok) { setStatus(result?.error || "R&O sync failed.", "error"); return; }
+  const modeLabel = result.mode === "teach"
+    ? (result.saved ? `taught ${result.lender} template ✓ (${result.learned} reasons)` : "taught (save failed)")
+    : `applied ${result.lender} template (${result.learned} reasons)`;
+  setStatus(`R&O ${modeLabel} — ticked ${result.ticked}, unticked ${result.unticked}`, "success");
+}
+
 els.startInfinityAutofill.addEventListener("click", () => startAutofill("infinity"));
 els.startAolAutofill.addEventListener("click", () => startAutofill("aol"));
 els.runDiagnostics.addEventListener("click", runDiagnostics);
 els.copyDiagnostics.addEventListener("click", () => copyDiagnostics().catch((error) => setStatus(error.message, "error")));
+els.copyInfinityReport.addEventListener("click", () => copyReportByTarget("infinity").catch((error) => setStatus(error.message, "error")));
+els.copyAolReport.addEventListener("click", () => copyReportByTarget("aol").catch((error) => setStatus(error.message, "error")));
+els.toggleChecklist.addEventListener("click", async () => {
+  try {
+    await loadPayload().catch(() => {});
+    const r = await sendToContent({
+      type: "INFINITY_AOL_TOGGLE_CHECKLIST",
+      apiBase: els.apiBase.value.replace(/\/$/, ""),
+      caseId: state.prepared?.caseId || ""
+    });
+    setStatus(r?.shown ? "Broker checklist shown on the page." : "Broker checklist hidden.", "muted");
+  } catch (error) { setStatus(error.message, "error"); }
+});
 els.refreshCases.addEventListener("click", () => loadPreparedCases().catch((error) => setStatus(error.message, "error")));
 els.casePicker.addEventListener("change", () => {
   els.caseToken.value = els.casePicker.value;
@@ -661,4 +790,157 @@ els.casePicker.addEventListener("change", () => {
 });
 els.fillSection.addEventListener("click", () => fillCurrentPopup().catch((error) => setStatus(error.message, "error")));
 els.comparePage.addEventListener("click", () => checkCurrentPage().catch((error) => setStatus(error.message, "error")));
+els.roSync.addEventListener("click", () => roSync().catch((error) => setStatus(error.message, "error")));
 els.compareCase.addEventListener("click", () => compareCase().catch((error) => setStatus(error.message, "error")));
+
+// ===== Per-broker login gate + document generation =====
+const authEls = {
+  loginBox: document.querySelector("#loginBox"),
+  appBox: document.querySelector("#appBox"),
+  email: document.querySelector("#loginEmail"),
+  password: document.querySelector("#loginPassword"),
+  loginBtn: document.querySelector("#loginBtn"),
+  who: document.querySelector("#loggedInWho"),
+  logoutBtn: document.querySelector("#logoutBtn"),
+  genYtd: document.querySelector("#genYtd")
+};
+let brokerToken = null;
+// The login endpoint lives on the ROOT host (not under /infinity-aol).
+function rootApiBase() { return els.apiBase.value.replace(/\/$/, "").replace(/\/infinity-aol$/, ""); }
+function decodeTokenExp(token) {
+  try {
+    const b64 = String(token).split(".")[0].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(decodeURIComponent(escape(atob(b64)))).exp || 0;
+  } catch { return 0; }
+}
+function showAuthState(token, name) {
+  const valid = !!token && decodeTokenExp(token) > Date.now();
+  brokerToken = valid ? token : null;
+  if (authEls.loginBox) authEls.loginBox.style.display = valid ? "none" : "block";
+  if (authEls.appBox) authEls.appBox.style.display = valid ? "block" : "none";
+  if (valid && authEls.who) authEls.who.textContent = "Signed in: " + (name || "broker");
+}
+chrome.storage.local.get(["brokerToken", "brokerName"], (s) => showAuthState(s.brokerToken, s.brokerName));
+async function brokerLogin() {
+  const email = (authEls.email.value || "").trim(), password = authEls.password.value || "";
+  if (!email || !password) { setStatus("Enter email and access code.", "error"); return; }
+  setStatus("Signing in…", "muted");
+  try {
+    const res = await fetch(`${rootApiBase()}/api/auth/login`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password })
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j.token || (j.role !== "broker" && j.role !== "admin")) { setStatus(j.error || "Wrong email or access code.", "error"); return; }
+    chrome.storage.local.set({ brokerToken: j.token, brokerName: j.name || j.email });
+    authEls.password.value = "";
+    showAuthState(j.token, j.name || j.email);
+    setStatus("Signed in as " + (j.name || j.email) + ".", "success");
+    loadPreparedCases().catch(() => {});
+  } catch (error) { setStatus("Sign in failed: " + error.message, "error"); }
+}
+function brokerLogout() { chrome.storage.local.remove(["brokerToken", "brokerName"]); showAuthState(null); setStatus("Signed out.", "muted"); }
+authEls.loginBtn?.addEventListener("click", () => brokerLogin());
+authEls.password?.addEventListener("keydown", (event) => { if (event.key === "Enter") brokerLogin(); });
+authEls.logoutBtn?.addEventListener("click", () => brokerLogout());
+
+function preparedClientName() {
+  try {
+    const p = state.prepared && state.prepared.payload;
+    const a = (p && (p.applicants || (p.infinity && p.infinity.applicants))) || [];
+    if (Array.isArray(a) && a[0]) return [a[0].firstName, a[0].lastName || a[0].surname].filter(Boolean).join(" ").trim();
+  } catch (_e) { /* ignore */ }
+  return "";
+}
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1500);
+}
+// Silently pull the CURRENT Infinity state (applicants / income / selected lender + rate) and merge it
+// server-side, so both documents reflect the broker's live edits. No buttons, no debug output.
+async function efCaptureLive(apiBase, caseId) {
+  try {
+    const tabs = await chrome.tabs.query({});
+    const inf = tabs.find((t) => /infynity|infinity/i.test(t.url || ""));
+    if (!inf) return "";
+    setStatus("Reading Infinity…", "muted");
+    const scraped = await chrome.tabs.sendMessage(inf.id, { type: "EF_FULL_CAPTURE" }).catch(() => null);
+    if (!scraped || !scraped.ok || !scraped.snapshot) return "";
+    const merged = await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/live-snapshot`, {
+      method: "POST", headers: { "Content-Type": "application/json", "x-easyflow-broker-token": brokerToken },
+      body: JSON.stringify(scraped.snapshot)
+    }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const s = (merged && merged.snapshot) || scraped.snapshot;
+    const apps = (s.applicants || []).map((a) => a.name).join(", ") || "(none)";
+    const scen = (s.scenarios || []).map((x) => `${x.lender} ${x.rate}%`).join(" | ") || "(none)";
+    const inc = ((s.financials && s.financials.incomes) || [])
+      .map((i) => `${i.type}${i.frequency ? " " + i.frequency : ""} $${Number(i.amount).toLocaleString()}`).join("; ") || "(none — open the Financials tab)";
+    return `\nCaptured live → ${apps}\nincome: ${inc}\nlenders: ${scen}`;
+  } catch (_e) { return ""; }
+}
+
+// YTD rides the selected Prepared case (server prefills client + base annual from the case; the broker
+// completes the yellow payslip cells in Excel). No form in the popup.
+async function generateYtd() {
+  if (!brokerToken) { setStatus("Sign in first.", "error"); return; }
+  await loadPayload().catch(() => {});
+  if (!state.prepared || !state.prepared.caseId) { setStatus("Select a Prepared case first.", "error"); return; }
+  const apiBase = els.apiBase.value.replace(/\/$/, "");
+  const snapMsg = await efCaptureLive(apiBase, state.prepared.caseId);
+  setStatus("Generating YTD…" + snapMsg, "muted");
+  try {
+    const res = await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/ytd-calc`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-easyflow-broker-token": brokerToken },
+      body: JSON.stringify({})
+    });
+    if (res.status === 401) { setStatus("Session expired — sign in again.", "error"); showAuthState(null); return; }
+    if (!res.ok) { const t = await res.text().catch(() => ""); setStatus("YTD failed: " + t.slice(0, 140), "error"); return; }
+    downloadBlob(await res.blob(), `YTD_${(preparedClientName() || "client").toUpperCase().replace(/[^A-Z0-9]+/g, "_")}.xlsx`);
+    setStatus("✓ YTD Excel downloaded.", "success");
+    loadDocHistory();
+  } catch (error) { setStatus("YTD failed: " + error.message, "error"); }
+}
+authEls.genYtd?.addEventListener("click", () => generateYtd());
+
+// Recommendation Notes: rides the selected Prepared case (server prefills from case data) — just download.
+async function generateRec(format) {
+  if (!brokerToken) { setStatus("Sign in first.", "error"); return; }
+  await loadPayload().catch(() => {}); // ensure the selected case is loaded
+  if (!state.prepared || !state.prepared.caseId) { setStatus("Select a Prepared case first.", "error"); return; }
+  const apiBase = els.apiBase.value.replace(/\/$/, "");
+  // Pull the CURRENT Infinity state (applicants/income/rate) so the note reflects the broker's live edits.
+  const snapMsg = await efCaptureLive(apiBase, state.prepared.caseId);
+  setStatus("Generating Rec Notes…" + snapMsg, "muted");
+  try {
+    const res = await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/recommendation-notes?format=${format}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-easyflow-broker-token": brokerToken },
+      body: JSON.stringify({})
+    });
+    if (res.status === 401) { setStatus("Session expired — sign in again.", "error"); showAuthState(null); return; }
+    if (!res.ok) { const t = await res.text().catch(() => ""); setStatus("Rec Notes failed: " + t.slice(0, 140), "error"); return; }
+    const name = `RECNOTES_${(preparedClientName() || "client").toUpperCase().replace(/[^A-Z0-9]+/g, "_")}.${format === "docx" ? "docx" : "pdf"}`;
+    downloadBlob(await res.blob(), name);
+    setStatus("✓ Rec Notes downloaded.", "success");
+    loadDocHistory();
+  } catch (error) { setStatus("Rec Notes failed: " + error.message, "error"); }
+}
+document.querySelector("#genRecPdf")?.addEventListener("click", () => generateRec("pdf"));
+document.querySelector("#genRecDocx")?.addEventListener("click", () => generateRec("docx"));
+
+// Per-case document history ("downloaded / not yet") — persisted server-side so it follows the case across devices.
+async function loadDocHistory() {
+  const el = document.querySelector("#docHistory"); if (!el) return;
+  if (!state.prepared || !state.prepared.caseId) { el.innerHTML = '<span class="muted">Select a Prepared case to see document history.</span>'; return; }
+  const apiBase = els.apiBase.value.replace(/\/$/, "");
+  try {
+    const r = await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/capture/docHistory`);
+    const j = await r.json().catch(() => ({}));
+    const h = (j && j.data) || {};
+    const row = (label, e) => `<div>${label}: ${e && e.at ? "✓ " + (e.count || 1) + "× · " + new Date(e.at).toLocaleString() : '<span class="muted">not downloaded yet</span>'}</div>`;
+    el.innerHTML = row("YTD Excel", h.ytd) + row("Rec PDF", h.recPdf) + row("Rec Word", h.recDocx);
+  } catch (_e) { el.innerHTML = ""; }
+}
+els.casePicker.addEventListener("change", () => { loadPayload().then(loadDocHistory).catch(() => loadDocHistory()); });
