@@ -7,14 +7,26 @@ function fullName(applicant) {
 }
 
 function formatClientAddress(applicant) {
-  const address = applicant?.address || {};
-  const line1 = address.line1 || address.current || address.fullAddress || "";
-  return line1
-    ? `${line1}, ${address.suburb || ""} ${address.state || ""} ${address.postcode || ""}, ${address.country || "Australia"}`
-        .replace(/\s+,/g, ",")
-        .replace(/\s+/g, " ")
-        .trim()
-    : "";
+  const a = applicant?.address || {};
+  // STATE + postcode tail, e.g. ", Mayfield NSW 2304, Australia".
+  const TAIL = /,?\s*([A-Za-z' -]+?)\s+(NSW|VIC|QLD|SA|WA|TAS|ACT|NT)\s+(\d{4})(?:,\s*Australia)?\s*$/i;
+  let line1 = a.line1 || a.current || "";
+  let suburb = a.suburb || "", state = a.state || "", postcode = a.postcode || "";
+  // If we only have a full address string, split it — BUT the structured suburb/state/postcode WIN, so a stale
+  // OCR postcode inside fullAddress (e.g. "Mayfield NSW 2034") can't leak in and get re-parsed downstream.
+  if ((!line1 || !postcode) && a.fullAddress) {
+    const full = String(a.fullAddress).replace(/,\s*Australia\s*$/i, "");
+    const m = full.match(TAIL);
+    if (m) {
+      if (!line1) line1 = full.slice(0, m.index).replace(/,\s*$/, "").trim();
+      suburb = suburb || m[1].trim();
+      state = state || m[2];
+      postcode = postcode || m[3];
+    } else if (!line1) { line1 = full; }
+  }
+  if (!(line1 || suburb || state || postcode)) return "";
+  return `${line1}, ${suburb} ${state} ${postcode}, ${a.country || "Australia"}`
+    .replace(/\s+,/g, ",").replace(/\s+/g, " ").replace(/^,\s*/, "").trim();
 }
 
 function looksLikeDate(value) {

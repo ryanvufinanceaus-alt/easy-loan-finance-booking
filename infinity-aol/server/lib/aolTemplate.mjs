@@ -8,7 +8,19 @@ function fullName(applicant) {
 
 function formatAddress(address) {
   if (!address) return "";
-  return [address.line1, address.suburb, address.state, address.postcode].filter(Boolean).join(" ");
+  const TAIL = /,?\s*([A-Za-z' -]+?)\s+(NSW|VIC|QLD|SA|WA|TAS|ACT|NT)\s+(\d{4})(?:,\s*Australia)?\s*$/i;
+  let line1 = address.line1 || "";
+  let suburb = address.suburb || "", state = address.state || "", postcode = address.postcode || "";
+  // Don't let a stale postcode inside fullAddress leak in — structured suburb/state/postcode win.
+  if ((!line1 || !postcode) && address.fullAddress) {
+    const full = String(address.fullAddress).replace(/,\s*Australia\s*$/i, "");
+    const m = full.match(TAIL);
+    if (m) {
+      if (!line1) line1 = full.slice(0, m.index).replace(/,\s*$/, "").trim();
+      suburb = suburb || m[1].trim(); state = state || m[2]; postcode = postcode || m[3];
+    } else if (!line1) { line1 = full; }
+  }
+  return [line1, suburb, state, postcode].filter(Boolean).join(" ");
 }
 
 function firstPrimary(caseData) {
