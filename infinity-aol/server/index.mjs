@@ -2348,6 +2348,11 @@ function buildRecInputFromCase(caseData, opts = {}) {
     apps = (caseData?.applicants || []).filter(Boolean);
   }
   if (opts.single || opts.primaryOnly) apps = apps.slice(0, 1); // broker applies with one borrower only
+  // Prefer the LIVE Infinity employment (current role, e.g. "Shift Supervisor") over the loan-form's original,
+  // which can be stale (e.g. an old "Director"). Single applicant only — the scrape reads the active applicant.
+  if (apps.length === 1 && snapshot && snapshot.employment && (snapshot.employment.employerName || snapshot.employment.occupation)) {
+    apps[0] = { ...apps[0], employment: { ...(apps[0].employment || {}), ...snapshot.employment } };
+  }
   const couple = apps.length > 1;
   const subj = couple ? "The clients are" : "The applicant is";
   const them = couple ? "The applicants" : "The applicant";
@@ -2371,17 +2376,25 @@ function buildRecInputFromCase(caseData, opts = {}) {
   const scenLenders = scenarios.map((s) => s.lender).filter(Boolean);
   const knownLender = (x) => x && scenLenders.some((L) => lk(L) === lk(x) || lk(L).includes(lk(x)) || lk(x).includes(lk(L)));
   const confirmedLender = (knownLender(rec.lender) ? rec.lender : "") || (knownLender(selLender.lender) ? selLender.lender : selLender.lender) || "";
-  // Pick the scenario for the confirmed lender; else recommended; else by loan purpose; else first.
-  const recScenario = (selLender.lender && validRate(selLender.rate) ? selLender : null)
-    || scenarios.find((s) => confirmedLender && lk(s.lender) === lk(confirmedLender))
-    || scenarios.find((s) => confirmedLender && (lk(s.lender).includes(lk(confirmedLender)) || lk(confirmedLender).includes(lk(s.lender))))
+  // Match the loan's OCCUPANCY so we never pick (or print) an "Investment" product on an owner-occupied loan.
+  const purposeMatch = (s) => (isInvestment ? /invest/i.test(s.product || "") : /\boo\b|owner|occup/i.test(s.product || ""));
+  const purposeContradicts = (s) => (isInvestment ? /\boo\b|owner|occup/i.test(s.product || "") : /invest/i.test(s.product || ""));
+  const lenderScens = scenarios.filter((s) => confirmedLender && (lk(s.lender) === lk(confirmedLender) || lk(s.lender).includes(lk(confirmedLender)) || lk(confirmedLender).includes(lk(s.lender))));
+  // Confirmed lender + matching occupancy > confirmed lender not contradicting > confirmed lender any >
+  // recommended > occupancy match across all > first.
+  const recScenario = (selLender.lender && validRate(selLender.rate) && !purposeContradicts(selLender) ? selLender : null)
+    || lenderScens.find(purposeMatch)
+    || lenderScens.find((s) => !purposeContradicts(s))
+    || lenderScens[0]
     || scenarios.find((s) => s.recommended || s.selected || s.chosen)
-    || scenarios.find((s) => (isInvestment ? /invest/i.test(s.product || "") : /\boo\b|owner|occup/i.test(s.product || "")))
+    || scenarios.find(purposeMatch)
     || scenarios[0] || {};
   // Lender/rate/product all come from the CHOSEN SCENARIO (internally consistent), not the noisy label-scrape.
   const lenderName = firstNonEmpty(recScenario.lender, knownLender(selLender.lender) ? selLender.lender : "");
   const rate = validRate(recScenario.rate) || validRate(selLender.rate) || validRate(loan.interestRate);
-  const product = firstNonEmpty(recScenario.product, selLender.product, loan.productPreference);
+  let product = firstNonEmpty(recScenario.product, selLender.product, loan.productPreference);
+  // Never let the product wording contradict the loan's occupancy (a stale "Investment" label on an OO loan).
+  if (product) product = isInvestment ? product.replace(/\bowner[- ]?occupied\b/gi, "Investment") : product.replace(/\binvestment\b/gi, "Owner-Occupied");
   const loanAmount = Number(loan.loanAmount) || numFrom(recScenario.loanAmount) || 0;
   const value = Number(prop.estimatedValue || prop.purchasePrice) || 0;
   const lvrNum = value ? Math.round((loanAmount / value) * 10000) / 100 : 0;

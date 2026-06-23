@@ -97,7 +97,7 @@ export function normaliseRec(input = {}) {
   const approvalWord = isPreApproval ? "PRE-APPROVAL" : "FORMAL APPROVAL";
   const propWord = isInvestment ? "AN INVESTMENT PROPERTY" : "AN OWNER-OCCUPIED PROPERTY";
   const action = /refinance/.test(purpose) ? "TO REFINANCE" : "TO PURCHASE";
-  const atLender = input.lenderName ? ` AT ${up(input.lenderName)}` : "";
+  const atLender = input.lenderName ? ` WITH ${up(input.lenderName)}` : "";
   const debts = (input.otherDebts || []).map((d) => ({
     lenderType: d.lenderType || "", balance: num(d.balance), repayment: num(d.repayment),
     repayFreq: d.repayFreq || "Month", rate: d.rate || "", security: d.security || "", action: d.action || ""
