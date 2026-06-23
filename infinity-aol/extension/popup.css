@@ -276,3 +276,31 @@ button.review-row:hover { background: #f3f8f5; box-shadow: none; }
 ::-webkit-scrollbar { width: 9px; }
 ::-webkit-scrollbar-thumb { background: #cdd8d1; border-radius: 9px; border: 2px solid var(--bg); }
 ::-webkit-scrollbar-thumb:hover { background: #b6c4bb; }
+
+/* ---------- Compact layout (fewer buttons, tighter spacing) ---------- */
+main { gap: 8px; padding: 11px; }
+header.compact { padding: 9px 12px 9px 40px; box-shadow: var(--shadow-sm); }
+header.compact::before { left: 11px; top: 9px; width: 18px; height: 18px; }
+header.compact h1 { font-size: 14px; }
+header.compact small { margin-top: 1px; font-size: 9.5px; }
+
+.case-picker { display: flex; align-items: center; gap: 7px; padding: 8px; }
+.case-picker select { flex: 1; min-height: 36px; }
+.icon-btn { flex: 0 0 auto; width: 36px; min-height: 36px; padding: 0; font-size: 16px; line-height: 1; background: #fff; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; cursor: pointer; }
+.icon-btn:hover { color: var(--brand); border-color: var(--brand); }
+
+.start-row button { min-height: 42px; }
+.docs-row { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.docs-row button { min-height: 34px; font-size: 12px; padding: 7px 4px; }
+.sync-btn { width: 100%; border-color: var(--teal); color: var(--teal); font-weight: 700; }
+
+details.more, details.advanced { background: var(--card); border: 1px solid var(--border); border-radius: 9px; padding: 4px 10px; box-shadow: var(--shadow-sm); }
+details.more > summary, details.advanced > summary { cursor: pointer; font-size: 11.5px; font-weight: 700; color: var(--muted); padding: 6px 0; list-style: none; }
+details.more > summary::-webkit-details-marker, details.advanced > summary::-webkit-details-marker { display: none; }
+details.more > summary::before, details.advanced > summary::before { content: "▸ "; color: var(--teal); }
+details.more[open] > summary::before, details.advanced[open] > summary::before { content: "▾ "; }
+details.more > *:not(summary), details.advanced > *:not(summary) { margin-top: 6px; }
+
+.review-rows:empty { display: none; }
+.review-rows { font-size: 11px; color: var(--muted); }
+.doc-history:empty { display: none; }
