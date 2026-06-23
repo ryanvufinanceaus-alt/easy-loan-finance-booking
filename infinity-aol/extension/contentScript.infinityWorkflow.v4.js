@@ -3223,17 +3223,44 @@
     // add-button, and never the nav link.
     var addBtn = allRaw("button").find(function (el) { return /statement of position/i.test(norm(textOf(el))) && /add-button/i.test(el.className || "") && el.getBoundingClientRect().width > 0; }) ||
       all("button,a").find(function (el) { return /statement of position/i.test(norm(textOf(el))) && isVisible(el) && textOf(el).length < 40 && !/tracking-list-item-link|list-item/i.test(el.className || ""); });
-    // Don't create a DUPLICATE SoP: if a SoP row already exists (an edit pencil in the SoP section),
-    // open THAT one to fill its date instead of clicking "+ Statement of position" again.
-    var sopHead = all("h1,h2,h3,h4,div,span").find(function (e) { return /^statement of position$/i.test(norm(textOf(e))) && textOf(e).length < 30 && isVisible(e); });
-    var reHead = all("h1,h2,h3,h4,div,span").find(function (e) { return /real estate asset/i.test(norm(textOf(e))) && textOf(e).length < 30 && isVisible(e); });
-    var sopTop = sopHead ? sopHead.getBoundingClientRect().bottom : -1e9;
-    var sopBot = reHead ? reHead.getBoundingClientRect().top : (sopTop + 420);
+    // AOL requires EXACTLY ONE Statement of Position per applicant. Each Start AOL was adding another row
+    // (the old pencil-by-geometry dedup missed the existing row), causing the "must be party to only one
+    // statement of position" error. Recompute the SoP section bounds + its delete (trash) icons fresh each
+    // pass (the list re-renders after a delete), and remove extras down to one.
+    function sopSection() {
+      var sh = all("h1,h2,h3,h4,div,span").find(function (e) { return /^statement of position$/i.test(norm(textOf(e))) && textOf(e).length < 30 && isVisible(e); });
+      var rh = all("h1,h2,h3,h4,div,span").find(function (e) { return /real estate asset/i.test(norm(textOf(e))) && textOf(e).length < 30 && isVisible(e); });
+      var top = sh ? sh.getBoundingClientRect().bottom : -1e9, bot = rh ? rh.getBoundingClientRect().top : (top + 460);
+      return { top: top, bot: bot };
+    }
+    function sopTrashes() {
+      var s = sopSection();
+      return all("i,span,a,button").filter(function (e) {
+        var r = e.getBoundingClientRect();
+        var c = (e.className || "") + " " + ((e.getAttribute && (e.getAttribute("title") || e.getAttribute("aria-label"))) || "");
+        return /trash|fa-trash|fa-times|\bdelete\b|remove/i.test(c) && isVisible(e) && r.width > 0 && r.top > s.top + 2 && r.top < s.bot;
+      });
+    }
+    var ddg = 0;
+    while (ddg++ < 10) {
+      var trs = sopTrashes();
+      if (trs.length <= 1) break;                 // keep one SoP, never delete the last
+      clickOnce(trs[trs.length - 1]);             // remove the most recent extra row
+      await waitForSettle(4000, 400);
+      var okDel = all("button,a").find(function (b) { return /^(ok|yes|delete|confirm|remove)$/i.test(norm(textOf(b))) && isVisible(b); });
+      if (okDel) { clickOnce(okDel); await sleep(700); }
+      if (ddg === 1) addFilled(result, "AOL: removed duplicate Statement of position row(s)");
+    }
+    // Re-evaluate AFTER dedup (layout shifted). Edit the existing row, or add ONLY if none exists.
+    var s2 = sopSection(), sopTop = s2.top, sopBot = s2.bot;
     var existingDate = allRaw('input[placeholder*="dd/mm" i]').filter(function (e) { return e.getBoundingClientRect().width > 0; })[0];
     var editPencil = all("i,span,a,button").find(function (e) { var r = e.getBoundingClientRect(); return /fa-pencil|pencil|fa-edit|\bedit\b/i.test(e.className || "") && isVisible(e) && r.width < 42 && r.top > sopTop && r.top < sopBot; });
+    var hasExistingSoP = sopTrashes().length > 0 || !!editPencil;
     if (!existingDate) {
-      if (editPencil) { clickOnce(editPencil); await waitForSettle(5000, 400); }      // edit the existing SoP row
-      else if (addBtn) { clickOnce(addBtn); await waitForSettle(5000, 400); }         // none yet → add one
+      if (hasExistingSoP) {
+        if (editPencil) { clickOnce(editPencil); await waitForSettle(5000, 400); }   // open the existing row to set its date
+        else { addFilled(result, "AOL Statement of position already present — not adding a duplicate."); return; }
+      } else if (addBtn) { clickOnce(addBtn); await waitForSettle(5000, 400); }       // none yet → add one
       else { addIssue(result, "Financials", "Statement of position", "could not open/add the SoP row — add it manually (date today, tick applicant, Has signed = Yes)"); return; }
     }
     // Date input: ONLY a visible dd/mm/yyyy input whose wrapper has the calendar button (= the SoP date).
