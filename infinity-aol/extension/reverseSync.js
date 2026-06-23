@@ -34,10 +34,6 @@
       if (!inf) { window._noInfinityTab = true; return; }   // can't read live data without an Infinity tab
       setSub("Scanning all Infinity tabs (read-only)…");
       const scraped = await chrome.tabs.sendMessage(inf.id, { type: "EF_FULL_CAPTURE", full: true }).catch(() => null);
-      // `swept` is only returned by the NEW content script. If absent, the Infinity tab still runs an OLD
-      // script — tell the broker to reload that tab (we do NOT auto-reload: reloading an Infinity account URL
-      // drops the account context and lands on the generic dashboard).
-      if (!scraped || scraped.swept === undefined) window._needTabReload = true;
       if (scraped && scraped.ok && scraped.snapshot) {
         await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/live-snapshot`, {
           method: "POST", headers: { "Content-Type": "application/json", "x-easyflow-broker-token": token },
@@ -61,8 +57,8 @@
       `<div style="margin:0 0 10px;padding:9px 12px;background:${bg};border:1px solid ${bd};border-radius:8px;color:${fg};font-size:12.5px;">${html}</div>`);
     if (window._noInfinityTab) {
       banner("#fef2f2", "#fecaca", "#991b1b", "⚠ No Infinity tab is open, so live data could not be read — this shows the last captured data. <b>Open the case in Infinity</b> (in a browser tab), then click Sync again.");
-    } else if (window._needTabReload) {
-      banner("#fff7ed", "#fed7aa", "#9a3412", "⚠ The Infinity tab is running an older version, so it did <b>not</b> scan all tabs. Reload the Infinity tab (press <b>F5</b>) and click Sync again.");
+    } else if (!diffs.length) {
+      banner("#f0fdf4", "#bbf7d0", "#166534", "✓ EasyFlow already matches the live Infinity/AOL data. If you just edited a tab in Infinity and want to capture it, open that tab in Infinity and click Sync again.");
     }
   }
 
