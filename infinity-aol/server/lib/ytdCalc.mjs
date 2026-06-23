@@ -1,13 +1,15 @@
 // YTD / Casual income calculator — Excel only (per broker). Rebuilds the broker's existing
-// "CASUAL CALC/YTD TEMPLATE" look (bordered box, merged banner, yellow input cells, accounting $ format,
-// live formulas) and polishes it with the Easy Loan Finance brand (navy/gold + logo) and a Base+OT total.
+// "CASUAL CALC/YTD TEMPLATE" look (bordered box, yellow input cells, accounting $ format, live formulas)
+// and polishes it with the Easy Loan Finance brand (navy/gold + logo), a Base+OT total, the base-income
+// working shown as a formula, and IFERROR guards so the sheet never shows #DIV/0! before the broker
+// completes the yellow payslip cells.
 
 import ExcelJS from "exceljs";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-const NAVY = "FF1E2430", GOLD = "FFD4A843", YELLOW = "FFFFF2B8", LIGHT = "FFF5F6F8", LINE = "FFCED3DA", WHITE = "FFFFFFFF";
+const NAVY = "FF1E2430", GOLD = "FFD4A843", YELLOW = "FFFFF2B8", LIGHT = "FFF5F6F8", LINE = "FFCED3DA", WHITE = "FFFFFFFF", INK = "FF222831", MUTE = "FF6B7280";
 const ACCT = '_-"$"* #,##0.00_-;-"$"* #,##0.00_-;_-"$"* "-"??_-;_-@_-';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 function loadLogo() {
@@ -67,81 +69,114 @@ export async function buildYtdXlsx(input = {}) {
   const wb = new ExcelJS.Workbook();
   wb.creator = "EasyFlow AI";
   const ws = wb.addWorksheet("YTD Calc", { views: [{ showGridLines: false }] });
-  [14, 12, 12, 10, 16, 12, 12, 10].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+  [15, 12, 12, 11, 17, 12, 12, 11].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
 
   const merge = (range) => ws.mergeCells(range);
   const fillOf = (cell, argb) => { cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb } }; };
+  function box(range) { const [a, b] = range.split(":"); const cc1 = ws.getCell(a), cc2 = ws.getCell(b || a); setOuterBox(ws, cc1.col, cc1.row, cc2.col, cc2.row, LINE, "thin"); }
   const label = (range, text, opts = {}) => {
     merge(range); const cell = ws.getCell(range.split(":")[0]);
     cell.value = text;
-    cell.font = { name: "Calibri", size: opts.size || 10.5, bold: opts.bold !== false, color: { argb: opts.color || NAVY } };
+    cell.font = { name: "Calibri", size: opts.size || 10, bold: opts.bold !== false, color: { argb: opts.color || NAVY } };
     cell.alignment = { horizontal: opts.h || "left", vertical: "middle", wrapText: true };
     if (opts.fill) fillOf(cell, opts.fill);
-    box(range);
+    if (opts.box !== false) box(range);
   };
   const value = (range, val, opts = {}) => {
     merge(range); const cell = ws.getCell(range.split(":")[0]);
     cell.value = val;
-    cell.font = { name: "Calibri", size: opts.size || 11, bold: !!opts.bold, color: { argb: opts.color || "FF222831" } };
+    cell.font = { name: "Calibri", size: opts.size || 11, bold: !!opts.bold, color: { argb: opts.color || INK } };
     cell.alignment = { horizontal: opts.h || "left", vertical: "middle" };
     if (opts.numFmt) cell.numFmt = opts.numFmt;
     fillOf(cell, opts.fill || WHITE);
-    box(range);
+    if (opts.box !== false) box(range);
   };
-  function box(range) { ws.getCell(range.split(":")[0]); const [a, b] = range.split(":"); const cc1 = ws.getCell(a), cc2 = ws.getCell(b || a); setOuterBox(ws, cc1.col, cc1.row, cc2.col, cc2.row, LINE, "thin"); }
 
-  // ---- Banner ----
-  merge("A1:H2");
-  const banner = ws.getCell("A1");
-  banner.value = "EASY LOAN FINANCE   ·   CASUAL / YTD INCOME CALCULATION";
-  banner.font = { name: "Calibri", size: 15, bold: true, color: { argb: NAVY } };
-  banner.alignment = { horizontal: "center", vertical: "middle" };
-  fillOf(banner, GOLD);
-  ws.getRow(1).height = 20; ws.getRow(2).height = 18;
-  if (LOGO) { try { const id = wb.addImage({ buffer: LOGO, extension: "png" }); ws.addImage(id, { tl: { col: 0.12, row: 0.18 }, ext: { width: 38, height: 38 } }); } catch { /* skip */ } }
+  // ---- Header band (navy) + logo + gold rule ----
+  merge("A1:H3");
+  const band = ws.getCell("A1");
+  band.value = "EASY LOAN FINANCE";
+  band.font = { name: "Calibri", size: 18, bold: true, color: { argb: WHITE } };
+  band.alignment = { horizontal: "center", vertical: "middle" };
+  fillOf(band, NAVY);
+  ws.getRow(1).height = 16; ws.getRow(2).height = 18; ws.getRow(3).height = 12;
+  merge("A4:H4");
+  const sub = ws.getCell("A4");
+  sub.value = "CASUAL / YTD INCOME CALCULATION";
+  sub.font = { name: "Calibri", size: 11, bold: true, color: { argb: NAVY } };
+  sub.alignment = { horizontal: "center", vertical: "middle" };
+  fillOf(sub, GOLD);
+  ws.getRow(4).height = 16;
+  if (LOGO) { try { const id = wb.addImage({ buffer: LOGO, extension: "png" }); ws.addImage(id, { tl: { col: 0.15, row: 0.25 }, ext: { width: 46, height: 46 } }); } catch { /* skip */ } }
 
-  // ---- Client ----
-  label("A3:B3", "CLIENT NAME", { h: "left" });
-  value("C3:H3", c.clientName, { h: "left", bold: true });
-  ws.getRow(3).height = 18;
+  // ---- Client + base-income working ----
+  label("A6:B6", "CLIENT", { h: "left" });
+  value("C6:H6", c.clientName, { h: "left", bold: true });
+  const baseAmt = num(input.baseAmount), mult = num(input.baseMultiplier) || 1, freq = input.baseFrequency || "Annually";
+  label("A7:B7", "BASE INCOME", { h: "left" });
+  const working = baseAmt && mult > 1
+    ? `$${baseAmt.toLocaleString("en-AU", { minimumFractionDigits: 2 })} × ${mult} (${freq.toLowerCase()})  =  $${round2(c.base).toLocaleString("en-AU", { minimumFractionDigits: 2 })} p.a.`
+    : (c.base ? `$${round2(c.base).toLocaleString("en-AU", { minimumFractionDigits: 2 })} p.a.` : "(captured from Infinity)");
+  value("C7:H7", working, { h: "left", color: MUTE });
+  ws.getRow(6).height = 18; ws.getRow(7).height = 16;
+
+  // ---- Instruction strip ----
+  label("A9:H9", "Complete the YELLOW cells from the most recent payslip — the annualised figures update automatically.", { color: MUTE, bold: false, h: "center", fill: LIGHT, size: 9.5 });
+  ws.getRow(9).height = 16;
 
   // ---- Inputs (yellow) + computed ----
-  ws.getRow(5).height = 26; ws.getRow(8).height = 26; ws.getRow(11).height = 18; ws.getRow(14).height = 18;
-  label("A5:D5", "First Pay Day / Start of Financial Year");
-  label("E5:H5", "YTD Income on Last Payslip");
-  if (c.first) value("A6:D6", c.first, { numFmt: "dd/mm/yyyy", fill: YELLOW, h: "center", bold: true });
-  else value("A6:D6", "", { fill: YELLOW });
-  value("E6:H6", round2(c.netYtd), { numFmt: ACCT, fill: YELLOW, bold: true });
+  const R = { fd: 11, lp: 14, days: 17, base: 20 };
+  ws.getRow(R.fd + 1).height = 24; ws.getRow(R.lp + 1).height = 24; ws.getRow(R.days + 1).height = 22; ws.getRow(R.base + 1).height = 22;
 
-  label("A8:D8", "Last Pay Day as per Payslip");
-  label("E8:H8", "Income per Day");
-  if (c.last) value("A9:D9", c.last, { numFmt: "dd/mm/yyyy", fill: YELLOW, h: "center", bold: true });
-  else value("A9:D9", "", { fill: YELLOW });
-  value("E9:H9", { formula: "E6/A12" }, { numFmt: ACCT });
+  label(`A${R.fd}:D${R.fd}`, "First Pay Day / Start of Financial Year");
+  label(`E${R.fd}:H${R.fd}`, "YTD Income on Last Payslip");
+  if (c.first) value(`A${R.fd + 1}:D${R.fd + 1}`, c.first, { numFmt: "dd/mm/yyyy", fill: YELLOW, h: "center", bold: true });
+  else value(`A${R.fd + 1}:D${R.fd + 1}`, "", { fill: YELLOW });
+  value(`E${R.fd + 1}:H${R.fd + 1}`, c.netYtd ? round2(c.netYtd) : "", { numFmt: ACCT, fill: YELLOW, bold: true });
 
-  label("A11:D11", "No. of Days Between (DAYS360)");
-  label("E11:H11", "Yearly Income (annualised)");
-  value("A12:D12", { formula: "DAYS360(A6,A9)" }, { h: "center", bold: true });
-  value("E12:H12", { formula: "E9*365" }, { numFmt: ACCT, bold: true });
+  label(`A${R.lp}:D${R.lp}`, "Last Pay Day as per Payslip");
+  label(`E${R.lp}:H${R.lp}`, "Income per Day");
+  if (c.last) value(`A${R.lp + 1}:D${R.lp + 1}`, c.last, { numFmt: "dd/mm/yyyy", fill: YELLOW, h: "center", bold: true });
+  else value(`A${R.lp + 1}:D${R.lp + 1}`, "", { fill: YELLOW });
+  value(`E${R.lp + 1}:H${R.lp + 1}`, { formula: `IFERROR(E${R.fd + 1}/A${R.days + 1},0)` }, { numFmt: ACCT });
 
-  label("A14:D14", "Base Income (Annually)");
-  label("E14:H14", "Over Time / Casual Loading (Annually)");
-  value("A15:D15", round2(c.base), { numFmt: ACCT, fill: YELLOW, bold: true });
-  value("E15:H15", { formula: "E12-A15" }, { numFmt: ACCT });
+  label(`A${R.days}:D${R.days}`, "No. of Days Between (DAYS360)");
+  label(`E${R.days}:H${R.days}`, "Annualised Income");
+  value(`A${R.days + 1}:D${R.days + 1}`, { formula: `IFERROR(DAYS360(A${R.fd + 1},A${R.lp + 1}),0)` }, { h: "center", bold: true });
+  // Falls back to the captured base annual when the payslip cells are still blank, so the sheet never reads $0.
+  value(`E${R.days + 1}:H${R.days + 1}`, { formula: `IF(A${R.days + 1}>0,E${R.lp + 1}*365,A${R.base + 1})` }, { numFmt: ACCT, bold: true, fill: LIGHT });
+
+  label(`A${R.base}:D${R.base}`, "Base Income (Annually)");
+  label(`E${R.base}:H${R.base}`, "Over Time / Casual Loading (Annually)");
+  value(`A${R.base + 1}:D${R.base + 1}`, round2(c.base), { numFmt: ACCT, fill: YELLOW, bold: true });
+  value(`E${R.base + 1}:H${R.base + 1}`, { formula: `MAX(E${R.days + 1}-A${R.base + 1},0)` }, { numFmt: ACCT });
 
   // ---- Overtime shading table (Base + OT) ----
-  ws.getRow(17).height = 18;
-  label("A17:D17", "OVERTIME SHADING", { color: WHITE, fill: NAVY, h: "center" });
-  label("E17:F17", "Overtime (p.a.)", { color: WHITE, fill: NAVY, h: "center" });
-  label("G17:H17", "Total (Base + OT)", { color: WHITE, fill: NAVY, h: "center" });
-  const weeks = [[18, "40 WEEKS", "E15/52*40"], [19, "46 WEEKS", "E15/52*46"], [20, "48 WEEKS", "E15/52*48"], [21, "52 WEEKS", "E15"]];
-  for (const [row, lbl, otFormula] of weeks) {
-    const highlight = row === 21;
+  const H = R.base + 3;
+  ws.getRow(H).height = 18;
+  label(`A${H}:D${H}`, "OVERTIME SHADING", { color: WHITE, fill: NAVY, h: "center" });
+  label(`E${H}:F${H}`, "Overtime (p.a.)", { color: WHITE, fill: NAVY, h: "center" });
+  label(`G${H}:H${H}`, "Total (Base + OT)", { color: WHITE, fill: NAVY, h: "center" });
+  const otCell = `E${R.base + 1}`, baseCell = `A${R.base + 1}`;
+  const weeks = [["40 WEEKS", `${otCell}/52*40`], ["46 WEEKS", `${otCell}/52*46`], ["48 WEEKS", `${otCell}/52*48`], ["52 WEEKS", otCell]];
+  weeks.forEach(([lbl, otFormula], i) => {
+    const row = H + 1 + i;
+    const highlight = i === weeks.length - 1;
     label(`A${row}:D${row}`, lbl, { bold: true, fill: highlight ? GOLD : LIGHT });
     value(`E${row}:F${row}`, { formula: otFormula }, { numFmt: ACCT, fill: highlight ? GOLD : WHITE, bold: highlight });
-    value(`G${row}:H${row}`, { formula: `A15+${otFormula}` }, { numFmt: ACCT, fill: highlight ? GOLD : LIGHT, bold: true });
-  }
+    value(`G${row}:H${row}`, { formula: `${baseCell}+${otFormula}` }, { numFmt: ACCT, fill: highlight ? GOLD : LIGHT, bold: true });
+  });
+  const lastRow = H + weeks.length;
 
-  setOuterBox(ws, 1, 1, 8, 21, NAVY, "medium");
+  // ---- Footer ----
+  const fr = lastRow + 2;
+  merge(`A${fr}:H${fr}`);
+  const foot = ws.getCell(`A${fr}`);
+  foot.value = "Easy Loan Finance  ·  Prepared with EasyFlow AI  ·  Figures are indicative and subject to lender assessment.";
+  foot.font = { name: "Calibri", size: 8.5, italic: true, color: { argb: MUTE } };
+  foot.alignment = { horizontal: "center", vertical: "middle" };
+  ws.getRow(fr).height = 14;
+
+  setOuterBox(ws, 1, 1, 8, lastRow, NAVY, "medium");
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

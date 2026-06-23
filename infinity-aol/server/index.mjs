@@ -2261,52 +2261,59 @@ function buildRecInputFromCase(caseData, opts = {}) {
   // priority: LIVE scrape of that tab > confirmed selectedLender > the captured lenderScenarios > case.
   const loan = caseData?.loan || {}, prop = caseData?.property || {};
   const selLender = getCapture(caseData?.id, "selectedLender") || {};
-  // The Recommendation tab's CONFIRMED lender is the source of truth for which scenario to use.
   const rec = (snapshot && snapshot.recommendation) || {};
   const lk = (s) => String(s || "").toLowerCase().replace(/[^a-z]/g, "");
-  const confirmedLender = rec.lender || selLender.lender || "";
-  // Scenarios (lender/product/rate) from the live Preferred-Features/Scenarios scrape, else captured lenderScenarios.
-  const scenarios = (snapshot && Array.isArray(snapshot.scenarios) && snapshot.scenarios.length) ? snapshot.scenarios : (getCapture(caseData?.id, "lenderScenarios") || []);
-  // Pick the scenario for the CONFIRMED lender; else recommended/selected; else by loan purpose; else first.
-  const recScenario = (selLender.lender ? selLender : null)
-    || (Array.isArray(scenarios) && scenarios.length
-      ? (scenarios.find((s) => confirmedLender && lk(s.lender) === lk(confirmedLender))
-        || scenarios.find((s) => confirmedLender && (lk(s.lender).includes(lk(confirmedLender)) || lk(confirmedLender).includes(lk(s.lender))))
-        || scenarios.find((s) => s.recommended || s.selected || s.chosen)
-        || scenarios.find((s) => (isInvestment ? /invest/i.test(s.product || "") : /\boo\b|owner|occup/i.test(s.product || "")))
-        || scenarios[0])
-      : null)
-    || {};
   const cleanRate = (x) => String(x == null ? "" : x).replace(/p\.?\s*a\.?/gi, "").replace(/[%\s]/g, "").trim();
+  const validRate = (x) => { const n = cleanRate(x); return /^\d{1,2}(\.\d{1,3})?$/.test(n) ? n : ""; };
   const numFrom = (x) => Number(String(x == null ? "" : x).replace(/[^0-9.]/g, "")) || 0;
   const firstNonEmpty = (...xs) => xs.find((x) => x != null && String(x).trim() !== "") || "";
-
+  // Scenarios (lender/product/rate) from the live Preferred-Features/Scenarios scrape, else captured lenderScenarios.
+  const scenarios = (snapshot && Array.isArray(snapshot.scenarios) && snapshot.scenarios.length) ? snapshot.scenarios : (getCapture(caseData?.id, "lenderScenarios") || []);
+  // Only trust the Recommendation "confirmed lender" if it's actually one of the scenario lenders (filters out
+  // stray words the label-scrape can grab off other tabs, e.g. "Limit"/"Ownership").
+  const scenLenders = scenarios.map((s) => s.lender).filter(Boolean);
+  const knownLender = (x) => x && scenLenders.some((L) => lk(L) === lk(x) || lk(L).includes(lk(x)) || lk(x).includes(lk(L)));
+  const confirmedLender = (knownLender(rec.lender) ? rec.lender : "") || (knownLender(selLender.lender) ? selLender.lender : selLender.lender) || "";
+  // Pick the scenario for the confirmed lender; else recommended; else by loan purpose; else first.
+  const recScenario = (selLender.lender && validRate(selLender.rate) ? selLender : null)
+    || scenarios.find((s) => confirmedLender && lk(s.lender) === lk(confirmedLender))
+    || scenarios.find((s) => confirmedLender && (lk(s.lender).includes(lk(confirmedLender)) || lk(confirmedLender).includes(lk(s.lender))))
+    || scenarios.find((s) => s.recommended || s.selected || s.chosen)
+    || scenarios.find((s) => (isInvestment ? /invest/i.test(s.product || "") : /\boo\b|owner|occup/i.test(s.product || "")))
+    || scenarios[0] || {};
+  // Lender/rate/product all come from the CHOSEN SCENARIO (internally consistent), not the noisy label-scrape.
+  const lenderName = firstNonEmpty(recScenario.lender, knownLender(selLender.lender) ? selLender.lender : "");
+  const rate = validRate(recScenario.rate) || validRate(selLender.rate) || validRate(loan.interestRate);
+  const product = firstNonEmpty(recScenario.product, selLender.product, loan.productPreference);
+  const loanAmount = Number(loan.loanAmount) || numFrom(recScenario.loanAmount) || 0;
+  const value = Number(prop.estimatedValue || prop.purchasePrice) || 0;
+  const lvrNum = value ? Math.round((loanAmount / value) * 10000) / 100 : 0;
+  const term = Number(loan.loanTermYears) || numFrom(recScenario.term) || 30;
   const preApproval = loan.preApproval === true || /pre[- ]?approval/i.test(`${loan.applicationType || ""} ${caseData?.selectedTemplate?.title || ""}`);
-  const lenderName = firstNonEmpty(rec.lender, selLender.lender, recScenario.lender);
-  const rateRaw = cleanRate(firstNonEmpty(rec.rate, selLender.rate, recScenario.rate, loan.interestRate));
-  const product = firstNonEmpty(rec.product, selLender.product, recScenario.product, loan.productPreference);
-  const loanAmount = numFrom(rec.loanAmount) || Number(loan.loanAmount) || numFrom(recScenario.loanAmount) || 0;
-  const value = Number(prop.estimatedValue || prop.purchasePrice) || numFrom(rec.value) || 0;
-  const lvrNum = rec.lvr ? numFrom(rec.lvr) : (value ? Math.round((loanAmount / value) * 10000) / 100 : 0);
-  const rate = rateRaw; // numeric string e.g. "5.82"; formatted as "X% p.a." below
-  const term = parseInt(rec.term, 10) || Number(loan.loanTermYears) || numFrom(recScenario.term) || 30;
 
   // INCOME — PREFER the income captured LIVE from Infinity/AOL (the broker's latest edits are the source of
   // truth; the loan-form employment is the customer's original and may be stale). Fall back to the case only
   // if nothing was captured. (liveFin computed at the top.)
   const liveIncomes = (liveFin.incomes || []).filter((i) => Number(i.amount));
-  const annualise = (i) => {
-    const a = Number(i.amount) || 0, f = String(i.frequency || "Annually").toLowerCase();
-    if (/fortnight/.test(f)) return a * 26;
-    if (/week/.test(f)) return a * 52;
-    if (/month/.test(f)) return a * 12;
-    return a;
+  const freqMult = (f) => {
+    f = String(f || "Annually").toLowerCase();
+    if (/fortnight/.test(f)) return { n: 26, label: "fortnightly" };
+    if (/week/.test(f)) return { n: 52, label: "weekly" };
+    if (/month/.test(f)) return { n: 12, label: "monthly" };
+    return { n: 1, label: "annual" };
+  };
+  const annualise = (i) => (Number(i.amount) || 0) * freqMult(i.frequency).n;
+  // Show the working, like a payslip extrapolation: "$3,251 × 26 (fortnightly) = $84,543 p.a."
+  const annualiseFormula = (i) => {
+    const a = Number(i.amount) || 0, m = freqMult(i.frequency);
+    if (m.n === 1) return `${docMoney(a)} p.a.`;
+    return `${docMoney(a)} × ${m.n} (${m.label}) = ${docMoney(a * m.n)} p.a.`;
   };
   let incomeDetails;
   if (liveIncomes.length) {
     const total = liveIncomes.reduce((s, i) => s + annualise(i), 0);
     incomeDetails = "Income has been verified from the most recent payslips / financials provided, as currently recorded in Infinity and AOL, and supports servicing:\n"
-      + liveIncomes.map((i) => `• ${i.type}${i.ownership ? ` (${i.ownership})` : ""}: ${docMoney(annualise(i))} p.a.`).join("\n")
+      + liveIncomes.map((i) => `• ${i.type}${i.ownership ? ` (${i.ownership})` : ""}: ${annualiseFormula(i)}`).join("\n")
       + (total ? `\n\nTotal gross income adopted for servicing: ${docMoney(total)} p.a.` : "");
   } else {
     const totalIncome = apps.reduce((s, a) => s + applicantTotalIncome(a), 0);
@@ -2391,11 +2398,16 @@ function buildYtdInputFromCase(caseData) {
   const snapshot = getCapture(caseData?.id, "liveCaseSnapshot");
   const liveFin = (snapshot && snapshot.financials) || getCapture(caseData?.id, "infinityFinancials") || {};
   const baseInc = (liveFin.incomes || []).find((i) => /base|salary|wage|pay\s?as|payg/i.test(i.type || ""));
-  const annual = baseInc ? (() => { const a = Number(baseInc.amount) || 0, f = String(baseInc.frequency || "Annually").toLowerCase(); return /fortnight/.test(f) ? a * 26 : /week/.test(f) ? a * 52 : /month/.test(f) ? a * 12 : a; })() : 0;
+  const freq = baseInc ? String(baseInc.frequency || "Annually") : "";
+  const fl = freq.toLowerCase();
+  const mult = /fortnight/.test(fl) ? 26 : /week/.test(fl) ? 52 : /month/.test(fl) ? 12 : 1;
+  const baseAmount = baseInc ? Number(baseInc.amount) || 0 : 0;
+  const annual = baseAmount * mult;
   const liveOwner = baseInc && baseInc.ownership ? baseInc.ownership : "";
   return {
     clientName: liveOwner || applicantFullName(primary) || apps.map(applicantFullName).filter(Boolean).join(" & "),
     baseAnnual: annual || primary.income?.baseAnnual || 0,
+    baseAmount, baseFrequency: freq || "Annually", baseMultiplier: mult,
     firstPayDay: "", lastPayDay: "", ytdIncome: 0
   };
 }

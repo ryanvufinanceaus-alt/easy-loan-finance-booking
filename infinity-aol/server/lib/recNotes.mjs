@@ -192,23 +192,44 @@ export function buildRecPdf(input = {}) {
     y = fy + 8;
 
     // ---- Narrative sections ----
+    let secNo = 0;
     const sectionHeading = (label) => {
-      if (doc.y > doc.page.height - 90) doc.addPage({ margin: 0 }), (doc.y = 48);
+      if (doc.y > doc.page.height - 96) doc.addPage({ margin: 0 }), (doc.y = 48);
+      secNo += 1;
       const yy = doc.y;
-      doc.fillColor(navy).font("Helvetica-Bold").fontSize(10.5).text(label, M, yy);
-      doc.moveTo(M, doc.y + 1).lineTo(M + 46, doc.y + 1).lineWidth(2).strokeColor(gold).stroke();
-      doc.moveDown(0.35);
+      // gold number badge + navy heading + full-width hairline rule
+      doc.rect(M, yy, 16, 14).fill(gold);
+      doc.fillColor(navy).font("Helvetica-Bold").fontSize(8.5).text(String(secNo).padStart(2, "0"), M, yy + 3.5, { width: 16, align: "center" });
+      doc.fillColor(navy).font("Helvetica-Bold").fontSize(10.5).text(label, M + 24, yy + 1.5);
+      const ry = yy + 17;
+      doc.moveTo(M, ry).lineTo(M + CW, ry).lineWidth(0.6).strokeColor(LINE).stroke();
+      doc.y = ry + 5;
+    };
+    // Render a body that may mix paragraphs and "• " bullet lines (bullets indented, never justified).
+    const renderBody = (body) => {
+      const lines = String(body).trim().split(/\n+/).map((s) => s.trim()).filter(Boolean);
+      for (const ln of lines) {
+        if (doc.y > doc.page.height - 60) doc.addPage({ margin: 0 }), (doc.y = 48);
+        if (/^[•·-]\s*/.test(ln)) {
+          const txt = ln.replace(/^[•·-]\s*/, "");
+          doc.fillColor(gold).font("Helvetica-Bold").fontSize(9.6).text("•", M + 4, doc.y, { continued: false, width: 10 });
+          const by = doc.y;
+          doc.fillColor(INK).font("Helvetica").fontSize(9.6).text(safe(txt), M + 18, by, { width: CW - 18, align: "left", lineGap: 2 });
+        } else {
+          doc.fillColor(INK).font("Helvetica").fontSize(9.6).text(safe(ln), M, doc.y, { width: CW, align: "justify", lineGap: 2 });
+        }
+        doc.moveDown(0.3);
+      }
     };
     doc.y = y;
     for (const [label, body] of r.sections) {
       sectionHeading(label);
-      doc.fillColor(INK).font("Helvetica").fontSize(9.6).text(safe(String(body).trim()), M, doc.y, { width: CW, align: "justify", lineGap: 2 });
-      doc.moveDown(0.7);
+      renderBody(body);
+      doc.moveDown(0.55);
     }
     sectionHeading("OTHER DEBTS");
-    doc.fillColor(INK).font("Helvetica").fontSize(9.6);
-    if (r.debts.length && r.debtsLead) doc.text(safe(r.debtsLead), M, doc.y, { width: CW, lineGap: 2 });
-    debtsLines(r.debts, r.noDebtsNote).forEach((ln) => doc.text((r.debts.length ? "•  " : "") + safe(ln), M, doc.y, { width: CW, lineGap: 2 }));
+    if (r.debts.length && r.debtsLead) { doc.fillColor(INK).font("Helvetica").fontSize(9.6).text(safe(r.debtsLead), M, doc.y, { width: CW, lineGap: 2 }); doc.moveDown(0.3); }
+    renderBody(debtsLines(r.debts, r.noDebtsNote).map((ln) => (r.debts.length ? "• " : "") + ln).join("\n"));
 
     // ---- Sign-off ----
     doc.moveDown(1.2);
@@ -276,7 +297,13 @@ export async function buildRecDocx(input = {}) {
     rows: factRows
   });
 
-  const heading = (label) => new Paragraph({ spacing: { before: 200, after: 60 }, border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: gold } }, children: [new TextRun({ text: label, bold: true, color: navy, size: 21 })] });
+  let secNo = 0;
+  const heading = (label) => { secNo += 1; return new Paragraph({ spacing: { before: 220, after: 70 }, border: { bottom: { style: BorderStyle.SINGLE, size: 10, color: "E2E5EA" } }, children: [new TextRun({ text: String(secNo).padStart(2, "0") + "  ", bold: true, color: gold, size: 21 }), new TextRun({ text: label, bold: true, color: navy, size: 21 })] }); };
+  // Render a body that may mix paragraphs and "• " bullet lines.
+  const bodyParas = (body) => String(body).trim().split(/\n+/).map((s) => s.trim()).filter(Boolean).map((ln) => {
+    if (/^[•·-]\s*/.test(ln)) return new Paragraph({ bullet: { level: 0 }, spacing: { after: 60 }, children: [new TextRun({ text: ln.replace(/^[•·-]\s*/, ""), color: ink, size: 19 })] });
+    return P(ln, { align: AlignmentType.JUSTIFIED });
+  });
 
   const kids = [
     headerBar,
@@ -288,7 +315,7 @@ export async function buildRecDocx(input = {}) {
   ];
   for (const [label, body] of r.sections) {
     kids.push(heading(label));
-    String(body).trim().split(/\n+/).forEach((ln) => kids.push(P(ln, { align: AlignmentType.JUSTIFIED })));
+    bodyParas(body).forEach((p) => kids.push(p));
   }
   kids.push(heading("OTHER DEBTS"));
   if (r.debts.length && r.debtsLead) kids.push(P(r.debtsLead));
