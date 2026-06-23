@@ -4315,6 +4315,14 @@
   // One capture pass: scrape the current page, then (if the SOCA tab bar is present) click the Recommendation
   // + Preferred Loan Features tabs and scrape each — so a single generate on the loan page grabs the selected
   // lender + rate + scenarios. Read-only (clicking tabs doesn't change data).
+  // Navigate to an account-level tab. clickMainTab works on account pages, but on a SOCA loan page those tabs
+  // aren't shown, so fall back to the account hash route (#!/details, #!/financials, #!/loans) — read-only.
+  async function efGotoAccountTab(label, frag, scratch) {
+    try { if (findMainTab(label) && await clickMainTab(label, scratch)) { await sleep(700); return true; } } catch (e) { /* hash fallback */ }
+    try { location.hash = "#!/" + frag; await waitForRoute("/" + frag, null, 7000); } catch (e) { /* continue */ }
+    await sleep(1100);
+    return true;
+  }
   async function efFullCapture(full) {
     var merged = efScrapeCurrent();
     var scratch = { issues: [], actions: [] };
@@ -4330,19 +4338,19 @@
         }
       }
     }
-    // Sweep the account-level tabs. With `full` (the Sync button) ALWAYS visit each so the latest live values
-    // are read; otherwise only visit a tab when its data is still missing (faster for doc generation).
+    // Sweep the account-level tabs (via hash so it works even from inside a SOCA loan page). With `full` (the
+    // Sync button) ALWAYS visit each for the latest live values; else only when a tab's data is still missing.
     // CLIENT DETAILS — applicants / employment / residency / address.
     if (full || !((merged.profile || {}).residencyStatus || (merged.employment && merged.employment.occupation) || (merged.applicants || []).length)) {
-      try { if (findMainTab("Client Details") && await clickMainTab("Client Details", scratch)) { await sleep(900); merged = efMergeSnap(merged, scrapeInfinityClientDetails()); } } catch (e) { /* non-fatal */ }
+      try { await efGotoAccountTab("Client Details", "details", scratch); merged = efMergeSnap(merged, scrapeInfinityClientDetails()); } catch (e) { /* non-fatal */ }
     }
     // FINANCIALS — income / assets / liabilities / expenses.
     if (full || !(merged.financials && (merged.financials.incomes || []).length)) {
-      try { if (findMainTab("Financials") && await clickMainTab("Financials", scratch)) { await sleep(900); var fin = scrapeInfinityFinancials(); if (fin && ((fin.incomes || []).length || (fin.assets || []).length || (fin.expenses || []).length)) merged.financials = fin; } } catch (e) { /* non-fatal */ }
+      try { await efGotoAccountTab("Financials", "financials", scratch); var fin = scrapeInfinityFinancials(); if (fin && ((fin.incomes || []).length || (fin.assets || []).length || (fin.expenses || []).length)) merged.financials = fin; } catch (e) { /* non-fatal */ }
     }
     // LOANS & PRODUCTS — repayment type / frequency / features (when not already read off the SOCA features tab).
     if (full || !((merged.loanPrefs || {}).repaymentType || (merged.loanPrefs || {}).repaymentFrequency)) {
-      try { if (findMainTab("Loans & Products") && await clickMainTab("Loans & Products", scratch)) { await sleep(900); merged = efMergeSnap(merged, scrapeInfinityClientDetails()); } } catch (e) { /* non-fatal */ }
+      try { await efGotoAccountTab("Loans & Products", "loans", scratch); merged = efMergeSnap(merged, scrapeInfinityClientDetails()); } catch (e) { /* non-fatal */ }
     }
     return merged;
   }
