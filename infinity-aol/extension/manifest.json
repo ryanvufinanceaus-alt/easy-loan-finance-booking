@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
   "name": "EasyFlow AI Extension",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Section-by-section AOL autofill from EasyFlow AI prepared payloads.",
   "permissions": ["activeTab", "scripting", "storage"],
+  "background": { "service_worker": "background.js" },
   "host_permissions": [
     "http://127.0.0.1:8797/*",
     "http://localhost:8797/*",
@@ -12,6 +13,8 @@
     "https://booking.easyloanfinance.com.au/*",
     "https://*.easyloanfinance.com.au/*",
     "https://*.onrender.com/*",
+    "https://infynity.com.au/*",
+    "https://*.infynity.com.au/*",
     "https://infinity.com.au/*",
     "https://*.infinity.com.au/*",
     "https://*.applyonline.com.au/*"
@@ -34,15 +37,25 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["contentScript.js"],
+      "matches": [
+        "https://*.infynity.com.au/*",
+        "https://infynity.com.au/*",
+        "https://*.infinity.com.au/*",
+        "https://infinity.com.au/*",
+        "https://*.applyonline.com.au/*"
+      ],
+      "js": ["contentScript.infinityWorkflow.v4.js"],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
       "resources": ["mapping/infinity-aol-v1.json"],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "https://*.infynity.com.au/*",
+        "https://*.infinity.com.au/*",
+        "https://*.applyonline.com.au/*"
+      ]
     }
   ]
 }

@@ -4323,34 +4323,20 @@
     return false;
   }
   async function efFullCapture(full) {
+    // Read the CURRENT page only (plus, on a SOCA loan page, the light hash-based Recommendation/Features hops
+    // for lender/rate). We do NOT walk the account tabs — that froze on slow SPA loads and could drop the
+    // account context. The broker reads each tab simply by being on it: navigate to Client Details / Financials
+    // / Loans & Products and click Sync, and that page's data is captured (works on any extension version).
     var merged = efScrapeCurrent();
-    var scratch = { issues: [], actions: [] };
-    // If on a SOCA loan page, hop the hash to recommendation (selected lender + rate) then features (scenarios
-    // + repayment/features). Read-only (clicking tabs/hash doesn't change any data).
     if (/\/loans\/soca\//.test(location.hash || "")) {
       var sections = ["recommendation", "features"];
       for (var i = 0; i < sections.length; i += 1) {
         if (gotoSocaTab(sections[i])) {
           try { await waitForRoute("/soca/" + sections[i], null, 8000); } catch (e) { /* continue */ }
-          await sleep(1300);
+          await sleep(1100);
           merged = efMergeSnap(merged, efScrapeCurrent());
         }
       }
-    }
-    // Visit an account tab ONLY when its data isn't already captured (keeps it fast + can't freeze on a long
-    // 3-tab walk). `full` no longer forces a re-walk — the current page is always scraped fresh above, and the
-    // rest comes from data captured earlier (Start / previous visits). Each nav is a single tab click.
-    // CLIENT DETAILS — applicants / employment / residency / address. Only scrape if we actually got there.
-    if (!((merged.profile || {}).residencyStatus || (merged.employment && merged.employment.occupation) || (merged.applicants || []).length)) {
-      try { if (await efGotoAccountTab("Client Details", "details", scratch)) merged = efMergeSnap(merged, scrapeInfinityClientDetails()); } catch (e) { /* non-fatal */ }
-    }
-    // FINANCIALS — income / assets / liabilities / expenses.
-    if (!(merged.financials && (merged.financials.incomes || []).length)) {
-      try { if (await efGotoAccountTab("Financials", "financials", scratch)) { var fin = scrapeInfinityFinancials(); if (fin && ((fin.incomes || []).length || (fin.assets || []).length || (fin.expenses || []).length)) merged.financials = fin; } } catch (e) { /* non-fatal */ }
-    }
-    // LOANS & PRODUCTS — repayment type / frequency / features (when not already read off the SOCA features tab).
-    if (!((merged.loanPrefs || {}).repaymentType || (merged.loanPrefs || {}).repaymentFrequency)) {
-      try { if (await efGotoAccountTab("Loans & Products", "loans", scratch)) merged = efMergeSnap(merged, scrapeInfinityClientDetails()); } catch (e) { /* non-fatal */ }
     }
     return merged;
   }

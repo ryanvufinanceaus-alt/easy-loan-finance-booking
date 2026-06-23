@@ -245,11 +245,16 @@ button.review-row:hover { background: #f3f8f5; box-shadow: none; }
   font-size: 11.5px;
 }
 .reverse-sync .rs-title { font-weight: 800; color: #0d9488; margin-bottom: 6px; }
-.reverse-sync .rs-row { display: flex; align-items: flex-start; gap: 6px; padding: 4px 0; border-top: 1px solid #eef0f3; cursor: pointer; }
-.reverse-sync .rs-lbl { flex: 0 0 42%; color: var(--ink, #222831); }
-.reverse-sync .rs-vals { flex: 1; color: var(--muted); }
+.reverse-sync .rs-list { max-height: 230px; overflow-y: auto; overflow-x: hidden; }
+.reverse-sync .rs-row { display: flex; align-items: flex-start; gap: 6px; padding: 5px 0; border-top: 1px solid #eef0f3; cursor: pointer; }
+.reverse-sync .rs-row:first-child { border-top: none; }
+.reverse-sync .rs-ck { margin-top: 1px; flex: 0 0 auto; }
+.reverse-sync .rs-lbl { flex: 0 0 40%; font-weight: 700; color: var(--text); word-break: break-word; }
+.reverse-sync .rs-vals { flex: 1; color: var(--muted); word-break: break-word; line-height: 1.35; }
+.reverse-sync .rs-vals s { color: #9aa8a0; }
 .reverse-sync .rs-vals b { color: #0d9488; }
-.reverse-sync #rsApply { margin-top: 8px; width: 100%; }
+.reverse-sync #rsApply { margin-top: 9px; width: 100%; }
+.reverse-sync .rs-ok { color: #166534; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 7px; padding: 8px 10px; line-height: 1.45; }
 
 .docs-help {
   margin: 4px 0 12px;
