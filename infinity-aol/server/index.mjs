@@ -2219,6 +2219,12 @@ function applicantLastName(a) { return (a?.lastName || a?.surname || String(a?.f
 // the LIVE captures and lets the broker APPLY chosen changes into a versioned overlay ("Updated from
 // Infinity/AOL") — the customer's original case is never mutated; prepare/fill/docs read the overlay on top.
 const nk = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+// A real income row — excludes loan/submission/security lines that can sneak into the financials scrape
+// (e.g. "Prepare Loan Submission $275,000" owned by "PURCHASE OWNER OCCUPIED DWELLING").
+const INCOME_JUNK_RE = /\b(loan|submission|prepare|purchase|dwelling|security|securit|deposit|lvr|valuation|settlement|refinance|property|liabilit|expense|asset)\b/i;
+const isRealIncomeRow = (i) => Number(i.amount) > 0 && !INCOME_JUNK_RE.test(`${i.type || ""} ${i.ownership || ""}`);
+// Canonical residency so "Australian PR" and "Australian Permanent Resident" don't read as a difference.
+const resKey = (s) => { const t = String(s || "").toLowerCase(); if (/citizen/.test(t)) return "citizen"; if (/permanent|\bpr\b/.test(t)) return "pr"; if (/temp|visa|bridging|subclass/.test(t)) return "temp"; return nk(s); };
 function liveCaptureBundle(caseId) {
   const snap = getCapture(caseId, "liveCaseSnapshot") || {};
   const infFin = getCapture(caseId, "infinityFinancials") || {};
@@ -2231,7 +2237,7 @@ function liveCaptureBundle(caseId) {
 function reverseSyncDiff(caseData) {
   const id = caseData?.id;
   const { snap, fin, profile, employment } = liveCaptureBundle(id);
-  const incomes = (fin.incomes || []).filter((i) => Number(i.amount));
+  const incomes = (fin.incomes || []).filter(isRealIncomeRow);
   const diffs = [];
   const add = (section, label, easyflow, live, key, value) => {
     if (live == null || String(live).trim() === "") return;          // no live data → nothing to sync
@@ -2257,7 +2263,7 @@ function reverseSyncDiff(caseData) {
   add("Employment", "Occupation", pe.occupation || "", employment.occupation, "occupation");
   // Residency / visa / dependants / marital / housing.
   const pa = (caseData?.applicants || [])[0] || {};
-  add("Residency", "Residency status", pa.residencyStatus || "", profile.residencyStatus, "residencyStatus");
+  if (resKey(pa.residencyStatus) !== resKey(profile.residencyStatus)) add("Residency", "Residency status", pa.residencyStatus || "", profile.residencyStatus, "residencyStatus");
   add("Residency", "Dependants", (caseData?.dependants ?? pa?.dependants ?? "") + "", profile.dependants, "dependants");
   add("Residency", "Marital status", pa.maritalStatus || "", profile.maritalStatus, "maritalStatus");
   add("Residency", "Housing", pa.currentHousingSituation || pa.currentResidentialStatus || "", profile.currentHousing, "currentHousing");
