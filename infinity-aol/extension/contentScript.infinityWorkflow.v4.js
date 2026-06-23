@@ -2423,24 +2423,32 @@
         occupation: valByLabel(["occupation", "job title"]),
         status: valByLabel(["employment status", "employment type", "employment basis", "basis"])
       },
-      // Residency / visa / dependants / gender — read by label on the Client Details page (blank elsewhere).
-      profile: {
-        residencyStatus: valByLabel(["residency status", "residency", "citizenship status", "residency/citizenship", "citizenship"]),
-        visaType: valByLabel(["visa type", "visa"]),
-        visaSubclass: valByLabel(["visa subclass", "subclass"]),
-        visaExpiry: valByLabel(["visa expiry date", "visa expiry", "visa expiry/grant"]),
-        dependants: valByLabel(["number of dependants", "no. of dependants", "no of dependants", "dependants", "dependents"]),
-        gender: valByLabel(["gender", "sex"]),
-        title: valByLabel(["title"]),
-        dob: valByLabel(["date of birth", "dob"])
-      },
-      // Repayment structure + loan features — read by label on Loans & Products / Needs Analysis (blank elsewhere).
+      // Residency / dependants / gender — read on the Client Details page (blank elsewhere). Infinity has NO
+      // "residency status"/"visa subclass" field; it uses "Permanent in Australia" (Yes → PR) + "Country (if
+      // not Aus Perm)". Visa subclass is not stored in Infinity, so it stays blank (broker knowledge).
+      profile: (function () {
+        var perm = valByLabel(["permanent in australia"]);
+        var residency = /yes/i.test(perm) ? "Australian Permanent Resident"
+          : (/no/i.test(perm) ? "Temporary visa holder" : valByLabel(["residency status", "residency", "citizenship"]));
+        return {
+          residencyStatus: residency,
+          countryIfNotPerm: valByLabel(["country (if not aus perm)", "country"]),
+          dependants: valByLabel(["number of dependents", "number of dependants", "no. of dependants", "dependants", "dependents"]),
+          gender: valByLabel(["gender", "sex"]),
+          title: valByLabel(["title"]),
+          dob: valByLabel(["date of birth", "dob"])
+        };
+      })(),
+      // Repayment structure + loan features — read on Loans & Products / Preferred Loan Features (the scenario
+      // cards show "Repayment type: Principal & Interest"; prioritised features list Redraw / P&I / Offset).
       loanPrefs: {
-        repaymentType: valByLabel(["repayment type", "repayment method", "loan repayment type", "principal & interest / interest only"]),
+        repaymentType: valByLabel(["repayment type", "repayment method"]) || (/principal\s*&?\s*i|p\s*&\s*i\b/i.test(document.body.innerText || "") ? "Principal & Interest" : (/interest only/i.test(document.body.innerText || "") ? "Interest Only" : "")),
         repaymentFrequency: valByLabel(["repayment frequency", "repayment freq", "frequency of repayments"]),
-        redraw: /redraw/i.test(document.body.innerText || ""),
-        offset: /offset/i.test(document.body.innerText || ""),
-        extraRepayments: /additional repayment|extra repayment|unlimited repayment/i.test(document.body.innerText || "")
+        // true-or-undefined (not false): efMergeObj treats "false" as a real value and would wipe a true from
+        // another page, so only ever SET the flag, never clear it.
+        redraw: /redraw/i.test(document.body.innerText || "") ? true : undefined,
+        offset: /offset/i.test(document.body.innerText || "") ? true : undefined,
+        extraRepayments: /additional repayment|extra repayment|unlimited repayment/i.test(document.body.innerText || "") ? true : undefined
       },
       // Lender/rate/product — ONLY trusted on the Recommendation tab. On any other page the same labels
       // ("Lender", "Limit", "Ownership"…) appear as financials/grid headers and would poison the note, so we
