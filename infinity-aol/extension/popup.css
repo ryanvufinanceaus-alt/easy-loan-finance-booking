@@ -263,7 +263,10 @@ button.review-row:hover { background: #f3f8f5; box-shadow: none; }
 .reverse-sync .rs-list { max-height: 230px; overflow-y: auto; overflow-x: hidden; }
 .reverse-sync .rs-row { display: flex; align-items: flex-start; gap: 6px; padding: 5px 0; border-top: 1px solid #eef0f3; cursor: pointer; }
 .reverse-sync .rs-row:first-child { border-top: none; }
-.reverse-sync .rs-ck { margin-top: 1px; flex: 0 0 auto; }
+/* The generic `input{width:100%;min-height:38px}` rule would blow these checkboxes up to a full-width block
+   that hides the row labels — pin them to a real checkbox size. */
+.reverse-sync input[type="checkbox"],
+.reverse-sync .rs-ck { width: 15px; min-width: 15px; height: 15px; min-height: 15px; margin: 2px 0 0; padding: 0; flex: 0 0 15px; }
 .reverse-sync .rs-lbl { flex: 0 0 40%; font-weight: 700; color: var(--text); word-break: break-word; }
 .reverse-sync .rs-vals { flex: 1; color: var(--muted); word-break: break-word; line-height: 1.35; }
 .reverse-sync .rs-vals s { color: #9aa8a0; }

@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.26";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.27";
 const REPORT_HISTORY_KEY = "easyflowReportHistory";
 const REPORT_HISTORY_LIMIT = 5;
 
@@ -1003,10 +1003,12 @@ async function reverseSyncLoad(apiBase, caseId, skipCapture) {
   } catch (_e) { panel.innerHTML = '<div class="muted">Could not read changes.</div>'; return; }
   window._rsDiffs = diffs;
   if (!diffs.length) {
+    setStatus("Scan complete — EasyFlow already matches Infinity.", "success");
     panel.innerHTML = '<div class="rs-ok">✓ EasyFlow matches the live Infinity data — nothing to update.<br><span class="muted">Scanned Client Details, Financials and Loans &amp; Products. Make sure the case is open in an Infinity tab before syncing.</span></div>';
     return;
   }
-  panel.innerHTML = '<div class="rs-title">' + diffs.length + ' change(s) — tick to apply</div>'
+  setStatus(`Scan complete — ${diffs.length} difference(s) found.`, "muted");
+  panel.innerHTML = '<div class="rs-title">' + diffs.length + ' change(s) found in Infinity — tick the ones to copy into EasyFlow</div>'
     + '<div class="rs-list">' + diffs.map((d, i) => `<label class="rs-row"><input type="checkbox" class="rs-ck" data-i="${i}" checked>`
       + `<span class="rs-lbl">${escRs(d.section)} · ${escRs(d.label)}</span>`
       + `<span class="rs-vals"><s>${escRs(d.easyflow) || "—"}</s> → <b>${escRs(d.live)}</b></span></label>`).join("") + '</div>'

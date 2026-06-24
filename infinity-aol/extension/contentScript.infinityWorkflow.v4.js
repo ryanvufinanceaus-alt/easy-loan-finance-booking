@@ -4346,6 +4346,16 @@
       try {
         if (await clickMainTab("Loans & Products", scratch)) {
           await sleep(600); merged = efMergeSnap(merged, efScrapeCurrent());
+          // Clicking the main tab lands on the APPLICATION LIST, not inside the SOCA — the sub-tab routes
+          // (/loans/soca/...) only exist once the application is OPEN. Open the EXISTING application read-only
+          // via its edit pencil (same nav Start uses). NEVER click "Create Application" here — that would make
+          // a new application; a read-only sweep must not mutate. If there's no application yet, skip.
+          if (!/\/loans\/soca\//.test(location.hash || "")) {
+            var pencil = all(".soa-application-edit, [ng-click*='editSoaClicked'], [ng-click*='editSoa']").find(isVisible);
+            if (pencil) {
+              try { pencil.scrollIntoView({ block: "center", inline: "center" }); await sleep(150); clickOnce(pencil); await waitForRoute("soca", null, 9000); await sleep(600); merged = efMergeSnap(merged, efScrapeCurrent()); } catch (e) { /* stay on the list */ }
+            }
+          }
           if (/\/loans\/soca\//.test(location.hash || "")) {
             var soca = ["needs_analysis", "loans_securities", "features", "recommendation"];
             for (var s = 0; s < soca.length; s += 1) {
