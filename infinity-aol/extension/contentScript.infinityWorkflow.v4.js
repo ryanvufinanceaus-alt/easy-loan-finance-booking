@@ -7,6 +7,12 @@
   if (window.EF_INFINITY_WORKFLOW_V4) return;
   window.EF_INFINITY_WORKFLOW_V4 = true;
 
+  // Baked-in build of THIS content-script code. The popup compares it to its own expected build; if an OLD
+  // content script is still running in an already-open Infinity tab (reloading the extension does NOT replace
+  // it — only an F5 does), the popup auto-reloads the tab so the new sweep code runs. BUMP this whenever the
+  // content script changes in a way the popup relies on (e.g. the tab-walk), and match it in popup.js.
+  var EF_CS_BUILD = "2.6.0";
+
   var running = false;
   var stopRequested = false;
   var lastReport = null;
@@ -4085,8 +4091,8 @@
         // Scrape current page + auto-click the SOCA Recommendation/Features tabs to grab selected lender + rate.
         // message.full = sweep EVERY account tab (Sync button), else only fill in missing data (doc generation).
         efFullCapture(message.full)
-          .then(function (s) { sendResponse({ ok: true, snapshot: s, swept: true }); }) // `swept` marks the new build
-          .catch(function (e) { sendResponse({ ok: false, error: String(e), swept: true }); }); // still the new build, just errored
+          .then(function (s) { sendResponse({ ok: true, snapshot: s, swept: true, csBuild: EF_CS_BUILD }); }) // csBuild lets the popup detect a stale content script
+          .catch(function (e) { sendResponse({ ok: false, error: String(e), swept: true, csBuild: EF_CS_BUILD }); });
         return true;
       }
       if (message.type === "INFINITY_AOL_RETRY_STEP") {

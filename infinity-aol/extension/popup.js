@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.27";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.28";
 const REPORT_HISTORY_KEY = "easyflowReportHistory";
 const REPORT_HISTORY_LIMIT = 5;
 
@@ -891,13 +891,40 @@ function filenameFromResponse(res, fallback) {
 }
 // Silently pull the CURRENT Infinity state (applicants / income / selected lender + rate) and merge it
 // server-side, so both documents reflect the broker's live edits. No buttons, no debug output.
+// The content-script build the popup expects in the open Infinity tab. If the tab is running an OLDER content
+// script (reloading the extension does NOT replace it — only an F5 does), the capture returns instantly with
+// no tab-walk. Keep this in sync with EF_CS_BUILD in the content script; bump both when the sweep changes.
+const EXPECTED_CS_BUILD = "2.6.0";
+function waitForTabComplete(tabId, maxMs = 15000) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    (function poll() {
+      chrome.tabs.get(tabId, (t) => {
+        if (chrome.runtime.lastError || !t) return resolve(false);
+        if (t.status === "complete") return resolve(true);
+        if (Date.now() - start >= maxMs) return resolve(false);
+        setTimeout(poll, 250);
+      });
+    })();
+  });
+}
 async function efCaptureLive(apiBase, caseId, full) {
   try {
     const tabs = await chrome.tabs.query({});
     const inf = tabs.find((t) => /infynity|infinity/i.test(t.url || ""));
     if (!inf) return "";
     setStatus(full ? "Reading all Infinity tabs…" : "Reading Infinity…", "muted");
-    const scraped = await chrome.tabs.sendMessage(inf.id, { type: "EF_FULL_CAPTURE", full: !!full }).catch(() => null);
+    let scraped = await chrome.tabs.sendMessage(inf.id, { type: "EF_FULL_CAPTURE", full: !!full }).catch(() => null);
+    // Stale (or missing) content script in the already-open tab → reload it ONCE so the new sweep code runs,
+    // then retry. This is what makes "click Sync → it actually walks the tabs" work without a manual F5.
+    if (!scraped || scraped.csBuild !== EXPECTED_CS_BUILD) {
+      setStatus("Updating the Infinity page first…", "muted");
+      await chrome.tabs.reload(inf.id);
+      await waitForTabComplete(inf.id);
+      await new Promise((r) => setTimeout(r, 1400)); // let the SPA + content script settle
+      setStatus(full ? "Reading all Infinity tabs…" : "Reading Infinity…", "muted");
+      scraped = await chrome.tabs.sendMessage(inf.id, { type: "EF_FULL_CAPTURE", full: !!full }).catch(() => null);
+    }
     if (!scraped || !scraped.ok || !scraped.snapshot) return "";
     const merged = await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/live-snapshot`, {
       method: "POST", headers: { "Content-Type": "application/json", "x-easyflow-broker-token": brokerToken },

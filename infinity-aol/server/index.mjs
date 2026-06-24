@@ -2300,9 +2300,17 @@ function reverseSyncDiff(caseData) {
   const rpMap = (x) => /interest only|\bio\b/i.test(x) ? "Interest Only" : /p\s*&?\s*i|principal/i.test(x) ? "Principal and Interest" : String(x || "");
   add("Loan", "Repayment type", rpMap(loan.repaymentType || loan.repayment || ""), rpMap(lp.repaymentType || ""), "repaymentType", rpMap(lp.repaymentType || ""));
   if (lp.repaymentFrequency && /week|fortnight|month/i.test(lp.repaymentFrequency)) add("Loan", "Repayment frequency", loan.repaymentFrequency || "", lp.repaymentFrequency, "repaymentFrequency");
-  const liveFeat = [lp.redraw ? "Redraw" : "", lp.offset ? "Offset" : "", lp.extraRepayments ? "Extra repayments" : ""].filter(Boolean).join(", ");
-  const caseFeat = `${loan.features || ""} ${loan.redraw ? "redraw" : ""} ${loan.offset ? "offset" : ""} ${loan.extraRepayments ? "extra" : ""}`.toLowerCase();
-  if (liveFeat && nk(liveFeat) !== nk(caseFeat)) add("Loan", "Loan features", loan.features || "—", liveFeat, "features", { redraw: !!lp.redraw, offset: !!lp.offset, extraRepayments: !!lp.extraRepayments });
+  // Compare features by BOOLEAN FLAGS, not free text — otherwise live "Redraw, Offset, Extra repayments" never
+  // equals the applied case "redraw offset extra" and the row would re-appear on every apply (looks like Apply
+  // did nothing). After applying f.features the case flags equal the live flags, so the row correctly drops out.
+  const liveFlags = { redraw: !!lp.redraw, offset: !!lp.offset, extraRepayments: !!lp.extraRepayments };
+  const caseFlags = { redraw: !!loan.redraw, offset: !!loan.offset, extraRepayments: !!loan.extraRepayments };
+  const anyLiveFeat = liveFlags.redraw || liveFlags.offset || liveFlags.extraRepayments;
+  if (anyLiveFeat && JSON.stringify(liveFlags) !== JSON.stringify(caseFlags)) {
+    const liveFeat = [liveFlags.redraw && "Redraw", liveFlags.offset && "Offset", liveFlags.extraRepayments && "Extra repayments"].filter(Boolean).join(", ");
+    const caseFeatLabel = [caseFlags.redraw && "Redraw", caseFlags.offset && "Offset", caseFlags.extraRepayments && "Extra repayments"].filter(Boolean).join(", ") || loan.features || "—";
+    add("Loan", "Loan features", caseFeatLabel, liveFeat, "features", liveFlags);
+  }
   // Financials — liabilities / expenses / assets (replace the case lists when the broker accepts).
   const num = (x) => Number(String(x == null ? "" : x).replace(/[^0-9.]/g, "")) || 0;
   const monthly = (e) => { const a = num(e.amount), f = String(e.frequency || "Monthly").toLowerCase(); return /year|annual/.test(f) ? a / 12 : /week/.test(f) ? a * 52 / 12 : /fortnight/.test(f) ? a * 26 / 12 : a; };
