@@ -3,15 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>EasyFlow AI Extension</title>
+    <title>EasyFlow AI</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <main>
       <header>
         <span id="versionBadge">v…</span>
-        <span>EasyFlow AI</span>
-        <h1>EasyFlow AI Extension</h1>
+        <span class="brand-kicker">EasyFlow AI</span>
+        <h1>AutoFill</h1>
         <small id="buildId">Build: loading...</small>
       </header>
 
@@ -26,6 +26,12 @@
 
       <div id="appBox" style="display:none;">
 
+      <!-- Progress (pinned at the top so it's always visible during a run) -->
+      <div id="efProgress" class="ef-progress" style="display:none;">
+        <div class="ef-progress-label"><span id="efProgressText">Working…</span><span id="efProgressPct">0%</span></div>
+        <div class="ef-progress-track"><div id="efProgressBar" class="ef-progress-bar"></div></div>
+      </div>
+
       <!-- 1. Case -->
       <section class="case-picker">
         <label>
@@ -34,34 +40,31 @@
         </label>
       </section>
 
-      <!-- 2. Run AutoFill -->
-      <section class="action-group">
-        <h2>Run AutoFill</h2>
+      <!-- 2. The three automation actions — the whole point of the extension -->
+      <div class="primary-stack">
         <div class="button-row start-row">
           <button id="startInfinityAutofill" class="primary-action" type="button">Start Infinity</button>
           <button id="startAolAutofill" class="primary-action aol-action" type="button">Start AOL</button>
         </div>
-      </section>
+        <button id="reverseSync" class="primary-action sync-btn" type="button">⟳&nbsp;&nbsp;Sync live → EasyFlow</button>
+      </div>
+      <div id="reverseSyncPanel" class="reverse-sync" style="display:none;"></div>
 
-      <!-- 3. Documents -->
-      <section class="action-group">
-        <h2>Documents</h2>
+      <!-- 3. Documents — secondary, tucked away -->
+      <details class="disclosure">
+        <summary>Documents</summary>
         <div class="button-row">
           <button id="genRecPdf" class="secondary-action" type="button">Rec Notes · PDF</button>
           <button id="genRecDocx" class="secondary-action" type="button">Rec Notes · Word</button>
         </div>
         <button id="genYtd" class="secondary-action" type="button">YTD Calculator · Excel</button>
         <div id="docHistory" class="doc-history"></div>
-      </section>
+      </details>
 
-      <!-- 4. Reconcile -->
-      <button id="comparePage" class="secondary-action" type="button">Compare Infinity / AOL</button>
-      <button id="reverseSync" class="secondary-action sync-btn" type="button">Sync live → EasyFlow (update case)</button>
-      <div id="reverseSyncPanel" class="reverse-sync" style="display:none;"></div>
-
-      <!-- 5. Secondary tools, collapsed -->
-      <details class="more">
+      <!-- 4. Everything else, collapsed -->
+      <details class="disclosure">
         <summary>More tools</summary>
+        <button id="comparePage" class="secondary-action" type="button">Compare Infinity / AOL</button>
         <div class="button-row">
           <button id="copyInfinityReport" class="secondary-action copy-infinity" type="button">Infinity report</button>
           <button id="copyAolReport" class="secondary-action copy-aol" type="button">AOL report</button>
@@ -71,7 +74,7 @@
         <button id="toggleChecklist" class="secondary-action" type="button">Show / hide checklist</button>
       </details>
 
-      <details class="advanced">
+      <details class="disclosure advanced">
         <summary>Advanced</summary>
         <label>Case ID / token override<input id="caseToken" placeholder="ELF-2026-0148 or token" /></label>
         <label>EasyFlow API<input id="apiBase" value="https://booking.easyloanfinance.com.au/infinity-aol" /></label>
@@ -85,11 +88,6 @@
         </div>
         <button id="logoutBtn" class="secondary-action" type="button">Sign out</button>
       </details>
-
-      <div id="efProgress" class="ef-progress" style="display:none;">
-        <div class="ef-progress-label"><span id="efProgressText">Working…</span><span id="efProgressPct">0%</span></div>
-        <div class="ef-progress-track"><div id="efProgressBar" class="ef-progress-bar"></div></div>
-      </div>
 
       <section id="status" class="status muted">Pick a case, open it in Infinity/AOL, then Start.</section>
       <div id="reviewRows" class="review-rows"></div>

@@ -33,73 +33,77 @@ body {
 
 main {
   display: grid;
-  gap: 11px;
+  gap: 10px;
   max-height: 600px;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 13px;
+  padding: 12px;
 }
 
-/* ---------- Header ---------- */
+/* ---------- Header (compact, Apple-clean) ---------- */
 header {
   position: relative;
   background: linear-gradient(135deg, #14532d 0%, #15803d 55%, #0d9488 130%);
   border-radius: var(--radius);
   color: #fff;
-  padding: 15px 16px 14px 48px;
+  padding: 11px 14px 11px 44px;
   box-shadow: var(--shadow-md);
   overflow: hidden;
 }
 header::before {
   content: "";
   position: absolute;
-  left: 15px;
-  top: 16px;
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
+  left: 13px;
+  top: 12px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.92);
   box-shadow: inset 0 0 0 3px var(--brand);
 }
-header span {
+header .brand-kicker {
   display: block;
   color: rgba(255, 255, 255, 0.72);
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 800;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 header #versionBadge {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 10px;
+  right: 11px;
   display: inline-block;
   background: #fde68a;
   color: #14532d;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.01em;
   text-transform: none;
-  padding: 3px 10px;
+  padding: 2px 9px;
   border-radius: 999px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
 }
-header h1 { margin: 2px 0 0; font-size: 16px; font-weight: 800; letter-spacing: -0.01em; }
+header h1 { margin: 1px 0 0; font-size: 17px; font-weight: 800; letter-spacing: -0.01em; }
 header small {
-  display: block;
-  margin-top: 4px;
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 10.5px;
-  font-weight: 600;
-  overflow-wrap: anywhere;
+  display: none;       /* build id is for diagnostics only — kept in DOM, not shown */
 }
 
-/* ---------- Progress bar (Start Infinity / AOL / Sync) ---------- */
-.ef-progress { margin: 9px 0 2px; }
-.ef-progress-label { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; font-weight: 700; color: var(--text); margin-bottom: 5px; }
-.ef-progress-label #efProgressPct { color: var(--teal); font-weight: 800; }
-.ef-progress-track { height: 9px; background: #e4e9e5; border-radius: 999px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(16,40,28,.12); }
+/* ---------- Progress bar — pinned at the top, prominent ---------- */
+.ef-progress {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 11px 13px;
+}
+.ef-progress-label { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 800; color: var(--text); margin-bottom: 7px; }
+.ef-progress-label #efProgressPct { color: var(--teal); font-weight: 900; }
+.ef-progress-track { height: 12px; background: #e4e9e5; border-radius: 999px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(16,40,28,.14); }
 .ef-progress-bar { height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, #15803d, #0d9488); transition: width .35s ease; }
+
+/* ---------- Primary automation stack ---------- */
+.primary-stack { display: grid; gap: 9px; }
 
 /* ---------- Typography ---------- */
 h1, h2 { margin: 0; }
@@ -136,13 +140,13 @@ input:focus, select:focus {
 input::placeholder { color: #9aa8a0; font-weight: 500; }
 
 /* ---------- Cards ---------- */
-.case-picker, .advanced, .more, .status, .review {
+.case-picker, .disclosure, .status, .review {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
 }
-.case-picker { display: grid; gap: 9px; padding: 12px; }
+.case-picker { display: grid; gap: 9px; padding: 11px 12px; }
 
 /* ---------- Action groups ---------- */
 .action-group { display: grid; gap: 7px; }
@@ -202,9 +206,9 @@ button:disabled:hover { box-shadow: none; background: var(--brand); }
 
 .diagnostic-row { display: none; }
 
-/* ---------- Advanced ---------- */
-.advanced, .more { padding: 11px 12px; }
-.advanced summary, .more summary {
+/* ---------- Disclosure sections (Documents / More / Advanced) ---------- */
+.disclosure { padding: 11px 12px; }
+.disclosure summary {
   cursor: pointer;
   color: var(--muted);
   font-size: 11.5px;
@@ -212,11 +216,13 @@ button:disabled:hover { box-shadow: none; background: var(--brand); }
   letter-spacing: 0.03em;
   text-transform: uppercase;
   list-style: none;
+  user-select: none;
 }
-.advanced summary::-webkit-details-marker, .more summary::-webkit-details-marker { display: none; }
-.advanced summary::before, .more summary::before { content: "▸ "; color: #9aa8a0; }
-.advanced[open] summary::before, .more[open] summary::before { content: "▾ "; }
-.advanced[open] { display: grid; gap: 10px; }
+.disclosure summary::-webkit-details-marker { display: none; }
+.disclosure summary::before { content: "▸ "; color: #9aa8a0; }
+.disclosure[open] summary::before { content: "▾ "; }
+.disclosure[open] { display: grid; gap: 8px; }
+.disclosure[open] summary { margin-bottom: 2px; }
 
 /* ---------- Status / Review ---------- */
 .status { padding: 11px 12px; font-size: 12.5px; }
@@ -315,11 +321,14 @@ button.review-row:hover { background: #f3f8f5; box-shadow: none; }
 ::-webkit-scrollbar-thumb { background: #cdd8d1; border-radius: 9px; border: 2px solid var(--bg); }
 ::-webkit-scrollbar-thumb:hover { background: #b6c4bb; }
 
-/* ---------- "More tools" reuses the .advanced styling; sync button + tidy empties ---------- */
-.sync-btn { width: 100%; border-color: var(--teal); color: var(--teal); font-weight: 700; }
-.sync-btn:hover { background: rgba(13, 148, 136, 0.07); }
+/* ---------- Sync = full-width primary (green→teal gradient = "both platforms") ---------- */
+.sync-btn {
+  width: 100%;
+  background: linear-gradient(135deg, #15803d 0%, #0d9488 100%);
+  box-shadow: 0 3px 10px rgba(13, 148, 136, 0.30);
+}
+.sync-btn:hover { background: linear-gradient(135deg, #16873f 0%, #0fa093 100%); }
 .case-picker .who { float: right; text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 10px; color: var(--muted); }
 .case-picker .who:not(:empty)::before { content: "· "; }
-.more[open] { display: grid; gap: 8px; }
 .review-rows:empty, .doc-history:empty { display: none; }
 .review-rows { font-size: 11px; color: var(--muted); }

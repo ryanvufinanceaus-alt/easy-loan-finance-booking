@@ -11,7 +11,7 @@
   // content script is still running in an already-open Infinity tab (reloading the extension does NOT replace
   // it — only an F5 does), the popup auto-reloads the tab so the new sweep code runs. BUMP this whenever the
   // content script changes in a way the popup relies on (e.g. the tab-walk), and match it in popup.js.
-  var EF_CS_BUILD = "2.10.0";
+  var EF_CS_BUILD = "2.11.0";
 
   // Push a step update to the popup's progress bar (0–100%). Fire-and-forget; swallow the "no receiver" error
   // when the popup is closed.
@@ -4403,9 +4403,10 @@
           }
         }
       } catch (e) { /* skip */ }
-      // 3) Land the broker back on Client Details (a real account tab) — not a SOCA sub-tab, never the dashboard.
+      // 3) Land the broker back on the account OVERVIEW when done (broker's preference) — not a SOCA sub-tab,
+      // never the dashboard. Fall back to Client Details if there is no Overview tab.
       efProgress(91, "Finishing");
-      try { await clickMainTab("Client Details", scratch); } catch (e) { /* ignore */ }
+      try { if (findMainTab("Overview")) { await clickMainTab("Overview", scratch); } else { await clickMainTab("Client Details", scratch); } } catch (e) { /* ignore */ }
     } else if (/\/loans\/soca\//.test(location.hash || "")) {
       // Not a full sweep (e.g. document generation): if we're already inside a SOCA loan, still hop the
       // Recommendation/Features sub-tabs for the selected lender + rate.
