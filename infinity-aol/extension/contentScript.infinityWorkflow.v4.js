@@ -11,7 +11,13 @@
   // content script is still running in an already-open Infinity tab (reloading the extension does NOT replace
   // it — only an F5 does), the popup auto-reloads the tab so the new sweep code runs. BUMP this whenever the
   // content script changes in a way the popup relies on (e.g. the tab-walk), and match it in popup.js.
-  var EF_CS_BUILD = "2.6.0";
+  var EF_CS_BUILD = "2.9.0";
+
+  // Push a step update to the popup's progress bar (0–100%). Fire-and-forget; swallow the "no receiver" error
+  // when the popup is closed.
+  function efProgress(pct, label) {
+    try { chrome.runtime.sendMessage({ type: "EF_PROGRESS", pct: pct, label: label }, function () { void chrome.runtime.lastError; }); } catch (e) { /* popup closed */ }
+  }
 
   var running = false;
   var stopRequested = false;
@@ -2162,9 +2168,13 @@
     }
     try {
       var ok = true;
+      efProgress(12, "Client Details");
       if (!retryStepId || retryStepId === "clientDetails") { ok = await runClientDetailsWorkflow(payload, mapping, apiBase, result); await efCaptureStepData(); }
+      efProgress(42, "Financials");
       if (ok && (!retryStepId || retryStepId === "financials")) { ok = await runFinancialsWorkflow(payload, mapping, apiBase, result); await efCaptureStepData(); }
+      efProgress(72, "Loans & Products");
       if (ok && (!retryStepId || retryStepId === "loansProducts")) { ok = await runLoansProductsWorkflow(payload, mapping, apiBase, result); await efCaptureStepData(); }
+      efProgress(96, "Finalising");
       result.ok = ok && result.issues.length === 0 && !stopRequested;
     } catch (err) {
       result.errors.push(err && err.stack ? err.stack : String(err));
@@ -2172,6 +2182,7 @@
     }
     result.finishedAt = new Date().toISOString();
     lastReport = result;
+    efProgress(100, result.ok ? "Infinity done" : "Infinity needs review");
     finishStatus(result, result.ok ? "Infinity autofill complete" : "Infinity needs review");
     return result;
   }
@@ -3429,6 +3440,7 @@
     };
     stopRequested = false;
     aolActivePayload = payload;
+    efProgress(8, "AOL: Application");
     brokerCtx.pageKey = efPageKey();      // arm auto capture-back for THIS AOL doc only
     try { efOverridesCache = (await efGetCapture("brokerOverrides")) || {}; } catch (e) { efOverridesCache = {}; } // live-source layer
     // Surface "customer updated the loan form after submitting" (server records the diff) so the broker
@@ -3461,7 +3473,7 @@
         fillNarrativeTa("Loan Objectives", recA.goalsObjectives || lpcA.circumstancesObjectivesPriorities || appn.originatorComments);
         fillNarrativeTa("Customer Preference", recA.loanFeatures || recA.goalsObjectives || appn.originatorComments);
       });
-      step(result, "aolApplication", "done");
+      step(result, "aolApplication", "done"); efProgress(18, "AOL: Applicants");
 
       await fillAolTab(result, "applicants-tab/applicants/0-P1", "Applicants", async function () {
         applyAolFields(result, "Applicants", [
@@ -3487,7 +3499,7 @@
         // so the bot must NOT push loan-form values into the Employer fields (that's wrong data). Just remind.
         if (allRaw('button[qeid="editEmployment"]').filter(isVisible).length) addManual(result, "⚠ Employer — Business name (select by hand)", "Open Employment → Business name: type the company, then CLICK the correct match from the search list. The bot does NOT auto-pick (avoids the wrong company / wrong ABN on a live file). Contact surname + Occupation are auto-filled/restored. Loan form has old Self-Employed data — not used.", "AOL · Applicants");
       });
-      step(result, "aolApplicants", "done");
+      step(result, "aolApplicants", "done"); efProgress(34, "AOL: Loans");
 
       await fillAolTab(result, "loans-tab", "Loans", async function () {
         // The loan split form is collapsed by default — expand it via its pencil (span.fa-pencil).
@@ -3544,7 +3556,7 @@
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         await sleep(500);
       });
-      step(result, "aolLoans", "done");
+      step(result, "aolLoans", "done"); efProgress(50, "AOL: Securities");
 
       var se = aol.securities || {};
       var aolContact = se.contactForAccess || (ap.firstName ? (ap.firstName + " " + (ap.familyName || "")) : "");
@@ -3562,7 +3574,7 @@
         clickYesNoByLabel(result, "Securities", "own 3 units", se.ownThreeUnits || "No");
         clickYesNoByLabel(result, "Securities", "own 25", se.ownTwentyFivePercent || "No");
       });
-      step(result, "aolSecurities", "done");
+      step(result, "aolSecurities", "done"); efProgress(64, "AOL: Financials");
 
       var aolNow = (function () { var d = new Date(); return ("0" + d.getDate()).slice(-2) + "/" + ("0" + (d.getMonth() + 1)).slice(-2) + "/" + d.getFullYear(); })();
       await fillAolTab(result, "financials-tab", "Financials", async function () {
@@ -3590,11 +3602,11 @@
         await fixAolMotorVehicle(result);
         // Expense amounts are reconciled via the Compare Infinity/AOL panel (deliberate sync).
       });
-      step(result, "aolFinancials", "done");
+      step(result, "aolFinancials", "done"); efProgress(82, "AOL: Compliance");
       await fillAolTab(result, "compliance-tab", "Compliance", async function () {
         await fixAolCompliance(result);
       });
-      step(result, "aolCompliance", "done");
+      step(result, "aolCompliance", "done"); efProgress(96, "AOL: Finalising");
 
       // Remaining broker-only manual steps for AOL (kept minimal — only what the bot can't do).
       addManual(result, "Branch to sign documents", "select the branch", "AOL · Application");
@@ -3612,6 +3624,7 @@
     };
     result.finishedAt = new Date().toISOString();
     lastReport = result;
+    efProgress(100, result.ok ? "AOL done" : "AOL needs review");
     finishStatus(result, result.ok ? "AOL tabs filled" : "AOL needs review");
     await persistChecklist("aolManualChecklist", result.manualActions);
     await showManualChecklist(result.manualActions, "AOL — broker manual steps", "aolManualChecklist");
@@ -4340,11 +4353,15 @@
       var scratch = makeResult({});
       // 1) Client Details (applicants, residency, address) + Financials (income, assets, liabilities, expenses).
       var mains = ["Client Details", "Financials"];
+      var mainPct = [25, 45];
       for (var t = 0; t < mains.length; t += 1) {
         try {
+          efProgress(mainPct[t] - 7, "Reading " + mains[t]);
           if (await clickMainTab(mains[t], scratch)) { await sleep(500); merged = efMergeSnap(merged, efScrapeCurrent()); }
+          efProgress(mainPct[t], mains[t] + " read");
         } catch (e) { /* one slow tab can't abort the whole sweep */ }
       }
+      efProgress(55, "Loans & Products");
       // 2) Loans & Products → drill into EVERY SOCA sub-tab (Needs Analysis, Loans & Securities, Preferred
       // Features, Recommendation). Clicking the main tab lands inside the active loan's SOCA (hash has
       // /loans/soca/), so gotoSocaTab can hop each section — exactly the routes Start fills. We scrape each +
@@ -4364,8 +4381,11 @@
           }
           if (/\/loans\/soca\//.test(location.hash || "")) {
             var soca = ["needs_analysis", "loans_securities", "features", "recommendation"];
+            var socaLabel = { needs_analysis: "Needs Analysis", loans_securities: "Loans & Securities", features: "Preferred Features", recommendation: "Recommendation" };
+            var socaPct = [64, 72, 80, 88];
             for (var s = 0; s < soca.length; s += 1) {
               try {
+                efProgress(socaPct[s], socaLabel[soca[s]] || soca[s]);
                 if (gotoSocaTab(soca[s])) {
                   try { await waitForRoute("/soca/" + soca[s], null, 8000); } catch (e) { /* continue */ }
                   await sleep(900);
@@ -4378,6 +4398,7 @@
         }
       } catch (e) { /* skip */ }
       // 3) Land the broker back on Client Details (a real account tab) — not a SOCA sub-tab, never the dashboard.
+      efProgress(91, "Finishing");
       try { await clickMainTab("Client Details", scratch); } catch (e) { /* ignore */ }
     } else if (/\/loans\/soca\//.test(location.hash || "")) {
       // Not a full sweep (e.g. document generation): if we're already inside a SOCA loan, still hop the

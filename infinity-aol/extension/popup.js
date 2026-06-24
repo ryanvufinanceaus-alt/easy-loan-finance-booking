@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.30";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.31";
 const REPORT_HISTORY_KEY = "easyflowReportHistory";
 const REPORT_HISTORY_LIMIT = 5;
 
@@ -56,6 +56,47 @@ function setStatus(message, type = "muted") {
   els.status.className = `status ${type}`;
   els.status.textContent = message;
 }
+
+// ===== Progress bar (0–100%) for Start Infinity / Start AOL / Sync =====
+// Driven by REAL EF_PROGRESS messages the content script emits at each step, plus a gentle auto-creep toward a
+// cap so the bar always shows movement (installer feel) even when steps are slow or the content script is older.
+const efProgEls = {
+  box: document.querySelector("#efProgress"),
+  bar: document.querySelector("#efProgressBar"),
+  text: document.querySelector("#efProgressText"),
+  pct: document.querySelector("#efProgressPct")
+};
+let efProgTimer = null, efProgPct = 0, efProgCap = 92, efProgLabel = "Working…";
+function efProgRender() {
+  if (!efProgEls.box) return;
+  const p = Math.max(0, Math.min(100, Math.round(efProgPct)));
+  efProgEls.bar.style.width = p + "%";
+  efProgEls.text.textContent = efProgLabel;
+  efProgEls.pct.textContent = p + "%";
+}
+function efProgressShow(label, cap = 92) {
+  if (!efProgEls.box) return;
+  efProgLabel = label || "Working…"; efProgPct = 3; efProgCap = cap;
+  efProgEls.box.style.display = "block"; efProgRender();
+  clearInterval(efProgTimer);
+  efProgTimer = setInterval(() => { if (efProgPct < efProgCap) { efProgPct += (efProgCap - efProgPct) * 0.05 + 0.25; efProgRender(); } }, 450);
+}
+function efProgressSet(pct, label) {
+  if (!efProgEls.box) return;
+  if (typeof pct === "number" && pct > efProgPct) efProgPct = pct;
+  if (label) efProgLabel = label;
+  efProgRender();
+}
+function efProgressDone(label) {
+  clearInterval(efProgTimer); efProgTimer = null;
+  efProgPct = 100; efProgLabel = label || "Done"; efProgRender();
+  setTimeout(() => { if (efProgEls.box) efProgEls.box.style.display = "none"; }, 1400);
+}
+function efProgressHide() { clearInterval(efProgTimer); efProgTimer = null; if (efProgEls.box) efProgEls.box.style.display = "none"; }
+// Live step updates pushed by the content script during a run/sweep.
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg && msg.type === "EF_PROGRESS") efProgressSet(msg.pct, msg.label);
+});
 
 function enableAdvanced(enabled) {
   els.fillSection.disabled = !enabled;
@@ -409,10 +450,13 @@ function setStartButtonsDisabled(disabled) {
 }
 
 async function startAutofill(targetPlatform = "auto") {
+  const platLabel = targetPlatform === "aol" ? "AOL" : "Infinity";
   try {
     setStartButtonsDisabled(true);
-    setStatus(`Loading case and starting ${targetPlatform === "aol" ? "AOL" : "Infinity"} AutoFill...`, "muted");
+    efProgressShow(`Starting ${platLabel}…`);
+    setStatus(`Loading case and starting ${platLabel} AutoFill...`, "muted");
     await loadPayload();
+    efProgressSet(8, `Filling ${platLabel}…`);
     renderReview();
 
     const apiBase = els.apiBase.value.replace(/\/$/, "");
@@ -464,6 +508,7 @@ async function startAutofill(targetPlatform = "auto") {
     }
     els.copyDiagnostics.disabled = false;
     const issues = asArray(result?.errors).length + asArray(result?.verificationFailures).length;
+    efProgressDone(issues ? `${platLabel}: ${issues} to review` : `${platLabel} AutoFill done`);
     setStatus(
       issues
         ? `${result.message || `AutoFill stopped with ${issues} item(s) to review.`}`
@@ -472,6 +517,7 @@ async function startAutofill(targetPlatform = "auto") {
     );
     renderReview();
   } catch (error) {
+    efProgressHide();
     state.lastDiagnostics = null;
     state.lastResult = {
       status: "failed",
@@ -910,7 +956,7 @@ function filenameFromResponse(res, fallback) {
 // The content-script build the popup expects in the open Infinity tab. If the tab is running an OLDER content
 // script (reloading the extension does NOT replace it — only an F5 does), the capture returns instantly with
 // no tab-walk. Keep this in sync with EF_CS_BUILD in the content script; bump both when the sweep changes.
-const EXPECTED_CS_BUILD = "2.6.0";
+const EXPECTED_CS_BUILD = "2.9.0";
 function waitForTabComplete(tabId, maxMs = 15000) {
   return new Promise((resolve) => {
     const start = Date.now();
@@ -1050,9 +1096,12 @@ async function reverseSyncReview() {
   const apiBase = els.apiBase.value.replace(/\/$/, "");
   panel.style.display = "block";
   panel.innerHTML = '<div class="muted">Scanning all Infinity tabs (Client Details → Financials → Loans &amp; Products)… this takes ~15s.</div>';
+  efProgressShow("Opening Infinity…");
   // Read-only: ONE click walks every Infinity tab (full=true) the same way Start does, scrapes each, merges.
   await efCaptureLive(apiBase, caseId, true).catch(() => {});
+  efProgressSet(94, "Reading changes…");
   await reverseSyncLoad(apiBase, caseId, false);
+  efProgressDone("Scan complete");
 }
 async function reverseSyncLoad(apiBase, caseId, skipCapture) {
   const panel = document.querySelector("#reverseSyncPanel");
