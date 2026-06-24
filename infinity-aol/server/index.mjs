@@ -2932,9 +2932,24 @@ app.get("/api/cases/:caseId/reverse-sync", (request, response) => {
     const caseData = findCase(request.params.caseId);
     if (!caseData) return response.status(404).json({ error: "case not found" });
     const overlay = getCapture(caseData.id, "caseUpdatedVersion");
+    // Two clearly-labelled versions of the case so the broker can tell them apart:
+    //   ① "Loan form — client filled"  = the original case the customer submitted (never mutated)
+    //   ② "Broker updated on Infinity & AOL" = the broker-approved overlay (only exists once they apply changes)
+    const FIELD_LABELS = {
+      applicants: "Applicants", employerName: "Employer", occupation: "Occupation", residencyStatus: "Residency",
+      dependants: "Dependants", income: "Income", maritalStatus: "Marital status", currentHousing: "Housing",
+      address: "Address", lender: "Lender", interestRate: "Interest rate", product: "Product",
+      repaymentType: "Repayment type", repaymentFrequency: "Repayment frequency", features: "Loan features",
+      liabilities: "Liabilities", expenses: "Expenses (HEM)", assets: "Assets"
+    };
+    const changedFields = overlay?.fields ? Object.keys(overlay.fields).map((k) => FIELD_LABELS[k] || k) : [];
+    const versions = {
+      client: { label: "Loan form — client filled", source: "loan-form" },
+      broker: overlay ? { label: "Broker updated on Infinity & AOL", source: "infinity-aol", updatedAt: overlay.updatedAt || null, updatedBy: overlay.updatedBy || null, changedFields } : null
+    };
     // Diff against the case WITH the already-applied overlay, so fields the broker already accepted drop out
     // (otherwise every apply leaves the same rows showing and looks like nothing happened).
-    response.json({ ok: true, diffs: reverseSyncDiff(applyReverseSyncOverlay(caseData)), appliedAt: overlay?.updatedAt || null });
+    response.json({ ok: true, diffs: reverseSyncDiff(applyReverseSyncOverlay(caseData)), appliedAt: overlay?.updatedAt || null, versions });
   } catch (error) { response.status(500).json({ error: String(error?.message || error) }); }
 });
 

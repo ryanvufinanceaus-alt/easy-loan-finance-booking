@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.28";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.29";
 const REPORT_HISTORY_KEY = "easyflowReportHistory";
 const REPORT_HISTORY_LIMIT = 5;
 
@@ -1007,6 +1007,21 @@ els.casePicker.addEventListener("change", () => { loadPayload().then(loadDocHist
 // Reverse sync: capture live Infinity/AOL, show what differs from the EasyFlow case, let the broker tick the
 // changes to apply. Applying writes a versioned "Updated from Infinity/AOL" overlay — the original is kept.
 const escRs = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+// Header that always shows the case's TWO versions so the broker can tell them apart:
+//   ① Loan form (client filled) — the original, never changed
+//   ② Broker updated on Infinity & AOL — exists once the broker has applied changes (with date + fields).
+function rsVersionBanner(versions) {
+  if (!versions) return "";
+  const b = versions.broker;
+  const when = b && b.updatedAt ? new Date(b.updatedAt).toLocaleString() : "";
+  const fields = b && b.changedFields && b.changedFields.length ? b.changedFields.join(", ") : "";
+  return '<div class="rs-ver">'
+    + '<div class="rs-ver-row client"><b>① Loan form</b> — client filled <span class="muted">(original, kept)</span></div>'
+    + (b
+      ? `<div class="rs-ver-row broker"><b>② Broker updated</b> — Infinity &amp; AOL${when ? ' · ' + escRs(when) : ''}${fields ? '<div class="muted">Changed: ' + escRs(fields) + '</div>' : ''}</div>`
+      : '<div class="rs-ver-row broker pending"><b>② Broker version</b> — none yet <span class="muted">(apply changes below to create it)</span></div>')
+    + '</div>';
+}
 async function reverseSyncReview() {
   const panel = document.querySelector("#reverseSyncPanel");
   if (!brokerToken) { setStatus("Sign in first.", "error"); return; }
@@ -1023,23 +1038,30 @@ async function reverseSyncReview() {
 async function reverseSyncLoad(apiBase, caseId, skipCapture) {
   const panel = document.querySelector("#reverseSyncPanel");
   if (!skipCapture) { /* capture already done by caller */ }
-  let diffs = [];
+  let diffs = [], versions = null;
   try {
     const r = await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/reverse-sync`, { headers: { "x-easyflow-broker-token": brokerToken } });
-    diffs = (await r.json().catch(() => ({}))).diffs || [];
+    const j = await r.json().catch(() => ({}));
+    diffs = j.diffs || [];
+    versions = j.versions || null;
   } catch (_e) { panel.innerHTML = '<div class="muted">Could not read changes.</div>'; return; }
   window._rsDiffs = diffs;
+  // Two clearly-labelled versions of the case so the broker can tell them apart.
+  const verBanner = rsVersionBanner(versions);
   if (!diffs.length) {
     setStatus("Scan complete — EasyFlow already matches Infinity.", "success");
-    panel.innerHTML = '<div class="rs-ok">✓ EasyFlow matches the live Infinity data — nothing to update.<br><span class="muted">Scanned Client Details, Financials and Loans &amp; Products. Make sure the case is open in an Infinity tab before syncing.</span></div>';
+    panel.innerHTML = verBanner
+      + '<div class="rs-ok">✓ Client (loan form) and Infinity match — nothing new to copy across.<br><span class="muted">Scanned Client Details, Financials and Loans &amp; Products. Open the case in an Infinity tab before syncing.</span></div>';
     return;
   }
   setStatus(`Scan complete — ${diffs.length} difference(s) found.`, "muted");
-  panel.innerHTML = '<div class="rs-title">' + diffs.length + ' change(s) found in Infinity — tick the ones to copy into EasyFlow</div>'
+  panel.innerHTML = verBanner
+    + '<div class="rs-title">' + diffs.length + ' field(s) the broker changed in Infinity/AOL — tick to copy into the case</div>'
+    + '<div class="rs-cols"><span>① Loan form (client)</span><span>② Broker · Infinity &amp; AOL</span></div>'
     + '<div class="rs-list">' + diffs.map((d, i) => `<label class="rs-row"><input type="checkbox" class="rs-ck" data-i="${i}" checked>`
       + `<span class="rs-lbl">${escRs(d.section)} · ${escRs(d.label)}</span>`
       + `<span class="rs-vals"><s>${escRs(d.easyflow) || "—"}</s> → <b>${escRs(d.live)}</b></span></label>`).join("") + '</div>'
-    + '<button id="rsApply" class="primary-action" type="button">Apply selected</button>';
+    + '<button id="rsApply" class="primary-action" type="button">Apply selected → Broker version</button>';
   document.querySelector("#rsApply").addEventListener("click", () => reverseSyncApply(apiBase, caseId));
 }
 async function reverseSyncApply(apiBase, caseId) {
