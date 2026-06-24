@@ -11,7 +11,7 @@
   // content script is still running in an already-open Infinity tab (reloading the extension does NOT replace
   // it — only an F5 does), the popup auto-reloads the tab so the new sweep code runs. BUMP this whenever the
   // content script changes in a way the popup relies on (e.g. the tab-walk), and match it in popup.js.
-  var EF_CS_BUILD = "2.11.0";
+  var EF_CS_BUILD = "2.14.0";
 
   // Push a step update to the popup's progress bar (0–100%). Fire-and-forget; swallow the "no receiver" error
   // when the popup is closed.
@@ -2463,7 +2463,9 @@
       employment: {
         employerName: valByLabel(["current employment", "employer", "business name", "company name", "employer name"]),
         occupation: valByLabel(["occupation", "job title", "position"]),
-        status: valByLabel(["employment status", "employment type", "employment basis", "basis"])
+        status: valByLabel(["employment status", "employment type", "employment basis", "basis"]),
+        // Employment start date drives the YTD "First Pay Day" for mid-year starters (annualise over days worked).
+        startDate: valByLabel(["employment start date", "date commenced", "commencement date", "start date of employment", "employed since", "date started", "commenced"])
       },
       // Residency / dependants / gender — read on the Client Details page (blank elsewhere). Infinity has NO
       // "residency status"/"visa subclass" field; it uses "Permanent in Australia" (Yes → PR) + "Country (if

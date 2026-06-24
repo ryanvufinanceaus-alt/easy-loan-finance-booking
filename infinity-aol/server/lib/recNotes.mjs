@@ -242,19 +242,23 @@ export function buildRecPdf(input = {}) {
     doc.fillColor(navy).font("Helvetica-Bold").fontSize(10.5).text(safe(r.seekingLine), M + 10, y + 7, { width: CW - 20 });
     y += 38;
 
-    // ---- Facts grid (2 columns) ----
-    const colW = (CW - 14) / 2, labelW = 92, rowH = 19;
-    let fx = M, fy = y, colCount = 0;
-    for (const [k, v] of r.facts) {
-      const x = colCount % 2 === 0 ? M : M + colW + 14;
-      doc.rect(x, fy, labelW, rowH).fill(navy);
-      doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(7.8).text(up(k), x + 6, fy + 6, { width: labelW - 10 });
-      doc.rect(x + labelW, fy, colW - labelW, rowH).fillAndStroke("#FFFFFF", LINE);
-      doc.fillColor(INK).font("Helvetica").fontSize(8.6).text(safe(String(v)), x + labelW + 6, fy + 6, { width: colW - labelW - 10, ellipsis: true, height: rowH - 4 });
-      colCount += 1;
-      if (colCount % 2 === 0) fy += rowH + 4;
+    // ---- Facts grid (2 columns). Rows AUTO-GROW to fit the value (no ellipsis) so long PRODUCT / SECURITY
+    // strings show IN FULL — e.g. "*Discounted Pricing - Standard Variable Owner-Occupied P&I <60% LVR …". ----
+    const colW = (CW - 14) / 2, labelW = 92, valW = colW - labelW - 12, minRowH = 19;
+    let fy = y;
+    for (let i = 0; i < r.facts.length; i += 2) {
+      const pair = [r.facts[i], r.facts[i + 1]].filter(Boolean);
+      doc.font("Helvetica").fontSize(8.6);
+      const rowH = Math.max(minRowH, ...pair.map(([, v]) => doc.heightOfString(safe(String(v)), { width: valW }) + 12));
+      pair.forEach(([k, v], j) => {
+        const x = j === 0 ? M : M + colW + 14;
+        doc.rect(x, fy, labelW, rowH).fill(navy);
+        doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(7.8).text(up(k), x + 6, fy + 6, { width: labelW - 10 });
+        doc.rect(x + labelW, fy, colW - labelW, rowH).fillAndStroke("#FFFFFF", LINE);
+        doc.fillColor(INK).font("Helvetica").fontSize(8.6).text(safe(String(v)), x + labelW + 6, fy + 6, { width: valW });
+      });
+      fy += rowH + 4;
     }
-    if (colCount % 2 === 1) fy += rowH + 4;
     y = fy + 8;
 
     // ---- Narrative sections ----

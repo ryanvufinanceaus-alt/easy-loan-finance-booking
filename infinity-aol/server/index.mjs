@@ -2868,9 +2868,21 @@ function buildYtdInputFromCase(caseData) {
   const now = new Date();
   const fyStart = new Date(now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1, 6, 1); // 1 July
   const emp = (primary && primary.employment) || {};
+  // Employment start date drives First Pay Day for mid-year starters. Source it from the case OR the live
+  // Infinity/AOL sync (Client Details / AOL employment) — whichever has it.
+  const snapEmp = (snapshot && snapshot.employment) || {};
+  const empStart = emp.startDate || emp.since || snapEmp.startDate || snapEmp.since
+    || (infFin.employment && (infFin.employment.startDate || infFin.employment.since))
+    || (aolFin.employment && (aolFin.employment.startDate || aolFin.employment.since));
+  // Parse an Australian dd/mm/yyyy (JS Date misreads these as mm/dd); fall back to native parsing otherwise.
+  const auDate = (v) => {
+    if (!v) return null;
+    const m = String(v).trim().match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+    if (m) { const yr = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]); const d = new Date(yr, Number(m[2]) - 1, Number(m[1])); return Number.isNaN(d.getTime()) ? null : d; }
+    const d = new Date(v); return Number.isNaN(d.getTime()) ? null : d;
+  };
   let firstPay = fyStart;
-  const empStart = emp.startDate || emp.since;
-  if (empStart) { const es = new Date(empStart); if (!Number.isNaN(es.getTime()) && es > fyStart && es <= now) firstPay = es; }
+  if (empStart) { const es = auDate(empStart); if (es && es > fyStart && es <= now) firstPay = es; }
 
   // The ONE figure no synced source has is the YTD gross on the latest payslip. Once the broker enters it,
   // we persist it on the case (capture "ytdGross") so every later YTD regeneration auto-fills it — and its

@@ -179,8 +179,32 @@ export async function buildYtdXlsx(input = {}) {
   });
   const lastRow = H + weeks.length;
 
+  // ---- Calculation working: spell out WHY the annualised figure is what it is (formula + the chosen period) ----
+  const fmtD = (d) => d ? `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}` : "—";
+  const usedFyStart = c.first && c.first.getMonth() === 6 && c.first.getDate() === 1;
+  const whyFirst = usedFyStart
+    ? "First Pay Day = 01 July (financial-year start) — the client was employed before 1 July, so the payslip YTD covers the full year-to-date."
+    : `First Pay Day = ${fmtD(c.first)} (job start) — the client started this job during the financial year, so the YTD is annualised over the days actually worked (not since 1 July).`;
+  const wr = lastRow + 2;
+  ws.getRow(wr).height = 14;
+  label(`A${wr}:H${wr}`, "HOW THIS IS CALCULATED", { color: WHITE, fill: NAVY, h: "left", size: 9 });
+  const formulaLine =
+    `Annualised income = YTD gross ÷ days worked × 365\n` +
+    `= ${money2(c.netYtd)} ÷ ${c.days} days (${fmtD(c.first)} → ${fmtD(c.last)}) × 365 = ${money2(c.yearly)} p.a.\n` +
+    `Split: Base ${money2(c.base)} + Over Time / Casual loading ${money2(c.ot)} = ${money2(c.yearly)} p.a.\n` +
+    whyFirst;
+  merge(`A${wr + 1}:H${wr + 4}`);
+  const wc = ws.getCell(`A${wr + 1}`);
+  wc.value = formulaLine;
+  wc.font = { name: "Calibri", size: 9.5, color: { argb: INK } };
+  wc.alignment = { horizontal: "left", vertical: "top", wrapText: true };
+  fillOf(wc, LIGHT);
+  box(`A${wr + 1}:H${wr + 4}`);
+  [wr + 1, wr + 2, wr + 3, wr + 4].forEach((rr) => { ws.getRow(rr).height = 15; });
+  const boxBottom = wr + 4;
+
   // ---- Footer ----
-  const fr = lastRow + 2;
+  const fr = boxBottom + 2;
   merge(`A${fr}:H${fr}`);
   const foot = ws.getCell(`A${fr}`);
   foot.value = "Easy Loan Finance  ·  Prepared with EasyFlow AI  ·  Figures are indicative and subject to lender assessment.";
@@ -188,6 +212,6 @@ export async function buildYtdXlsx(input = {}) {
   foot.alignment = { horizontal: "center", vertical: "middle" };
   ws.getRow(fr).height = 14;
 
-  setOuterBox(ws, 1, 1, 8, lastRow, NAVY, "medium");
+  setOuterBox(ws, 1, 1, 8, boxBottom, NAVY, "medium");
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
