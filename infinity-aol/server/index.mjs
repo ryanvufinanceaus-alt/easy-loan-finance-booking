@@ -2880,7 +2880,8 @@ function buildYtdInputFromCase(caseData) {
     clientName: liveOwner || applicantFullName(primary) || apps.map(applicantFullName).filter(Boolean).join(" & "),
     baseAnnual: annual || primary.income?.baseAnnual || 0,
     baseAmount, baseFrequency: freq || "Annually", baseMultiplier: mult,
-    firstPayDay: ddmmyyyy(firstPay),
+    // First Pay Day = broker-confirmed job start (mid-year starter) if set, else auto max(1 July, employment start).
+    firstPayDay: ytdCap.firstPayDay || ddmmyyyy(firstPay),
     lastPayDay: ytdCap.lastPayDay || ddmmyyyy(now),
     ytdIncome: Number(ytdCap.amount) || 0
   };
@@ -2895,7 +2896,12 @@ app.post("/api/cases/:caseId/ytd-calc", async (request, response) => {
     const input = { ...prefill, ...(request.body || {}) }; // explicit form values win
     // Remember a YTD gross the broker provides so it auto-fills next time (enter once → auto forever).
     if (caseData && Number(request.body?.ytdIncome) > 0) {
-      pushCaseHistory(caseData.id, { type: "capture", key: "ytdGross", brokerUser: broker.name, data: { amount: Number(request.body.ytdIncome), lastPayDay: request.body.lastPayDay || input.lastPayDay } });
+      pushCaseHistory(caseData.id, { type: "capture", key: "ytdGross", brokerUser: broker.name, data: {
+        amount: Number(request.body.ytdIncome),
+        lastPayDay: request.body.lastPayDay || input.lastPayDay,
+        // Remember the job-start First Pay Day (mid-year starter) so the annualisation period stays correct.
+        firstPayDay: request.body.firstPayDay || null
+      } });
     }
     const buffer = await buildYtdXlsx(input);
     recordDocHistory(request.params.caseId, "ytd", broker.name);

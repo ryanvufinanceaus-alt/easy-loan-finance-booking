@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.34";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.35";
 const REPORT_HISTORY_KEY = "easyflowReportHistory";
 const REPORT_HISTORY_LIMIT = 5;
 
@@ -1013,7 +1013,13 @@ async function generateYtd() {
   // blank reuses the value saved on the case (everything else: name, base, dates, frequency is auto from sync).
   const ytdRaw = window.prompt("YTD gross on the latest payslip\n(leave blank to use the saved / auto value):", "");
   const body = {};
-  if (ytdRaw && Number(String(ytdRaw).replace(/[^0-9.]/g, "")) > 0) body.ytdIncome = Number(String(ytdRaw).replace(/[^0-9.]/g, ""));
+  if (ytdRaw && Number(String(ytdRaw).replace(/[^0-9.]/g, "")) > 0) {
+    body.ytdIncome = Number(String(ytdRaw).replace(/[^0-9.]/g, ""));
+    // First Pay Day = the LATER of 1 July and the job start date. Only matters when the client started THIS
+    // financial year — then the YTD must be annualised over days worked, not since 1 July.
+    const startRaw = window.prompt("Did the client START this job during this financial year (after 1 July)?\nIf yes, enter the start date (dd/mm/yyyy). Leave BLANK if they started before 1 July.", "");
+    if (startRaw && /^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}$/.test(startRaw.trim())) body.firstPayDay = startRaw.trim();
+  }
   setStatus("Generating YTD…" + snapMsg, "muted");
   try {
     const res = await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/ytd-calc`, {
