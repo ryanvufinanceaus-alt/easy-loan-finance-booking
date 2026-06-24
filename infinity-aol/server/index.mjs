@@ -2297,8 +2297,11 @@ function reverseSyncDiff(caseData) {
   add("Loan", "Product", loan.productPreference || loan.product || "", liveProductClean, "product", liveProductClean);
   // Loans & Products tab — repayment type / frequency / features (from the live Loans & Products capture).
   const lp = snap.loanPrefs || {};
-  const rpMap = (x) => /interest only|\bio\b/i.test(x) ? "Interest Only" : /p\s*&?\s*i|principal/i.test(x) ? "Principal and Interest" : String(x || "");
-  add("Loan", "Repayment type", rpMap(loan.repaymentType || loan.repayment || ""), rpMap(lp.repaymentType || ""), "repaymentType", rpMap(lp.repaymentType || ""));
+  const rpMap = (x) => /interest only|\bio\b/i.test(x) ? "Interest Only" : /p\s*&?\s*i|principal/i.test(x) ? "Principal and Interest" : "";
+  // Only propose a repayment-type change when the LIVE value is a REAL repayment type. On the Features/SOCA page
+  // the scrape can pick up an unrelated "No" (Show Fees / Capitalise LMI), which must never become a diff.
+  const liveRp = rpMap(lp.repaymentType || "");
+  if (liveRp) add("Loan", "Repayment type", rpMap(loan.repaymentType || loan.repayment || ""), liveRp, "repaymentType", liveRp);
   if (lp.repaymentFrequency && /week|fortnight|month/i.test(lp.repaymentFrequency)) add("Loan", "Repayment frequency", loan.repaymentFrequency || "", lp.repaymentFrequency, "repaymentFrequency");
   // Compare features by BOOLEAN FLAGS, not free text — otherwise live "Redraw, Offset, Extra repayments" never
   // equals the applied case "redraw offset extra" and the row would re-appear on every apply (looks like Apply
@@ -2374,8 +2377,9 @@ function applyReverseSyncOverlay(caseData) {
       ...(f.lender ? { lender: f.lender, selectedLender: f.lender } : {}),
       ...(f.interestRate ? { interestRate: f.interestRate } : {}),
       ...(f.product ? { productPreference: f.product, product: f.product } : {}),
-      ...(f.repaymentType ? { repaymentType: f.repaymentType } : {}),
-      ...(f.repaymentFrequency ? { repaymentFrequency: f.repaymentFrequency } : {}),
+      // Ignore a stored repayment type that isn't actually one (self-heals an old overlay that captured "No").
+      ...(f.repaymentType && /principal|interest only|\bp\s*&?\s*i\b|\bio\b/i.test(f.repaymentType) ? { repaymentType: f.repaymentType } : {}),
+      ...(f.repaymentFrequency && /week|fortnight|month/i.test(f.repaymentFrequency) ? { repaymentFrequency: f.repaymentFrequency } : {}),
       ...(f.features ? { redraw: !!f.features.redraw, offset: !!f.features.offset, extraRepayments: !!f.features.extraRepayments } : {})
     };
   }

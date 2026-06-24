@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.31";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.32";
 const REPORT_HISTORY_KEY = "easyflowReportHistory";
 const REPORT_HISTORY_LIMIT = 5;
 
@@ -956,7 +956,7 @@ function filenameFromResponse(res, fallback) {
 // The content-script build the popup expects in the open Infinity tab. If the tab is running an OLDER content
 // script (reloading the extension does NOT replace it — only an F5 does), the capture returns instantly with
 // no tab-walk. Keep this in sync with EF_CS_BUILD in the content script; bump both when the sweep changes.
-const EXPECTED_CS_BUILD = "2.9.0";
+const EXPECTED_CS_BUILD = "2.10.0";
 function waitForTabComplete(tabId, maxMs = 15000) {
   return new Promise((resolve) => {
     const start = Date.now();

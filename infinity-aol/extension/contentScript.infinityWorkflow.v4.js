@@ -11,7 +11,7 @@
   // content script is still running in an already-open Infinity tab (reloading the extension does NOT replace
   // it — only an F5 does), the popup auto-reloads the tab so the new sweep code runs. BUMP this whenever the
   // content script changes in a way the popup relies on (e.g. the tab-walk), and match it in popup.js.
-  var EF_CS_BUILD = "2.9.0";
+  var EF_CS_BUILD = "2.10.0";
 
   // Push a step update to the popup's progress bar (0–100%). Fire-and-forget; swallow the "no receiver" error
   // when the popup is closed.
@@ -2487,7 +2487,13 @@
       // Repayment structure + loan features — read on Loans & Products / Preferred Loan Features (the scenario
       // cards show "Repayment type: Principal & Interest"; prioritised features list Redraw / P&I / Offset).
       loanPrefs: {
-        repaymentType: valByLabel(["repayment type", "repayment method"]) || (/principal\s*&?\s*i|p\s*&\s*i\b/i.test(document.body.innerText || "") ? "Principal & Interest" : (/interest only/i.test(document.body.innerText || "") ? "Interest Only" : "")),
+        repaymentType: (function () {
+          // Only trust a repayment-type label value that actually LOOKS like one — on the Features page the
+          // nearest control to "Repayment type" can be an unrelated "No" (Show Fees / Capitalise LMI).
+          var v = valByLabel(["repayment type", "repayment method"]);
+          if (v && /principal|interest only|\bp\s*&?\s*i\b|\bio\b/i.test(v)) return v;
+          return /principal\s*&?\s*i|p\s*&\s*i\b/i.test(document.body.innerText || "") ? "Principal & Interest" : (/interest only/i.test(document.body.innerText || "") ? "Interest Only" : "");
+        })(),
         repaymentFrequency: valByLabel(["repayment frequency", "repayment freq", "frequency of repayments"]),
         // true-or-undefined (not false): efMergeObj treats "false" as a real value and would wipe a true from
         // another page, so only ever SET the flag, never clear it.

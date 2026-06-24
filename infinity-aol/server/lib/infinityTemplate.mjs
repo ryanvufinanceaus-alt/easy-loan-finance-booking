@@ -296,6 +296,19 @@ function buildNarrative(caseData, applicants) {
   const featuresParagraph = circumstancesFeaturesParagraph(caseData, who, p);
   const longStructure = `${para1}\n\n${featuresParagraph}`;
 
+  // Goals & Objectives = GOAL-focused (what the client wants to achieve), NOT a repeat of the loan structure.
+  const shape = loanFeatureShape(caseData);
+  const money = (n) => `$${Number(currency(n) || 0).toLocaleString("en-AU")}`;
+  const goalAction = refi
+    ? `refinance ${p.possessive} existing home loan to a more suitable product`
+    : purpose.includes("investment")
+      ? "purchase an investment property"
+      : purpose.includes("vacant land")
+        ? "purchase vacant land"
+        : "purchase an owner-occupied property to live in";
+  const seeking = isPreApproval(caseData) ? "pre-approval" : "finance";
+  const goalsObjectives = `${who}'s objective is to ${goalAction}. ${Subject} ${p.be} seeking ${seeking} of ${money(caseData.loan?.loanAmount)} over ${loanTerm} years, with a structure that lets ${p.object} reduce the loan sooner when ${p.subject} ${p.be} in a position to. ${lender} was chosen because it meets ${p.possessive} borrowing needs and offers a competitive rate${shape.redraw ? `, and ${p.subject} values being able to redraw funds if required` : ""}.`;
+
   return {
     loanObjectiveExplanation: objectiveText,
     circumstancesObjectivesPriorities: `${para1}\n${lenderSentence}\n\n${featuresParagraph}`,
@@ -304,7 +317,7 @@ function buildNarrative(caseData, applicants) {
     loanAmount: `The loan amount can be serviced by the applicant and is enough for ${p.object} to complete the purchase.`,
     interestRate: `${product} rate to take advantage of when the interest rate decreases.`,
     loanStructure: longStructure,
-    goalsObjectives: longStructure,
+    goalsObjectives,
     // Loan Features sample starts at the term sentence (no purpose opener) + the features paragraph.
     loanFeatures: `${para1Body}\n\n${featuresParagraph}`,
     commissionsConflict: "No conflict of interest has been identified. Standard lender commissions and any referral fees have been disclosed where applicable."
