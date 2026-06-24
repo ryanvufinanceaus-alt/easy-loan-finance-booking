@@ -244,7 +244,8 @@ function circumstancesFeaturesParagraph(caseData, who, p) {
     ? `${who} chooses a fixed rate option for certainty of repayments during the fixed period.`
     : `${who} chooses a variable option to enable flexibility in reducing debt if ${p.subject} accumulates extra funds during this period.`);
   if (s.redraw) parts.push(`Also, ${lower} would like to use the redraw option if ${p.subject} needs to gain access to the funds.`);
-  if (s.offset) parts.push(`${who} would also like an offset account to reduce the interest charged.`);
+  // Offset is captured as a Preferred Loan Feature, but the broker keeps it OUT of this commentary paragraph
+  // (matches the reference SOCA sample). Do not add an offset sentence here.
   parts.push(s.interestOnly
     ? `${who} prefers an Interest Only option to keep repayments lower during the initial period.`
     : `${who} prefers a Principal & Interest option because ${p.subject} would like to pay down the loan over the period of ${s.term} years to reduce the debt.`);
@@ -286,8 +287,10 @@ function buildNarrative(caseData, applicants) {
     ? `${who} ${p.be} seeking finance to refinance the existing home loan.`
     : `${who} ${p.be} seeking pre-approval to purchase ${purpose.includes("investment") ? "an investment" : "an owner-occupied"} property.`;
   const Subject = `${p.subject[0].toUpperCase()}${p.subject.slice(1)}`;
-  // Paragraph 1: who / purpose / term / income / no anticipated changes.
-  const para1 = `${purposeSentence} ${Subject} ${p.be} looking to have the loan for ${loanTerm} years; however ${p.subject} may be able to pay down sooner in the future if ${p.subject} ${p.be} in a position to. The applicant ${p.be} working and earning good income. The applicant does not foresee any changes to ${p.possessive} financial position that may affect ${p.possessive} ability to repay the home loan.`;
+  // Paragraph 1, body = term / income / no anticipated changes (no purpose sentence). Loan Features uses this on
+  // its own; the other fields prepend the purpose sentence.
+  const para1Body = `${Subject} ${p.be} looking to have the loan for ${loanTerm} years; however ${p.subject} may be able to pay down sooner in the future if ${p.subject} ${p.be} in a position to. The applicant ${p.be} working and earning a good income. The applicant does not foresee any changes to ${p.possessive} financial position that may affect ${p.possessive} ability to repay the home loan.`;
+  const para1 = `${purposeSentence} ${para1Body}`;
   const lenderSentence = `${lender} was chosen because they provide stronger servicing and offer competitive rates.`;
   // Paragraph 2: the loan features, built from the actual loan shape (variable/fixed, redraw, P&I/IO, frequency).
   const featuresParagraph = circumstancesFeaturesParagraph(caseData, who, p);
@@ -297,12 +300,13 @@ function buildNarrative(caseData, applicants) {
     loanObjectiveExplanation: objectiveText,
     circumstancesObjectivesPriorities: `${para1}\n${lenderSentence}\n\n${featuresParagraph}`,
     financialAwarenessPractices: `${who} already has experience with mortgage products. Loan terms and key features have been fully explained and understood.\n${who} has a good record of saving and ${p.be} living within ${p.possessive} means.`,
-    lender: `${lender} was chosen because they provide a stronger service and better interest rate for the client. Other lenders do not provide enough borrowing capacity and better interest rate for the client to purchase the property they want.`,
+    lender: `${lender} was chosen because they provide a stronger service and better interest rate for the client. Other lenders do not give enough borrowing capacity and better interest rate for clients to purchase the property ${p.subject} wants.`,
     loanAmount: `The loan amount can be serviced by the applicant and is enough for ${p.object} to complete the purchase.`,
     interestRate: `${product} rate to take advantage of when the interest rate decreases.`,
     loanStructure: longStructure,
     goalsObjectives: longStructure,
-    loanFeatures: longStructure,
+    // Loan Features sample starts at the term sentence (no purpose opener) + the features paragraph.
+    loanFeatures: `${para1Body}\n\n${featuresParagraph}`,
     commissionsConflict: "No conflict of interest has been identified. Standard lender commissions and any referral fees have been disclosed where applicable."
   };
 }
