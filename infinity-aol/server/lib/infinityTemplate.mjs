@@ -202,6 +202,68 @@ function primaryIncome(applicant) {
   return currency(applicant?.income?.baseAnnual) + currency(applicant?.income?.overtimeAnnual) + currency(applicant?.income?.bonusAnnual);
 }
 
+// ---- Loan-feature logic: drives the Loans & Securities commentary + Preferred Loan Features so the narrative
+// tracks the ACTUAL loan (rate type, redraw, offset, P&I/IO, repayment frequency) instead of hardcoded text. ----
+function repaymentFrequencyLabel(caseData) {
+  const f = String(caseData.loan?.repaymentFrequency || "").toLowerCase();
+  if (/fortnight/.test(f)) return "Fortnightly";
+  if (/week/.test(f)) return "Weekly";
+  if (/month/.test(f)) return "Monthly";
+  if (caseData.loan?.weeklyRepayments === true) return "Weekly";
+  if (caseData.loan?.fortnightlyRepayments === true) return "Fortnightly";
+  return "Monthly";
+}
+function frequencyReason(freq) {
+  if (freq === "Weekly") return "The client prefers weekly repayments to align with their cash flow and help manage budgeting.";
+  if (freq === "Fortnightly") return "The client prefers fortnightly repayments to align with their pay cycle and reduce interest over the loan term.";
+  return "The client prefers monthly repayments to align with their budgeting.";
+}
+function loanFeatureShape(caseData) {
+  const req = selectedRequirements(caseData);
+  const product = String(caseData.loan?.productPreference || caseData.loan?.product || "");
+  const isFixed = /fixed/i.test(product) && !/variable/i.test(product);
+  return {
+    isFixed,
+    rateType: isFixed ? "Fixed Rate" : "Variable Rate",
+    redraw: req.redraw,
+    offset: req.offset,
+    extraRepayments: req.extraRepayments,
+    interestOnly: req.interestOnly,
+    repaymentTypeLabel: req.interestOnly ? "Interest Only" : "P & I Repayments",
+    frequency: repaymentFrequencyLabel(caseData),
+    term: caseData.loan?.loanTermYears || 30
+  };
+}
+// The "features" paragraph of the Loans & Securities commentary — built from the real loan shape, in the
+// broker's preferred order: rate type → redraw → P&I/IO → frequency (offset mentioned only if selected).
+function circumstancesFeaturesParagraph(caseData, who, p) {
+  const s = loanFeatureShape(caseData);
+  const lower = who.toLowerCase();
+  const parts = [];
+  parts.push(s.isFixed
+    ? `${who} chooses a fixed rate option for certainty of repayments during the fixed period.`
+    : `${who} chooses a variable option to enable flexibility in reducing debt if ${p.subject} accumulates extra funds during this period.`);
+  if (s.redraw) parts.push(`Also, ${lower} would like to use the redraw option if ${p.subject} needs to gain access to the funds.`);
+  if (s.offset) parts.push(`${who} would also like an offset account to reduce the interest charged.`);
+  parts.push(s.interestOnly
+    ? `${who} prefers an Interest Only option to keep repayments lower during the initial period.`
+    : `${who} prefers a Principal & Interest option because ${p.subject} would like to pay down the loan over the period of ${s.term} years to reduce the debt.`);
+  parts.push(frequencyReason(s.frequency));
+  return parts.join(" ");
+}
+// Prioritised Loan Features list — derived from the real loan shape (matches the Preferred Loan Features tab).
+function buildPreferredFeatures(caseData) {
+  if (caseData.selectedTemplate?.loanFeatures?.length) return caseData.selectedTemplate.loanFeatures;
+  const s = loanFeatureShape(caseData);
+  const feats = [];
+  feats.push({ feature: s.rateType, reason: s.isFixed ? "The client prefers a fixed rate for certainty of repayments." : "The client wants flexibility if interest rates decrease." });
+  if (s.redraw) feats.push({ feature: "Redraw", reason: "Gain access to funds if required." });
+  feats.push({ feature: s.repaymentTypeLabel, reason: s.interestOnly ? "Interest Only to keep repayments lower during the initial period." : "The client prefers to reduce principal over the loan term." });
+  if (s.offset) feats.push({ feature: "Offset", reason: "To save interest charged." });
+  feats.push({ feature: `${s.frequency} Repayments`, reason: frequencyReason(s.frequency) });
+  return feats.map((f, i) => ({ priority: i + 1, feature: f.feature, reason: f.reason }));
+}
+
 function buildNarrative(caseData, applicants) {
   const who = sentenceName(applicants);
   const p = pronouns(applicants);
@@ -223,11 +285,17 @@ function buildNarrative(caseData, applicants) {
   const purposeSentence = refi
     ? `${who} ${p.be} seeking finance to refinance the existing home loan.`
     : `${who} ${p.be} seeking pre-approval to purchase ${purpose.includes("investment") ? "an investment" : "an owner-occupied"} property.`;
-  const longStructure = `${purposeSentence} ${p.subject[0].toUpperCase()}${p.subject.slice(1)} ${p.be} looking to have the loan for ${loanTerm} years; however ${p.subject} may be able to pay down sooner in the future if ${p.subject} ${p.be} in a position to. The applicant ${p.be} working and earning good income. The applicant does not foresee any changes to ${p.possessive} financial position that may affect ${p.possessive} ability to repay the home loan.\n\n${who} chooses a variable option to enable flexibility in reducing debt if ${p.subject} accumulates extra funds during this period. Also, ${who.toLowerCase()} would like to use the redraw option if ${p.subject} needs to gain access to the funds. ${who} prefers a ${repayment} option because ${p.subject} would like to pay down the loan over the period of ${loanTerm} years to reduce the debt. The monthly repayment is more suitable for ${who.toLowerCase()} to budget.`;
+  const Subject = `${p.subject[0].toUpperCase()}${p.subject.slice(1)}`;
+  // Paragraph 1: who / purpose / term / income / no anticipated changes.
+  const para1 = `${purposeSentence} ${Subject} ${p.be} looking to have the loan for ${loanTerm} years; however ${p.subject} may be able to pay down sooner in the future if ${p.subject} ${p.be} in a position to. The applicant ${p.be} working and earning good income. The applicant does not foresee any changes to ${p.possessive} financial position that may affect ${p.possessive} ability to repay the home loan.`;
+  const lenderSentence = `${lender} was chosen because they provide stronger servicing and offer competitive rates.`;
+  // Paragraph 2: the loan features, built from the actual loan shape (variable/fixed, redraw, P&I/IO, frequency).
+  const featuresParagraph = circumstancesFeaturesParagraph(caseData, who, p);
+  const longStructure = `${para1}\n\n${featuresParagraph}`;
 
   return {
     loanObjectiveExplanation: objectiveText,
-    circumstancesObjectivesPriorities: `${longStructure}\n${lender} was chosen because they provide stronger servicing and offer competitive rates.`,
+    circumstancesObjectivesPriorities: `${para1}\n${lenderSentence}\n\n${featuresParagraph}`,
     financialAwarenessPractices: `${who} already has experience with mortgage products. Loan terms and key features have been fully explained and understood.\n${who} has a good record of saving and ${p.be} living within ${p.possessive} means.`,
     lender: `${lender} was chosen because they provide a stronger service and better interest rate for the client. Other lenders do not provide enough borrowing capacity and better interest rate for the client to purchase the property they want.`,
     loanAmount: `The loan amount can be serviced by the applicant and is enough for ${p.object} to complete the purchase.`,
@@ -312,15 +380,9 @@ export function buildInfinityTemplate(caseData) {
   const lender = lenderText(caseData);
   const facilityAmount = currency(caseData.loan?.loanAmount);
   const security = primarySecurity(caseData);
-  const preferredLoanFeatures = caseData.selectedTemplate?.loanFeatures?.length
-    ? caseData.selectedTemplate.loanFeatures
-    : [
-        { priority: 1, feature: "Variable Rate", reason: "The client chooses a variable option to enable flexibility in reducing debt if they accumulate extra funds during this period." },
-        { priority: 2, feature: "Redraw", reason: "Gain access to funds" },
-        { priority: 3, feature: "P & I Repayments", reason: "The client prefers Principal and Interest repayments to pay down the loan over time." },
-        { priority: 4, feature: "Offset", reason: "To save interest charged" },
-        { priority: 5, feature: "Monthly Repayments", reason: "Personal preference" }
-      ];
+  // Derived from the real loan shape (rate type, redraw, P&I/IO, offset, repayment frequency) so the Preferred
+  // Loan Features tab tracks the case — e.g. a weekly-repayment loan lists "Weekly Repayments", not "Monthly".
+  const preferredLoanFeatures = buildPreferredFeatures(caseData);
 
   return {
     applicantMode: secondary ? "couple" : "single",
