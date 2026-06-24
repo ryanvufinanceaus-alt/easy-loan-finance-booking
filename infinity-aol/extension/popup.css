@@ -46,21 +46,22 @@ header {
   background: linear-gradient(135deg, #14532d 0%, #15803d 55%, #0d9488 130%);
   border-radius: var(--radius);
   color: #fff;
-  padding: 11px 14px 11px 44px;
+  padding: 13px 14px 13px 70px;
   box-shadow: var(--shadow-md);
   overflow: hidden;
 }
 header .brand-logo {
   position: absolute;
   left: 12px;
-  top: 10px;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 46px;
+  height: 46px;
+  border-radius: 11px;
   background: #fff;
-  padding: 2px;
+  padding: 4px;
   object-fit: contain;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.28);
 }
 header .brand-kicker {
   display: block;

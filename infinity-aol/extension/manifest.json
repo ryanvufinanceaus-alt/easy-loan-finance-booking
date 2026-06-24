@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "EasyFlow AI Extension",
-  "version": "2.15.0",
+  "version": "2.16.0",
   "description": "Section-by-section AOL autofill from EasyFlow AI prepared payloads.",
   "permissions": ["activeTab", "scripting", "storage"],
   "background": { "service_worker": "background.js" },
@@ -20,19 +20,19 @@
     "https://*.applyonline.com.au/*"
   ],
   "icons": {
-    "16": "elf-logo.png",
-    "32": "elf-logo.png",
-    "48": "elf-logo.png",
-    "128": "elf-logo.png"
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
   },
   "action": {
     "default_title": "EasyFlow AI Extension",
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "elf-logo.png",
-      "32": "elf-logo.png",
-      "48": "elf-logo.png",
-      "128": "elf-logo.png"
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
     }
   },
   "content_scripts": [
