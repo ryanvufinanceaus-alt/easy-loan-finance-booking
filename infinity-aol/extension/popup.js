@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.33";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.34";
 const REPORT_HISTORY_KEY = "easyflowReportHistory";
 const REPORT_HISTORY_LIMIT = 5;
 
@@ -1009,12 +1009,17 @@ async function generateYtd() {
   if (!state.prepared || !state.prepared.caseId) { setStatus("Select a Prepared case first.", "error"); return; }
   const apiBase = els.apiBase.value.replace(/\/$/, "");
   const snapMsg = await efCaptureLive(apiBase, state.prepared.caseId);
+  // The ONLY figure no synced source has is the YTD gross on the latest payslip. Ask for it ONCE — leaving it
+  // blank reuses the value saved on the case (everything else: name, base, dates, frequency is auto from sync).
+  const ytdRaw = window.prompt("YTD gross on the latest payslip\n(leave blank to use the saved / auto value):", "");
+  const body = {};
+  if (ytdRaw && Number(String(ytdRaw).replace(/[^0-9.]/g, "")) > 0) body.ytdIncome = Number(String(ytdRaw).replace(/[^0-9.]/g, ""));
   setStatus("Generating YTD…" + snapMsg, "muted");
   try {
     const res = await fetch(`${apiBase}/api/cases/${encodeURIComponent(state.prepared.caseId)}/ytd-calc`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-easyflow-broker-token": brokerToken },
-      body: JSON.stringify({})
+      body: JSON.stringify(body)
     });
     if (res.status === 401) { setStatus("Session expired — sign in again.", "error"); showAuthState(null); return; }
     if (!res.ok) { const t = await res.text().catch(() => ""); setStatus("YTD failed: " + t.slice(0, 140), "error"); return; }

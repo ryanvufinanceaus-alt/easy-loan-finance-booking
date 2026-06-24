@@ -2872,11 +2872,17 @@ function buildYtdInputFromCase(caseData) {
   const empStart = emp.startDate || emp.since;
   if (empStart) { const es = new Date(empStart); if (!Number.isNaN(es.getTime()) && es > fyStart && es <= now) firstPay = es; }
 
+  // The ONE figure no synced source has is the YTD gross on the latest payslip. Once the broker enters it,
+  // we persist it on the case (capture "ytdGross") so every later YTD regeneration auto-fills it — and its
+  // matching pay date — instead of asking again.
+  const ytdCap = getCapture(caseData?.id, "ytdGross") || {};
   return {
     clientName: liveOwner || applicantFullName(primary) || apps.map(applicantFullName).filter(Boolean).join(" & "),
     baseAnnual: annual || primary.income?.baseAnnual || 0,
     baseAmount, baseFrequency: freq || "Annually", baseMultiplier: mult,
-    firstPayDay: ddmmyyyy(firstPay), lastPayDay: ddmmyyyy(now), ytdIncome: 0
+    firstPayDay: ddmmyyyy(firstPay),
+    lastPayDay: ytdCap.lastPayDay || ddmmyyyy(now),
+    ytdIncome: Number(ytdCap.amount) || 0
   };
 }
 
@@ -2887,6 +2893,10 @@ app.post("/api/cases/:caseId/ytd-calc", async (request, response) => {
     const caseData = findCase(request.params.caseId);
     const prefill = caseData ? buildYtdInputFromCase(caseData) : {};
     const input = { ...prefill, ...(request.body || {}) }; // explicit form values win
+    // Remember a YTD gross the broker provides so it auto-fills next time (enter once → auto forever).
+    if (caseData && Number(request.body?.ytdIncome) > 0) {
+      pushCaseHistory(caseData.id, { type: "capture", key: "ytdGross", brokerUser: broker.name, data: { amount: Number(request.body.ytdIncome), lastPayDay: request.body.lastPayDay || input.lastPayDay } });
+    }
     const buffer = await buildYtdXlsx(input);
     recordDocHistory(request.params.caseId, "ytd", broker.name);
     sendDocFile(response, buffer, `YTD_${slug(input.clientName)}.xlsx`,
