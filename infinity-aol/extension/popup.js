@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.29";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.30";
 const REPORT_HISTORY_KEY = "easyflowReportHistory";
 const REPORT_HISTORY_LIMIT = 5;
 
@@ -329,11 +329,19 @@ function hasConfirmedHem(payload) {
     payload?.documentIntake?.assumptions?.hemConfirmed === true;
 }
 
+// The case to act on. The dropdown is the source of truth. Only fall back to the Advanced manual Case-ID
+// override when there are genuinely NO selectable cases (manual mode) — NEVER silently reuse a stale stored
+// token while a case list is present, or Start/Sync would run against the previously-selected case.
+function getSelectedCaseToken() {
+  const picked = els.casePicker.value.trim();
+  if (picked) return picked;
+  const hasCases = Array.from(els.casePicker.options).some((o) => o.value);
+  return hasCases ? "" : els.caseToken.value.trim();
+}
 async function loadPayload() {
   const apiBase = els.apiBase.value.replace(/\/$/, "");
-  const selectedToken = els.casePicker.value.trim();
-  const caseToken = (selectedToken || els.caseToken.value).trim();
-  if (!caseToken) throw new Error("Enter the Case ID first.");
+  const caseToken = getSelectedCaseToken();
+  if (!caseToken) { state.prepared = null; throw new Error("Select a prepared case first."); }
 
   chrome.storage.local.set({ apiBase, caseToken });
   const [preparedResponse, mappingResponse] = await Promise.all([
@@ -809,6 +817,14 @@ els.refreshCases.addEventListener("click", () => loadPreparedCases().catch((erro
 els.casePicker.addEventListener("change", () => {
   els.caseToken.value = els.casePicker.value;
   chrome.storage.local.set({ caseToken: els.casePicker.value });
+  // Picking the blank placeholder = no case. Drop any previously-loaded case + hide the sync panel so the
+  // next Start/Sync can't run against the old one.
+  if (!els.casePicker.value.trim()) {
+    state.prepared = null;
+    const p = document.querySelector("#reverseSyncPanel");
+    if (p) { p.style.display = "none"; p.innerHTML = ""; }
+    setStatus("Select a prepared case to begin.", "muted");
+  }
 });
 els.fillSection.addEventListener("click", () => fillCurrentPopup().catch((error) => setStatus(error.message, "error")));
 els.comparePage.addEventListener("click", () => checkCurrentPage().catch((error) => setStatus(error.message, "error")));
@@ -1025,9 +1041,12 @@ function rsVersionBanner(versions) {
 async function reverseSyncReview() {
   const panel = document.querySelector("#reverseSyncPanel");
   if (!brokerToken) { setStatus("Sign in first.", "error"); return; }
+  // Require an explicit case selection BEFORE doing anything (loadPayload's error is swallowed below, so guard
+  // here too — otherwise Sync would run against a stale previously-loaded case).
+  if (!getSelectedCaseToken()) { state.prepared = null; panel.style.display = "none"; setStatus("Select a prepared case first.", "error"); return; }
   await loadPayload().catch(() => {});
   const caseId = state.prepared && state.prepared.caseId;
-  if (!caseId) { setStatus("Select a Prepared case first.", "error"); return; }
+  if (!caseId) { panel.style.display = "none"; setStatus("Select a prepared case first.", "error"); return; }
   const apiBase = els.apiBase.value.replace(/\/$/, "");
   panel.style.display = "block";
   panel.innerHTML = '<div class="muted">Scanning all Infinity tabs (Client Details → Financials → Loans &amp; Products)… this takes ~15s.</div>';
