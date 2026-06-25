@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.39";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.40";
 const REPORT_HISTORY_KEY = "easyflowReportHistory";
 const REPORT_HISTORY_LIMIT = 5;
 
@@ -402,7 +402,12 @@ async function loadPayload() {
   renderReview();
 
   if (!state.prepared.validation.okToAutofill) {
-    throw new Error("Prepared case has validation errors. Fix those before autofill.");
+    // Spell out exactly WHICH required field(s) are blocking, so the broker knows what to fix (not just
+    // "validation errors"). Lender changes never cause this — it's a missing required field or unconfirmed HEM.
+    const errs = (state.prepared.validation.issues || [])
+      .filter((i) => i.severity === "error")
+      .map((i) => i.message || i.code);
+    throw new Error("Fix before Start — " + (errs.length ? errs.join("  •  ") : "validation errors") + ".");
   }
   if (!hasConfirmedHem(state.prepared.payload)) {
     throw new Error("Confirm HEM / living expense breakdown in EasyFlow AI, then prepare again before autofill.");
