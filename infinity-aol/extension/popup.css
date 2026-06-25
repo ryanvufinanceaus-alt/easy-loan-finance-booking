@@ -296,6 +296,7 @@ button.review-row:hover { background: #f3f8f5; box-shadow: none; }
 .reverse-sync .rs-vals b { color: #0d9488; }
 .reverse-sync #rsApply { margin-top: 9px; width: 100%; }
 .reverse-sync .rs-ok { color: #166534; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 7px; padding: 8px 10px; line-height: 1.45; }
+.reverse-sync .rs-auto { color: #0d6e63; background: #eafaf7; border: 1px solid #b7e6df; border-radius: 7px; padding: 7px 10px; margin-bottom: 8px; font-size: 11px; line-height: 1.4; }
 
 .docs-help {
   margin: 4px 0 12px;

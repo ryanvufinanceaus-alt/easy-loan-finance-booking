@@ -3005,6 +3005,21 @@ app.post("/api/cases/:caseId/reverse-sync/apply", (request, response) => {
     });
     const overlay = { fields, updatedAt: new Date().toISOString(), updatedBy: broker.name };
     pushCaseHistory(caseId, { type: "capture", key: "caseUpdatedVersion", brokerUser: broker.name, data: overlay });
+    // Append an audit history entry (so applied changes — auto OR confirmed — are tracked + shown in EasyFlow).
+    const h = request.body && request.body.history;
+    if (h && Array.isArray(h.changes) && h.changes.length) {
+      const hist = getCapture(caseId, "syncHistory");
+      const list = Array.isArray(hist) ? hist : [];
+      list.push({
+        at: new Date().toISOString(),
+        direction: h.direction || "Infinity/AOL → EasyFlow",
+        appliedCount: h.changes.length,
+        changes: h.changes.slice(0, 80),
+        by: broker.name,
+        mode: h.mode || (h.direction && /auto/i.test(h.direction) ? "auto" : "confirmed")
+      });
+      pushCaseHistory(caseId, { type: "capture", key: "syncHistory", brokerUser: broker.name, data: list.slice(-200) });
+    }
     response.json({ ok: true, overlay });
   } catch (error) { response.status(500).json({ error: String(error?.message || error) }); }
 });

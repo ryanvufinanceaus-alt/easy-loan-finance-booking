@@ -1,4 +1,4 @@
-const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.40";
+const EASYFLOW_EXTENSION_BUILD_ID = "aol-workflow-v2.41";
 const REPORT_HISTORY_KEY = "easyflowReportHistory";
 const REPORT_HISTORY_LIMIT = 5;
 
@@ -1119,48 +1119,74 @@ async function reverseSyncReview() {
   await reverseSyncLoad(apiBase, caseId, false);
   efProgressDone("Scan complete");
 }
+// SMART AUTO: money-affecting fields need a one-click confirm; everything else is applied automatically.
+const RS_MONEY_KEYS = new Set(["applicants", "income", "expenses", "liabilities", "assets", "loanAmount"]);
+const rsChange = (d, auto) => ({ field: `${d.section} · ${d.label}`, from: d.easyflow || "—", to: d.live, auto });
+async function rsApplyFields(apiBase, caseId, diffList, direction) {
+  const fields = {}; const changes = [];
+  diffList.forEach((d) => { fields[d.key] = d.value; changes.push(rsChange(d, /auto/i.test(direction))); });
+  const r = await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/reverse-sync/apply`, {
+    method: "POST", headers: { "Content-Type": "application/json", "x-easyflow-broker-token": brokerToken },
+    body: JSON.stringify({ fields, history: { direction, changes } })
+  });
+  if (!r.ok) throw new Error("apply " + r.status);
+  await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/prepare-infinity-aol`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {});
+}
 async function reverseSyncLoad(apiBase, caseId, skipCapture) {
   const panel = document.querySelector("#reverseSyncPanel");
-  if (!skipCapture) { /* capture already done by caller */ }
-  let diffs = [], versions = null;
-  try {
+  const fetchDiffs = async () => {
     const r = await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/reverse-sync`, { headers: { "x-easyflow-broker-token": brokerToken } });
     const j = await r.json().catch(() => ({}));
-    diffs = j.diffs || [];
-    versions = j.versions || null;
-  } catch (_e) { panel.innerHTML = '<div class="muted">Could not read changes.</div>'; return; }
+    return { diffs: j.diffs || [], versions: j.versions || null };
+  };
+  let diffs = [], versions = null;
+  try { ({ diffs, versions } = await fetchDiffs()); }
+  catch (_e) { panel.innerHTML = '<div class="muted">Could not read changes.</div>'; return; }
+
+  // On a fresh scan, auto-apply the low-risk changes immediately, then re-read so only money-affecting ones remain.
+  let autoCount = 0;
+  if (!skipCapture) {
+    const autoDiffs = diffs.filter((d) => !RS_MONEY_KEYS.has(d.key));
+    if (autoDiffs.length) {
+      efProgressSet(96, "Auto-applying safe changes…");
+      try {
+        await rsApplyFields(apiBase, caseId, autoDiffs, "Infinity/AOL → EasyFlow (auto)");
+        autoCount = autoDiffs.length;
+        await loadPreparedCases().catch(() => {});
+        ({ diffs, versions } = await fetchDiffs());   // auto ones drop out; high-risk remain
+      } catch (_e) { /* fall back to showing everything for manual apply */ }
+    }
+  }
   window._rsDiffs = diffs;
-  // Two clearly-labelled versions of the case so the broker can tell them apart.
   const verBanner = rsVersionBanner(versions);
+  const autoNote = autoCount
+    ? `<div class="rs-auto">⚡ ${autoCount} low-risk change(s) auto-applied (address, lender, rate, repayment, features…) &amp; logged to history.</div>`
+    : "";
   if (!diffs.length) {
-    setStatus("Scan complete — EasyFlow already matches Infinity.", "success");
-    panel.innerHTML = verBanner
-      + '<div class="rs-ok">✓ Client (loan form) and Infinity match — nothing new to copy across.<br><span class="muted">Scanned Client Details, Financials and Loans &amp; Products. Open the case in an Infinity tab before syncing.</span></div>';
+    setStatus(autoCount ? `Synced — ${autoCount} change(s) auto-applied.` : "Scan complete — EasyFlow already matches Infinity.", "success");
+    panel.innerHTML = verBanner + autoNote
+      + '<div class="rs-ok">✓ Nothing left needs your confirmation.<br><span class="muted">Money-affecting changes (applicants, income, expenses/HEM, assets, liabilities) would ask here.</span></div>';
     return;
   }
-  setStatus(`Scan complete — ${diffs.length} difference(s) found.`, "muted");
-  panel.innerHTML = verBanner
-    + '<div class="rs-title">' + diffs.length + ' field(s) the broker changed in Infinity/AOL — tick to copy into the case</div>'
+  setStatus(`${diffs.length} change(s) need your OK${autoCount ? ` · ${autoCount} auto-applied` : ""}.`, "muted");
+  panel.innerHTML = verBanner + autoNote
+    + '<div class="rs-title">' + diffs.length + ' money-affecting change(s) — confirm to apply</div>'
     + '<div class="rs-cols"><span>① Loan form (client)</span><span>② Broker · Infinity &amp; AOL</span></div>'
     + '<div class="rs-list">' + diffs.map((d, i) => `<label class="rs-row"><input type="checkbox" class="rs-ck" data-i="${i}" checked>`
       + `<span class="rs-lbl">${escRs(d.section)} · ${escRs(d.label)}</span>`
       + `<span class="rs-vals"><s>${escRs(d.easyflow) || "—"}</s> → <b>${escRs(d.live)}</b></span></label>`).join("") + '</div>'
-    + '<button id="rsApply" class="primary-action" type="button">Apply selected → Broker version</button>';
+    + '<button id="rsApply" class="primary-action" type="button">Confirm &amp; apply → Broker version</button>';
   document.querySelector("#rsApply").addEventListener("click", () => reverseSyncApply(apiBase, caseId));
 }
 async function reverseSyncApply(apiBase, caseId) {
-  const fields = {};
-  document.querySelectorAll(".rs-ck:checked").forEach((ck) => { const d = (window._rsDiffs || [])[Number(ck.getAttribute("data-i"))]; if (d) fields[d.key] = d.value; });
-  if (!Object.keys(fields).length) { setStatus("Nothing ticked.", "muted"); return; }
+  const picked = [];
+  document.querySelectorAll(".rs-ck:checked").forEach((ck) => { const d = (window._rsDiffs || [])[Number(ck.getAttribute("data-i"))]; if (d) picked.push(d); });
+  if (!picked.length) { setStatus("Nothing ticked.", "muted"); return; }
   try {
-    const r = await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/reverse-sync/apply`, {
-      method: "POST", headers: { "Content-Type": "application/json", "x-easyflow-broker-token": brokerToken }, body: JSON.stringify({ fields })
-    });
-    if (!r.ok) { setStatus("Apply failed.", "error"); return; }
-    await fetch(`${apiBase}/api/cases/${encodeURIComponent(caseId)}/prepare-infinity-aol`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {});
+    await rsApplyFields(apiBase, caseId, picked, "Infinity/AOL → EasyFlow");
     await loadPreparedCases().catch(() => {});
     setStatus("✓ Case updated from live data.", "success");
-    await reverseSyncLoad(apiBase, caseId, true);     // reload diff — applied rows drop out
+    await reverseSyncLoad(apiBase, caseId, true);     // reload — applied rows drop out
   } catch (error) { setStatus("Apply failed: " + error.message, "error"); }
 }
 document.querySelector("#reverseSync")?.addEventListener("click", () => reverseSyncReview());
