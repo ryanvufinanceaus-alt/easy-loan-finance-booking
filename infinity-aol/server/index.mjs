@@ -2079,7 +2079,10 @@ app.get("/api/cases/:caseId", (request, response) => {
   for (const event of events) {
     if (event.type === "capture" && event.key && !(event.key in captures)) captures[event.key] = event.data;
   }
-  response.json({ ...caseData, loanFormNotes: latestNote?.mismatches || [], loanFormNoteAt: latestNote?.timestamp || null, captures });
+  // `effective` = the case WITH the broker's synced overlay applied (display-only, so the web can show the
+  // updated version by default); the raw fields stay untouched so edit forms keep editing the original.
+  const effective = applyReverseSyncOverlay({ ...caseData, id: request.params.caseId });
+  response.json({ ...caseData, loanFormNotes: latestNote?.mismatches || [], loanFormNoteAt: latestNote?.timestamp || null, captures, effective, versions: buildVersionSummary({ id: request.params.caseId }) });
 });
 
 // Records a Loan-Form-vs-Infinity divergence note on the case (persisted to caseHistory).

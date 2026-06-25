@@ -437,13 +437,30 @@ function CaseDocuments({ caseData }) {
 
 function CaseFacts({ caseData }) {
   if (!caseData) return null;
-  const primary = caseData.applicants.find((applicant) => applicant.role === "primary");
+  // Show the EFFECTIVE (synced/updated) version by default; the original is preserved server-side.
+  const eff = caseData.effective || caseData;
+  const effApplicants = Array.isArray(eff.applicants) ? eff.applicants : [];
+  const primary = effApplicants.find((applicant) => applicant.role === "primary") || effApplicants[0];
+  const secondary = effApplicants.find((applicant) => applicant.role === "secondary") || (effApplicants.length > 1 ? effApplicants[1] : null);
+  const origApplicants = Array.isArray(caseData.applicants) ? caseData.applicants : [];
+  const droppedSecondary = origApplicants.length > effApplicants.length;
+  const brokerVer = caseData.versions?.broker || null;
   const loanFormNotes = Array.isArray(caseData.loanFormNotes) ? caseData.loanFormNotes : [];
   const captures = caseData.captures || {};
   const selectedLender = captures.selectedLender || null;
   const scenarios = Array.isArray(captures.lenderScenarios) ? captures.lenderScenarios : [];
   return (
     <>
+      {brokerVer && (
+        <div className="broker-version-badge" style={{ marginBottom: 12, padding: "10px 12px", background: "#fff7e6", border: "1px solid #f0d9a8", borderRadius: 8, color: "#92400e" }}>
+          <strong>② Broker updated — Infinity &amp; AOL</strong>
+          {brokerVer.updatedAt ? <span style={{ fontWeight: 600 }}> · {new Date(brokerVer.updatedAt).toLocaleString()}</span> : null}
+          {Array.isArray(brokerVer.changedFields) && brokerVer.changedFields.length ? (
+            <div style={{ fontSize: 12, marginTop: 3 }}>Updated: {brokerVer.changedFields.join(", ")}</div>
+          ) : null}
+          <div style={{ fontSize: 11.5, color: "#9a7b4f", marginTop: 3 }}>Showing the synced version below. The original loan-form case is kept (① Loan form).</div>
+        </div>
+      )}
       {loanFormNotes.length > 0 && (
         <div className="loan-form-note" style={{ marginBottom: 12, padding: "10px 12px", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, color: "#92400e" }}>
           <strong>⚠️ Loan Form mismatch on this case</strong>
@@ -509,9 +526,12 @@ function CaseFacts({ caseData }) {
                 </div>
                 {Array.isArray(entry.changes) && entry.changes.length > 0 ? (
                   <ul style={{ margin: "3px 0 0", paddingLeft: 18 }}>
-                    {entry.changes.map((change, ci) => (
-                      <li key={ci}>{change.field}: {change.from == null ? "—" : currency(change.from)} → <strong>{change.to == null ? "—" : currency(change.to)}</strong></li>
-                    ))}
+                    {entry.changes.map((change, ci) => {
+                      const fmt = (v) => (v == null ? "—" : (typeof v === "number" || /^\$?[\d,.\s]+$/.test(String(v)) ? currency(v) : String(v)));
+                      return (
+                        <li key={ci}>{change.field}: {fmt(change.from)} → <strong>{fmt(change.to)}</strong>{change.auto ? <span style={{ color: "#0d9488" }}> · auto</span> : null}</li>
+                      );
+                    })}
                   </ul>
                 ) : (
                   <div style={{ color: "#818cf8", paddingLeft: 4 }}>(no value diffs recorded)</div>
@@ -528,12 +548,16 @@ function CaseFacts({ caseData }) {
         <strong>{primary ? `${primary.firstName} ${primary.lastName}` : "Missing"}</strong>
       </div>
       <div>
+        <span>Second applicant</span>
+        <strong>{secondary ? `${secondary.firstName} ${secondary.lastName}` : (droppedSecondary ? "Removed (synced)" : "None")}</strong>
+      </div>
+      <div>
         <span>Loan amount</span>
-        <strong>{currency(caseData.loan.loanAmount)}</strong>
+        <strong>{currency(eff.loan?.loanAmount)}</strong>
       </div>
       <div>
         <span>Security</span>
-        <strong>{caseData.property.address || "Missing address"}</strong>
+        <strong>{eff.property?.address || "Missing address"}</strong>
       </div>
       <div>
         <span>Documents</span>
