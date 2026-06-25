@@ -372,6 +372,7 @@ export function buildTemplateTextPreview(caseData) {
       circumstancesObjectivesPriorities: narrative.circumstancesObjectivesPriorities,
       financialAwarenessPractices: narrative.financialAwarenessPractices
     },
+    preferredLoanFeatures: buildPreferredFeatures(caseData),
     recommendation: {
       lender: narrative.lender,
       loanAmount: narrative.loanAmount,

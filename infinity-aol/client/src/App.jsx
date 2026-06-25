@@ -6401,20 +6401,65 @@ export default function App() {
 
               {templatePreview && (
                 <div className="template-preview">
+                  {templatePreview.versions?.broker && (
+                    <div className="tpl-banner">
+                      ② Broker updated — Infinity &amp; AOL
+                      {templatePreview.versions.broker.updatedAt ? ` · ${new Date(templatePreview.versions.broker.updatedAt).toLocaleString()}` : ""}
+                      {templatePreview.versions.broker.changedFields?.length ? (
+                        <em> (changed: {templatePreview.versions.broker.changedFields.join(", ")})</em>
+                      ) : null}
+                      <div className="tpl-banner-sub">These templates use the synced (updated) data. The original loan-form case is kept.</div>
+                    </div>
+                  )}
+
+                  <div className="tpl-platform">INFINITY · Loans &amp; Products</div>
+
                   <div>
-                    <span>Needs Analysis</span>
-                    <strong>Loan Objective Explanation</strong>
+                    <span>Infinity · Needs Analysis</span>
+                    <strong>Loan Objective</strong>
                     <p>{templatePreview.preview.needsAnalysis.loanObjectiveExplanation}</p>
                   </div>
                   <div>
-                    <span>Loans & Securities</span>
-                    <strong>Circumstances, Objectives and Priorities</strong>
+                    <span>Infinity · Loans, Securities &amp; Commentary</span>
+                    <strong>Circumstances, Objectives &amp; Priorities</strong>
                     <p>{templatePreview.preview.loansSecuritiesCommentary.circumstancesObjectivesPriorities}</p>
+                    <strong>Financial Awareness &amp; Practices</strong>
+                    <p>{templatePreview.preview.loansSecuritiesCommentary.financialAwarenessPractices}</p>
                   </div>
                   <div>
-                    <span>Recommendation</span>
-                    <strong>Lender / Loan Structure / Goals</strong>
+                    <span>Infinity · Preferred Loan Features / Scenarios</span>
+                    <strong>Prioritised Loan Features</strong>
+                    <ul className="tpl-features">
+                      {(templatePreview.preview.preferredLoanFeatures || []).map((f) => (
+                        <li key={f.priority}><b>{f.priority}. {f.feature}</b> — {f.reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <span>Infinity · Recommendation</span>
+                    <strong>Lender</strong>
+                    <p>{templatePreview.preview.recommendation.lender}</p>
+                    <strong>Loan Amount</strong>
+                    <p>{templatePreview.preview.recommendation.loanAmount}</p>
+                    <strong>Interest Rate</strong>
+                    <p>{templatePreview.preview.recommendation.interestRate}</p>
+                    <strong>Loan Structure</strong>
                     <p>{templatePreview.preview.recommendation.loanStructure}</p>
+                    <strong>Goals &amp; Objectives</strong>
+                    <p>{templatePreview.preview.recommendation.goalsObjectives}</p>
+                    <strong>Loan Features</strong>
+                    <p>{templatePreview.preview.recommendation.loanFeatures}</p>
+                  </div>
+                  <div>
+                    <span>Infinity · Commissions / Conflict of Interest</span>
+                    <strong>Comments</strong>
+                    <p>{templatePreview.preview.commissionsConflict.comments}</p>
+                  </div>
+
+                  <div className="tpl-platform">AOL · ApplyOnline</div>
+                  <div>
+                    <span>AOL · Compliance — Requirements &amp; Objectives</span>
+                    <p className="tpl-note">AOL R&amp;O reasons are filled by Start AOL from the lender template (taught per lender). The structured AOL fields (applicants, loans, securities, financials) come from the same prepared case shown above.</p>
                   </div>
                 </div>
               )}

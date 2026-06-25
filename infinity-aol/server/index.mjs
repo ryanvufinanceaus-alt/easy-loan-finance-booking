@@ -2957,6 +2957,24 @@ app.post("/api/cases/:caseId/live-snapshot", (request, response) => {
 });
 
 // Reverse sync — what differs between the EasyFlow case and the LIVE Infinity/AOL captures (read-only review).
+// Two clearly-labelled versions of the case so the broker can tell them apart:
+//   ① "Loan form — client filled"  = the original case the customer submitted (never mutated)
+//   ② "Broker updated on Infinity & AOL" = the broker-approved overlay (only exists once they apply changes)
+const REVERSE_SYNC_FIELD_LABELS = {
+  applicants: "Applicants", employerName: "Employer", occupation: "Occupation", residencyStatus: "Residency",
+  dependants: "Dependants", income: "Income", maritalStatus: "Marital status", currentHousing: "Housing",
+  address: "Address", lender: "Lender", interestRate: "Interest rate", product: "Product",
+  repaymentType: "Repayment type", repaymentFrequency: "Repayment frequency", features: "Loan features",
+  liabilities: "Liabilities", expenses: "Expenses (HEM)", assets: "Assets"
+};
+function buildVersionSummary(caseData) {
+  const overlay = getCapture(caseData?.id, "caseUpdatedVersion");
+  const changedFields = overlay?.fields ? Object.keys(overlay.fields).map((k) => REVERSE_SYNC_FIELD_LABELS[k] || k) : [];
+  return {
+    client: { label: "Loan form — client filled", source: "loan-form" },
+    broker: overlay ? { label: "Broker updated on Infinity & AOL", source: "infinity-aol", updatedAt: overlay.updatedAt || null, updatedBy: overlay.updatedBy || null, changedFields } : null
+  };
+}
 app.get("/api/cases/:caseId/reverse-sync", (request, response) => {
   const broker = requireBroker(request, response);
   if (!broker) return;
@@ -2964,24 +2982,9 @@ app.get("/api/cases/:caseId/reverse-sync", (request, response) => {
     const caseData = findCase(request.params.caseId);
     if (!caseData) return response.status(404).json({ error: "case not found" });
     const overlay = getCapture(caseData.id, "caseUpdatedVersion");
-    // Two clearly-labelled versions of the case so the broker can tell them apart:
-    //   ① "Loan form — client filled"  = the original case the customer submitted (never mutated)
-    //   ② "Broker updated on Infinity & AOL" = the broker-approved overlay (only exists once they apply changes)
-    const FIELD_LABELS = {
-      applicants: "Applicants", employerName: "Employer", occupation: "Occupation", residencyStatus: "Residency",
-      dependants: "Dependants", income: "Income", maritalStatus: "Marital status", currentHousing: "Housing",
-      address: "Address", lender: "Lender", interestRate: "Interest rate", product: "Product",
-      repaymentType: "Repayment type", repaymentFrequency: "Repayment frequency", features: "Loan features",
-      liabilities: "Liabilities", expenses: "Expenses (HEM)", assets: "Assets"
-    };
-    const changedFields = overlay?.fields ? Object.keys(overlay.fields).map((k) => FIELD_LABELS[k] || k) : [];
-    const versions = {
-      client: { label: "Loan form — client filled", source: "loan-form" },
-      broker: overlay ? { label: "Broker updated on Infinity & AOL", source: "infinity-aol", updatedAt: overlay.updatedAt || null, updatedBy: overlay.updatedBy || null, changedFields } : null
-    };
     // Diff against the case WITH the already-applied overlay, so fields the broker already accepted drop out
     // (otherwise every apply leaves the same rows showing and looks like nothing happened).
-    response.json({ ok: true, diffs: reverseSyncDiff(applyReverseSyncOverlay(caseData)), appliedAt: overlay?.updatedAt || null, versions });
+    response.json({ ok: true, diffs: reverseSyncDiff(applyReverseSyncOverlay(caseData)), appliedAt: overlay?.updatedAt || null, versions: buildVersionSummary(caseData) });
   } catch (error) { response.status(500).json({ error: String(error?.message || error) }); }
 });
 
@@ -3040,11 +3043,14 @@ app.post("/api/cases/:caseId/template-preview", (request, response) => {
     financialAssetBuffer: request.body?.financialAssetBuffer,
     manualIntake: request.body?.manualIntake
   });
-  const mergedCase = mergeDocumentDraft(caseData, draft);
+  // Apply the broker's "Updated from Infinity/AOL" overlay so the preview reflects the SYNCED data (e.g. a
+  // dropped co-borrower / new lender), not the stale original.
+  const mergedCase = mergeDocumentDraft(applyReverseSyncOverlay(caseData), draft);
   response.json({
     caseId: caseData.id,
     template: draft.template,
-    preview: buildTemplateTextPreview(mergedCase)
+    preview: buildTemplateTextPreview(mergedCase),
+    versions: buildVersionSummary(caseData)
   });
 });
 
