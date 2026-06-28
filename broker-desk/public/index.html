@@ -8535,14 +8535,14 @@ function rNotes(c,notes){
   return`<div>
     <div style="background:#0A0D14;border:1px solid #D4A84333;border-radius:9px;padding:13px 15px;margin-bottom:14px;">
       <div style="font-size:12px;font-weight:600;color:#D4A843;margin-bottom:7px;">\uD83D\uDCAC Add Note for the Team</div>
-      <textarea class="fi" id="new-note" placeholder="Add an update, instruction for broker/support, or any activity note\u2026" rows="3"></textarea>
+      <textarea class="fi" id="new-note" placeholder="Add an update, instruction for broker/support, or any activity note\u2026" rows="8" style="min-height:160px;font-size:13px;"></textarea>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
         <div style="font-size:11px;color:#4a5568;">Visible to everyone on this case</div>
         <button class="btn-gold" style="font-size:12px;" onclick="addNote_()">Post Note</button>
       </div>
     </div>
     <div style="font-size:11px;color:#4a5568;margin-bottom:9px;text-transform:uppercase;letter-spacing:1px;">Activity Log (${notes.length})</div>
-    ${notes.map(n=>`<div class="note-c"><div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="font-size:12px;font-weight:600;color:#D4A843;">${esc(n.author)}</span><span style="font-size:11px;color:#4a5568;">${esc(n.createdAt)}</span></div><div style="font-size:13px;color:#c9d1d9;line-height:1.65;white-space:pre-wrap;">${esc(n.text)}</div></div>`).join('')||'<div style="text-align:center;padding:22px;color:#4a5568;font-size:13px;">No notes yet \u2014 be the first to add one!</div>'}
+    ${notes.map(n=>`<div class="note-c"><div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="font-size:12px;font-weight:600;color:#D4A843;">${esc(n.author)}</span><span style="font-size:11px;color:#4a5568;" title="${esc(n.createdAt)}">${n.createdAt?esc(new Date(n.createdAt).toLocaleString('en-AU',{day:'2-digit',month:'short',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true})):''}</span></div><div style="font-size:13px;color:#c9d1d9;line-height:1.65;white-space:pre-wrap;">${esc(n.text)}</div></div>`).join('')||'<div style="text-align:center;padding:22px;color:#4a5568;font-size:13px;">No notes yet \u2014 be the first to add one!</div>'}
   </div>`;
 }
 
