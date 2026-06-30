@@ -930,10 +930,15 @@
   async function clickApplicantTab(name, result, optional) {
     var wanted = key(name);
     var candidates = all("a,li,div,span").filter(function (el) {
-      var txt = key(textOf(el).replace(/\s*x$/i, ""));
-      if (txt !== wanted) return false;
+      var txt = key(textOf(el).replace(/\s*(×|x)?\s*close\s*$/i, "").replace(/\s*x$/i, ""));
+      // Match exact OR prefix — Infynity applicant tabs carry a trailing "× Close" affordance
+      // that key() folds into the text (e.g. "zztestoneclose"), so a prefix match is correct.
+      if (txt !== wanted && txt.indexOf(wanted) !== 0) return false;
       var rect = el.getBoundingClientRect();
-      return rect.top > 250 && rect.top < 520 && rect.height < 80;
+      // Tab-strip row identified by name (prefix) + tab-sized height. NO vertical-position constraint:
+      // after applicant 1's long form renders, applicant 2's tab can be far off-screen (e.g. top -1379).
+      // The caller scrolls the chosen tab into view before clicking.
+      return rect.height > 4 && rect.height < 80;
     });
     if (!candidates.length) {
       // Single-applicant cases show the applicant form directly with no per-applicant tab.
@@ -4577,10 +4582,10 @@
   };
 
   const applicantInputByName = (name) => {
-    const want = norm(name);
+    const want = key(name); // strip case + spaces + punctuation so "ZZTEST ONE" == "ZZTest One"
     // 1) A real label[for] that contains the applicant name -> its input.
     const lbl = [...document.querySelectorAll("label[for]")].find(
-      (l) => norm(l.textContent).includes(want) && norm(l.textContent).length < 60);
+      (l) => key(l.textContent).includes(want) && norm(l.textContent).length < 60);
     if (lbl) {
       const byLabel = document.getElementById(lbl.getAttribute("for"));
       if (byLabel) return byLabel;
@@ -4588,7 +4593,7 @@
     // 2) A Switchery toggle whose nearby container text matches the name (Infynity uses random input ids).
     const sw = [...document.querySelectorAll(".switchery")].find((s) => {
       const box = s.closest("div,li,tr,label") || s.parentElement;
-      return box && norm(box.textContent).includes(want);
+      return box && key(box.textContent).includes(want);
     });
     if (sw) {
       const input = (sw.previousElementSibling && sw.previousElementSibling.tagName === "INPUT")
@@ -4599,7 +4604,7 @@
     // 3) Any applicant.checked checkbox sitting near the name.
     return [...document.querySelectorAll('input[type=checkbox][ng-model="applicant.checked"]')].find((i) => {
       const box = i.closest("div,li,tr,label") || i.parentElement;
-      return box && norm(box.textContent).includes(want);
+      return box && key(box.textContent).includes(want);
     }) || null;
   };
   const ensureApplicantOn = async (name) => {
