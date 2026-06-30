@@ -929,16 +929,18 @@
 
   async function clickApplicantTab(name, result, optional) {
     var wanted = key(name);
-    var candidates = all("a,li,div,span").filter(function (el) {
-      // SAFETY: match ONLY a pure-name element (text === applicant name). Do NOT prefix-match the
-      // tab CONTAINER, because it includes a "× Close" remove affordance and clicking the container
-      // can delete the applicant. (A prior prefix-match edit caused exactly that data loss.)
-      var raw = textOf(el);
-      if (/[×✕]|close/i.test(raw)) return false;            // never the close-bearing container/button
-      var txt = key(raw.replace(/\s*x$/i, ""));
+    // Target the SELECT element specifically: the applicant tab is <div class="Tab"
+    // ng-click="vm.set_active(applicant)">NAME × Close</div>. Clicking THAT div fires set_active
+    // (selects — never removes; the "× Close" is a nested child with its own handler that a click
+    // on the Tab div does not trigger). Match by EXACT name (strip the trailing "× Close" affordance)
+    // so applicant 1 is never confused with applicant 2 (a loose/prefix match mis-filled before).
+    var candidates = all("div,a,li,span").filter(function (el) {
+      var isTab = /(^|\s)Tab(\s|$)/.test(el.className || "") || /set_active/.test(el.getAttribute("ng-click") || "");
+      if (!isTab) return false;
+      var txt = key(textOf(el).replace(/\s*(×|✕|x)?\s*close\s*$/i, "").replace(/\s*x$/i, ""));
       if (txt !== wanted) return false;
       var rect = el.getBoundingClientRect();
-      return rect.height > 4 && rect.height < 80;            // tab-sized; position-tolerant (scrolled tabs)
+      return rect.height > 4 && rect.height < 80;
     });
     if (!candidates.length) {
       // Single-applicant cases show the applicant form directly with no per-applicant tab.
