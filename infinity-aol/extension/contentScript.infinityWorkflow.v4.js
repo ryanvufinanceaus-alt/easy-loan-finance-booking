@@ -930,15 +930,15 @@
   async function clickApplicantTab(name, result, optional) {
     var wanted = key(name);
     var candidates = all("a,li,div,span").filter(function (el) {
-      var txt = key(textOf(el).replace(/\s*(×|x)?\s*close\s*$/i, "").replace(/\s*x$/i, ""));
-      // Match exact OR prefix — Infynity applicant tabs carry a trailing "× Close" affordance
-      // that key() folds into the text (e.g. "zztestoneclose"), so a prefix match is correct.
-      if (txt !== wanted && txt.indexOf(wanted) !== 0) return false;
+      // SAFETY: match ONLY a pure-name element (text === applicant name). Do NOT prefix-match the
+      // tab CONTAINER, because it includes a "× Close" remove affordance and clicking the container
+      // can delete the applicant. (A prior prefix-match edit caused exactly that data loss.)
+      var raw = textOf(el);
+      if (/[×✕]|close/i.test(raw)) return false;            // never the close-bearing container/button
+      var txt = key(raw.replace(/\s*x$/i, ""));
+      if (txt !== wanted) return false;
       var rect = el.getBoundingClientRect();
-      // Tab-strip row identified by name (prefix) + tab-sized height. NO vertical-position constraint:
-      // after applicant 1's long form renders, applicant 2's tab can be far off-screen (e.g. top -1379).
-      // The caller scrolls the chosen tab into view before clicking.
-      return rect.height > 4 && rect.height < 80;
+      return rect.height > 4 && rect.height < 80;            // tab-sized; position-tolerant (scrolled tabs)
     });
     if (!candidates.length) {
       // Single-applicant cases show the applicant form directly with no per-applicant tab.
