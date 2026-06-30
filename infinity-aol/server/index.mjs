@@ -2070,6 +2070,32 @@ app.get("/api/cases", (_request, response) => {
   response.json([...localCases, ...cases].map(summarizeCase));
 });
 
+// Import a full case (loan-form data model) so Sabrina can build cases programmatically
+// (from a client call / intake / test data) WITHOUT the loan-form UI — the missing link that
+// makes the whole pipeline (import -> prepare -> Start Infinity -> Nextgen -> Start AOL) automatable.
+// Additive + auth-gated (broker token or booking session cookie). Never submits anything.
+app.post("/api/cases/import", (request, response) => {
+  const broker = requireBroker(request, response);
+  if (!broker) return;
+  const body = request.body || {};
+  if (!Array.isArray(body.applicants) || body.applicants.length === 0) {
+    return response.status(400).json({ error: "applicants[] required" });
+  }
+  const id = String(body.id || "").trim() || `ELF-IMP-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+  const caseData = {
+    ...body,
+    id,
+    status: body.status || "Fact find complete",
+    brokerUser: body.brokerUser || broker.user || broker.email || "ryan.vu",
+    importedAt: new Date().toISOString(),
+    source: body.source || "api-import"
+  };
+  localCases = localCases.filter((item) => item.id !== id);
+  localCases.push(caseData);
+  writeStoredJson("local_cases", localCasesPath, localCases);
+  response.json({ ok: true, id, case: summarizeCase(caseData) });
+});
+
 app.get("/api/cases/:caseId", (request, response) => {
   const caseData = findCase(request.params.caseId);
   if (!caseData) return response.status(404).json({ error: "Case not found" });
