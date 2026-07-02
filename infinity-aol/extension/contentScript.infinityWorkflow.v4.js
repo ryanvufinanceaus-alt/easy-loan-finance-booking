@@ -1218,8 +1218,15 @@
   }
 
   async function upsertExpense(row, result) {
-    var existing = existingMonthlyExpenseTypes();
-    if (existing[key(row.type)]) {
+    // DEDUP ĐÚNG: quét DÒNG expense thật (type + $ + frequency) — bền hơn dò section header (dễ trượt →
+    // không dedup → TRÙNG expense khi re-run, giống bug income). Giữ existingMonthlyExpenseTypes làm fallback.
+    var typeKey = key(row.type || "");
+    var dup = all("tr").some(function (tr) {
+      if (!isVisible(tr)) return false;
+      var tx = key(textOf(tr));
+      return typeKey && tx.indexOf(typeKey) >= 0 && /\$/.test(textOf(tr)) && /(monthly|weekly|fortnightly|annually)/i.test(textOf(tr));
+    });
+    if (dup || existingMonthlyExpenseTypes()[key(row.type)]) {
       addSkipped(result, "Financials: " + row.type, "already-exists");
       return true;
     }
@@ -1623,7 +1630,9 @@
       await sleep(500); // chờ Angular bind ng-click
       clickOnce(bid);
       addAction(result, "Open Best Interest Duty (attempt " + (attempt + 1) + ")");
-      bidClicked = await waitForRoute("soca", null, 4000);
+      await waitForRoute("soca", null, 4000);
+      // waitForRoute KHÔNG return boolean → tự kiểm hash (bug cũ: bidClicked luôn undefined → retry thừa + issue giả).
+      bidClicked = (location.hash || "").toLowerCase().indexOf("soca") >= 0;
     }
     if (!bidClicked) addIssue(result, "Loans & Products", "New Application", "bid-click-no-route");
     return true;
