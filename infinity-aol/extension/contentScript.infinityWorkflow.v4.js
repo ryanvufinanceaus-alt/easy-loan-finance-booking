@@ -1608,16 +1608,24 @@
     });
     if (create) {
       clickOnce(create);
-      await sleep(900);
     }
-    var bid = all("button,a,li,div,span").find(function (el) {
-      return /best interest duty/i.test(textOf(el));
-    });
-    if (bid) {
+    // Dialog "New Application" animate + Angular bind handler CHẬM hơn sleep cố định → POLL nút BID rồi
+    // RETRY click tới khi route đổi sang soca (bug cũ: click 1 lần quá sớm, handler chưa bind → dialog treo).
+    var bidClicked = false;
+    for (var attempt = 0; attempt < 4 && !bidClicked; attempt += 1) {
+      // CHỈ button/a (nút clickable thật) — KHÔNG div/span (bọc ngoài, click vào không kích ng-click → no-route).
+      var bid = await waitFor(function () {
+        return all("button,a").find(function (el) {
+          return /best interest duty/i.test(textOf(el)) && isVisible(el);
+        });
+      }, 4000);
+      if (!bid) break;
+      await sleep(500); // chờ Angular bind ng-click
       clickOnce(bid);
-      addAction(result, "Open Best Interest Duty");
-      await waitForSettle(5000, 400);
+      addAction(result, "Open Best Interest Duty (attempt " + (attempt + 1) + ")");
+      bidClicked = await waitForRoute("soca", null, 4000);
     }
+    if (!bidClicked) addIssue(result, "Loans & Products", "New Application", "bid-click-no-route");
     return true;
   }
 
