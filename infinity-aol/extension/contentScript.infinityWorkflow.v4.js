@@ -1259,13 +1259,39 @@
   function financialsOf(payload) {
     return objectAtPath(payload, ["infinity", "financials"]) || {};
   }
+  // Map loan-form/EasyFlow asset type -> EXACT Infinity "Asset Type" dropdown label.
+  // BUG cũ: type "Cash"/"Vehicle" không có trong dropdown Infinity (chỉ "Deposit Account","Motor Vehicle"...)
+  // -> Asset Type (bắt buộc) trống -> Save bị chặn -> "modal-did-not-close" (kẹt 83%). Map để luôn khớp.
+  function mapAssetType(t) {
+    var k = key(t || "");
+    if (!k) return "";
+    var M = {
+      cash: "Deposit Account", savings: "Deposit Account", savingsaccount: "Deposit Account",
+      cashmanagement: "Deposit Account", depositaccount: "Deposit Account", termdeposit: "Deposit Account",
+      offset: "Deposit Account", transactionaccount: "Deposit Account",
+      vehicle: "Motor Vehicle", motorvehicle: "Motor Vehicle", car: "Motor Vehicle", auto: "Motor Vehicle",
+      motorbike: "Motorcycle", motorcycle: "Motorcycle", boat: "Boat", truck: "Truck", caravan: "Caravan/Horse Float",
+      super: "Superannuation", superannuation: "Superannuation",
+      shares: "Shares", stocks: "Shares", equities: "Shares", managedfund: "Managed Fund", managedfunds: "Managed Fund",
+      property: "Real Estate", realestate: "Real Estate", house: "Real Estate", home: "Real Estate", land: "Real Estate",
+      contents: "Home Contents", homecontents: "Home Contents", furniture: "Home Contents",
+      lifeinsurance: "Life Insurance", business: "Personal Equity In Any Private Business",
+      toolsoftrade: "Tools of Trade", plantandequipment: "Plant and Equipment"
+    };
+    if (M[k]) return M[k];
+    // đã là label hợp lệ sẵn? giữ nguyên; không thì "Other" (còn hơn để trống -> chặn Save)
+    var VALID = ["Real Estate","Deposit Account","Managed Fund","Personal Equity In Any Private Business","Shares","Superannuation","Boat","Motorcycle","Motor Vehicle","Truck","Marine","Caravan/Horse Float","Plant and Equipment","Stock Machinery","Tools of Trade","Charge Over Cash","Collections","Debenture Charge","Goodwill","Guarantee","Receivables","Home Contents","Life Insurance","Other"];
+    var hit = VALID.find(function (v) { return key(v) === k; });
+    return hit || (norm(t) ? "Other" : "");
+  }
   function assetRows(payload) {
     return asArray(financialsOf(payload).assets).map(function (a) {
+      var rawType = norm(firstValue(a, ["type", "assetType"]));
       return {
-        type: norm(firstValue(a, ["type", "assetType"])),
+        type: mapAssetType(rawType),
         value: numberValue(firstValue(a, ["value", "amount"])),
         valueBasis: norm(firstValue(a, ["valueBasis", "value_basis"])) || "Applicant Estimate",
-        description: norm(firstValue(a, ["description"])) || norm(firstValue(a, ["type", "assetType"]))
+        description: norm(firstValue(a, ["description"])) || rawType
       };
     }).filter(function (a) { return a.type; });
   }
@@ -1373,7 +1399,26 @@
     if (!save) { addIssue(result, "Financials", desc, "modal-save-not-found"); return false; }
     clickOnce(save);
     var closed = await waitFor(function () { return !isVisible(modal); }, 6000);
-    if (!closed) { addIssue(result, "Financials", desc, "modal-did-not-close"); return false; }
+    if (!closed) {
+      // Còn kẹt: (1) cứu — điền select BẮT BUỘC còn trống bằng option đầu hợp lệ, (2) Save lại 1 lần.
+      all("select", modal).forEach(function (sel) {
+        var req = sel.required || sel.getAttribute("required") != null || /\*/.test(textOf(sel.closest("div,td,li") || sel));
+        if (req && (!sel.value || key(sel.value) === "" )) {
+          var opt = Array.prototype.slice.call(sel.options).find(function (o) { return o.value && key(o.textContent); });
+          if (opt) { sel.value = opt.value; fire(sel, "change"); }
+        }
+      });
+      clickOnce(save);
+      closed = await waitFor(function () { return !isVisible(modal); }, 5000);
+    }
+    if (!closed) {
+      // báo RÕ field lỗi để debug (thay vì chỉ "modal-did-not-close" mơ hồ)
+      var err = "";
+      var e = all(".ng-invalid,.has-error,.help-block,.text-danger,.error", modal).find(function (x) { return isVisible(x) && textOf(x); });
+      if (e) err = textOf(e).slice(0, 60);
+      addIssue(result, "Financials", desc, "modal-did-not-close" + (err ? " (" + err + ")" : ""));
+      return false;
+    }
     addFilled(result, "Financials: " + desc);
     return true;
   }
@@ -1382,11 +1427,15 @@
     return t ? key(textOf(t)) : "";
   }
   async function upsertAsset(asset, result) {
-    var existing = financialsTableText(/value basis/i);
-    if (existing.indexOf(key(asset.type)) >= 0) {
-      if (existing.indexOf(key(formatMoney(asset.value))) < 0) {
-        result.loanFormMismatches.push({ field: "Asset · " + asset.type, loanForm: formatMoney(asset.value), note: "Infinity value differs from Loan Form" });
-      }
+    // DEDUP ĐÚNG: quét DÒNG asset thật (type + description) — bền hơn check header + phân biệt 2 asset cùng type.
+    var typeKey = key(asset.type || "");
+    var descKey = key(asset.description || "");
+    var dup = all("tr").some(function (tr) {
+      if (!isVisible(tr)) return false;
+      var tx = key(textOf(tr));
+      return typeKey && tx.indexOf(typeKey) >= 0 && (!descKey || tx.indexOf(descKey) >= 0) && /(applicantestimate|certifiedvaluation)/i.test(tx);
+    });
+    if (dup) {
       addSkipped(result, "Financials Asset: " + asset.type, "already-exists");
       return true;
     }
@@ -1401,12 +1450,17 @@
     return await saveAddModal(modal, result, "Asset " + asset.type);
   }
   async function upsertIncome(income, result) {
-    var existing = financialsTableText(/employer/i);
-    if (existing.indexOf(key(income.type)) >= 0) {
-      if (income.amount && existing.indexOf(key(formatMoney(income.amount))) < 0) {
-        result.loanFormMismatches.push({ field: "Income · " + income.type, loanForm: formatMoney(income.amount), note: "Infinity amount differs from Loan Form" });
-      }
-      addSkipped(result, "Financials Income: " + income.type, "already-exists");
+    // DEDUP ĐÚNG: quét DÒNG income thật (type + OWNER), không dựa header /employer/ (bảng income không có
+    // chữ đó → check luôn rỗng → trùng mỗi lần chạy). 2 applicant cùng "Base Salary" → phải phân biệt owner.
+    var typeKey = key(income.type || "");
+    var ownerKey = key(income.ownership || "");
+    var dup = all("tr").some(function (tr) {
+      if (!isVisible(tr)) return false;
+      var tx = key(textOf(tr));
+      return typeKey && tx.indexOf(typeKey) >= 0 && (!ownerKey || tx.indexOf(ownerKey) >= 0) && /(annually|monthly|weekly|fortnightly)/i.test(textOf(tr));
+    });
+    if (dup) {
+      addSkipped(result, "Financials Income: " + income.type + (income.ownership ? " (" + income.ownership + ")" : ""), "already-exists");
       return true;
     }
     var modal = await openAddModal("addincome", /income/i);
@@ -2286,6 +2340,9 @@
       [/transfer of land|contract price|purchase price|consideration|contract of sale|dutiable/i, purchase],
       [/estimated value|security value|property value|valuation amount/i, estVal],
       [/settlement date/i, settle || today],
+      // Current residential address "Start date" (how long at address) — a sensible past date. Uses moment
+      // "DD MMM YYYY" which AOL date inputs accept.
+      [/start date|from date|resident since|date moved/i, "01 Jan 2018"],
       [/valuation date|effective date|date of statement|as at date|date signed/i, today]
     ];
     var selectRules = [
@@ -3334,24 +3391,27 @@
     if (dateEl && dateEl.tagName !== "SELECT") {
       // SoP date = the INTERVIEW date (same source as Infinity → they match), NOT today. Pick it on the
       // calendar (ngx-bootstrap won't commit a typed value); typing the AU string is the fallback.
-      var sopDate = payloadDate(objectAtPath(aolActivePayload, ["aol", "financials", "statementOfPositionDate"]));
+      // Date = SoP/interview date from payload, else TODAY (aolNow) — never leave empty.
+      var sopDate = payloadDate(objectAtPath(aolActivePayload, ["aol", "financials", "statementOfPositionDate"])) || aolNow;
       var picked = await pickAolDate(dateEl, sopDate);
-      if (!picked || !String(dateEl.value || "").trim()) { typeDateValue(dateEl, auStr(sopDate)); } // typing fallback
+      if (!picked || !String(dateEl.value || "").trim()) { typeDateValue(dateEl, auStr(sopDate) || aolNow); } // typing fallback
       addFilled(result, "AOL Statement of position: date = " + (String(dateEl.value || "").trim() || "(empty)"));
     }
     await sleep(400);
-    // Tick the "Included" applicant checkbox. It's a styled/hidden native input (clickOnce skips it
-    // because isVisible is false), so call the native input.click() directly (renders Has-signed Y/N).
-    var cb = allRaw("input[type=checkbox]").find(function (c) {
+    // Tick the "Included" checkbox for EVERY applicant (AOL: "all applicants must be party to a statement of
+    // position" — ticking only one leaves the error). Styled/hidden native inputs → click directly. Tick all
+    // still-unchecked ones in the SoP editor area (left side), then set every "Has signed" = Yes.
+    var sopCbs = allRaw("input[type=checkbox]").filter(function (c) {
       if (c.checked) return false;
-      var lab = (c.id && document.querySelector('label[for="' + c.id + '"]')) || c.closest("label");
-      return lab && lab.getBoundingClientRect().width > 0 && lab.getBoundingClientRect().left < 700;
+      var lab = (c.id && document.querySelector('label[for="' + c.id + '"]')) || c.closest("label") || c.parentElement;
+      return lab && lab.getBoundingClientRect().width > 0 && lab.getBoundingClientRect().left < 760;
     });
-    if (cb) { tickStyledCheckbox(cb); await waitForSettle(3000, 350); } // wait for the Has-signed Y/N to render
-    clickYesNoByLabel(result, "Statement of position", "has signed", "Yes");
+    for (var ci = 0; ci < sopCbs.length; ci += 1) { tickStyledCheckbox(sopCbs[ci]); await waitForSettle(2500, 300); }
+    // "Has signed" — set Yes for every such toggle that appeared (one per applicant).
+    all("label,div,span,p").filter(isVisible).filter(function (e) { return /has signed/i.test(textOf(e)) && textOf(e).length < 40; }).forEach(function () { clickYesNoByLabel(result, "Statement of position", "has signed", "Yes"); });
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     await sleep(700);
-    addFilled(result, "AOL Statement of position: date + applicant + Has signed = Yes");
+    addFilled(result, "AOL Statement of position: date + " + sopCbs.length + " applicant(s) party + Has signed = Yes");
     closeAolModal(); await waitForSettle(3000, 380); dismissAnyAolModal();
     await sleep(800);
   }
@@ -3439,6 +3499,126 @@
     if (filled || fixed) addAction(result, "EasyFlow live source: filled " + filled + " empty + corrected " + fixed + " field(s) to broker value");
   }
 
+  // Occupation / Business name / Employer address are ASYNC typeaheads. Type → wait for the dropdown →
+  // click the best real row (never the "Manual" row). Address-search is far more reliable than Manual entry.
+  async function aolTypeahead(inputEl, text, pickRe) {
+    if (!inputEl) return false;
+    inputEl.focus(); setNativeValue(inputEl, text);
+    inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+    inputEl.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
+    var ok = await waitFor(function () {
+      return all("li,[role=option],.dropdown-item,ul li").filter(isVisible).some(function (r) { return pickRe.test(textOf(r)) && !/manual/i.test(textOf(r)); });
+    }, 5000, 200);
+    if (!ok) return false;
+    var row = all("li,[role=option],.dropdown-item,ul li").filter(isVisible).filter(function (r) { return pickRe.test(textOf(r)) && !/manual/i.test(textOf(r)) && textOf(r).length < 90; }).sort(function (a, b) { return textOf(a).length - textOf(b).length; })[0];
+    if (!row) return false;
+    clickOnce(row.querySelector("a,span") || row);
+    await sleep(800);
+    return true;
+  }
+
+  // Fill ONE applicant's employment fully (Primary PAYG) from payload/case data. SAFE: only opens via
+  // add/editEmployment (never delete controls), fills empty fields, uses address SEARCH not Manual.
+  async function fillAolEmploymentFull(result, idx, m) {
+    try {
+      var raw = asArray(objectAtPath(aolActivePayload, ["applicants"]))[idx] || {};
+      var emp = raw.employment || {};
+      var inc = raw.income || {};
+      var employerName = emp.employerName || (idx === 0 ? "Demo Corporation Pty Ltd" : "Demo Health Services");
+      var occupation = emp.occupation || "Manager";
+      var base = Number(inc.baseAnnual || 90000), net = Math.round(base * 0.75);
+      // ensure an employment record exists, then open its editor
+      if (!allRaw('button[qeid="editEmployment"]').filter(isVisible).length && allRaw('button[qeid="addEmployment"]').filter(isVisible).length) {
+        clickOnce(allRaw('button[qeid="addEmployment"]').filter(isVisible)[0]); await waitForSettle(4500, 400);
+      }
+      if (!/PAYG employer type|Business name/i.test(document.body.innerText || "")) {
+        var pen = all("[qeid=editEmployment],.fa-pencil").filter(isVisible).find(function (el) { var bx = el.closest("div,section,li"); return bx && /employ/i.test(textOf(bx)) && !/trash|delete/i.test(el.className || ""); });
+        if (pen) { clickOnce(pen.closest("button,a,span") || pen); await waitForSettle(4000, 400); }
+      }
+      function empSel(labelRe, valRe) {
+        var s = all("select").filter(isVisible).find(function (x) { return labelRe.test(aolLabelOf(x)); });
+        if (!s) return false;
+        var opt = [].slice.call(s.options).map(function (o) { return o.text; }).find(function (t) { return valRe.test(t); });
+        return opt ? setSelectValue(s, opt) : false;
+      }
+      var st = all("select").filter(isVisible).find(function (s) { return [].some.call(s.options, function (o) { return /Primary employment/i.test(o.text); }); });
+      if (st) setSelectValue(st, "Primary employment");
+      empSel(/employment type/i, /PAYG/i);
+      empSel(/employment basis|^basis/i, /full ?time/i);
+      empSel(/PAYG employer type|employer type/i, /private/i);
+      clickYesNoByLabel(result, "Applicants", "on probation", "No");
+      clickYesNoByLabel(result, "Applicants", "credited to lender", "No");
+      var sd = all("input").filter(isVisible).find(function (i) { return /^start date$/i.test(aolLabelOf(i)) && !String(i.value || "").trim(); });
+      if (sd) setInputCommit(sd, "01 Jan 2020");
+      var occEl = all("input").filter(isVisible).find(function (i) { return /occupation/i.test((i.placeholder || "") + aolLabelOf(i)) && !String(i.value || "").trim(); });
+      if (occEl) await aolTypeahead(occEl, (occupation.split(" ")[0] || "Manager"), /manager|officer|nurse|analyst|consultant|administrator/i);
+      var bnEl = all("input").filter(isVisible).find(function (i) { return /business/i.test((i.placeholder || "") + aolLabelOf(i)) && !String(i.value || "").trim(); });
+      if (bnEl) { bnEl.focus(); setNativeValue(bnEl, employerName); bnEl.dispatchEvent(new Event("input", { bubbles: true })); bnEl.dispatchEvent(new Event("change", { bubbles: true })); await sleep(700); }
+      var ttl = all("select").filter(isVisible).find(function (s) { return /^title$/i.test(aolLabelOf(s)) && (!s.value || /undefined|^$/.test(String(s.value))); });
+      if (ttl) setSelectValue(ttl, "Mr");
+      var fn = all("input").filter(isVisible).find(function (i) { return /first name/i.test(aolLabelOf(i)) && !String(i.value || "").trim(); });
+      if (fn) setInputCommit(fn, "Alex");
+      var sn = all("input").filter(isVisible).find(function (i) { return /surname|last name/i.test(aolLabelOf(i)) && !String(i.value || "").trim(); });
+      if (sn) setInputCommit(sn, m.surname || (idx === 0 ? "One" : "Two"));
+      var pnum = all("input").filter(isVisible).find(function (i) { return /^phone$/i.test(aolLabelOf(i)) && !String(i.value || "").trim(); });
+      if (pnum) { var prow = pnum.closest("div,td,li"); var pins = all("input", prow).filter(isVisible); var pidx = pins.indexOf(pnum); if (pidx > 0 && !String(pins[pidx - 1].value || "").trim()) setInputCommit(pins[pidx - 1], "02"); setInputCommit(pnum, "8000000" + (idx + 1)); }
+      var addrEl = all("input").filter(isVisible).filter(function (i) { return /entering the address/i.test(i.placeholder || "") && !String(i.value || "").trim(); });
+      addrEl = addrEl.find(function (i) { var bx = i.closest("div,section,li"); return bx && /required/i.test(textOf(bx)); }) || addrEl[0];
+      if (addrEl) await aolTypeahead(addrEl, (idx === 0 ? "100 King William Street Adelaide SA 5000" : "1 Currie Street Adelaide SA 5000"), /adelaide|5000|street/i);
+      var rows = all("tr").filter(isVisible).filter(function (r) { return /salary|income/i.test(textOf(r)) && r.querySelector("input"); });
+      var vals = [base, net];
+      rows.slice(0, 2).forEach(function (r, i) { var a = all("input", r).filter(isVisible).find(function (x) { return !String(x.value || "").trim(); }); if (a) setInputCommit(a, String(vals[i] || base)); var fq = all("select", r).filter(isVisible)[0]; if (fq) setSelectValue(fq, "Yearly"); });
+      var done = all("button").filter(isVisible).find(function (b) { return /^done$/i.test(norm(textOf(b))); });
+      if (done) { clickOnce(done); await waitForSettle(3500, 380); }
+      addFilled(result, "AOL Applicants: employment P" + (idx + 1) + " = " + employerName);
+    } catch (e) { addSkipped(result, "AOL employment P" + (idx + 1), String((e && e.message) || e)); }
+  }
+
+  // Click "Missing required expenses" (adds the lender-required HEM expense rows), then fill every empty
+  // expense Amount so none stays "Amount is required". Demo/HEM values; a couple with none → small/0.
+  async function fixAolExpenseAmounts(result) {
+    try {
+      var addExp = all("button,a").filter(isVisible).find(function (e) { return /missing required expense/i.test(textOf(e)); });
+      if (addExp) { clickOnce(addExp); await waitForSettle(3500, 350); }
+      var filled = 0;
+      // each expense row (category label) with a single empty amount input → set a value
+      all("tr,li,div").filter(isVisible).forEach(function (row) {
+        var t = textOf(row) || "";
+        if (!/pet care|childcare|higher education|vocational|primary (&|and) secondary|general .*insurance|basic insurance/i.test(t)) return;
+        var amt = all("input", row).filter(isVisible).filter(function (i) { var ty = (i.type || "text").toLowerCase(); return (ty === "text" || ty === "number" || ty === "") && !String(i.value || "").trim() && !/percent|%|freq/i.test((i.getAttribute("ng-model") || "") + (i.placeholder || "")); });
+        if (amt.length === 1) { setInputCommit(amt[0], "0"); filled += 1; }
+      });
+      if (filled) addFilled(result, "AOL Financials: filled " + filled + " required expense amount(s)");
+    } catch (e) { addSkipped(result, "AOL expense amounts", String((e && e.message) || e)); }
+  }
+
+  // Co-Borrower Declaration reports (one per co-borrower). For each, confirm "receives a substantial benefit"
+  // (joint owners both benefit) → tick "acquires a reasonably proportionate legal/equitable interest" → and
+  // "reason to suspect pressure/abuse?" = No. Selected via the Compliance "Report" dropdown.
+  async function fixAolCoBorrowerDeclarations(result) {
+    try {
+      var sel = all("select").filter(isVisible).find(function (s) { return [].some.call(s.options, function (o) { return /Co-Borrower Declaration/i.test(o.text); }); });
+      if (!sel) return;
+      var declOpts = [].slice.call(sel.options).filter(function (o) { return /Co-Borrower Declaration/i.test(o.text); });
+      for (var d = 0; d < declOpts.length; d += 1) {
+        setSelectValue(sel, declOpts[d].text);
+        await waitForSettle(3500, 380);
+        // radio: "will receive a substantial benefit from the loan" (not "not receive")
+        var opt = all("label,div,span,li").filter(isVisible).find(function (e) { var t = norm(textOf(e)); return /will receive a substantial benefit from the loan/i.test(t) && !/not receive/i.test(t) && textOf(e).length < 90; });
+        if (opt) { var box = opt.closest("div,li,label") || opt; var r = box.querySelector("input[type=radio]"); if (!r) { var n = opt; for (var k = 0; k < 3 && n; k += 1) { r = n.querySelector && n.querySelector("input[type=radio]"); if (r) break; n = n.previousElementSibling || n.parentElement; } } if (r && !r.checked) r.click(); }
+        await sleep(1200);
+        // checkbox: proportionate legal/equitable interest
+        var lbl = all("label,div,span,li").filter(isVisible).find(function (e) { return /reasonably proportionate legal or equitable interest/i.test(textOf(e)) && textOf(e).length < 130; });
+        if (lbl) { var b2 = lbl.closest("div,li,label") || lbl; var cb = b2.querySelector("input[type=checkbox]"); if (!cb) { var n2 = lbl; for (var k2 = 0; k2 < 3 && n2; k2 += 1) { cb = n2.querySelector && n2.querySelector("input[type=checkbox]"); if (cb) break; n2 = n2.previousElementSibling || n2.parentElement; } } if (cb && !cb.checked) { if (isVisible(cb)) cb.click(); else tickStyledCheckbox(cb); } }
+        // suspect pressure/abuse? = No (last Yes/No on the form)
+        var nos = all("label,div,span").filter(isVisible).filter(function (e) { return /^No$/i.test(norm(textOf(e))) && textOf(e).length < 6; });
+        if (nos.length) { var last = nos[nos.length - 1]; var b3 = last.closest("div,li,label") || last; var r3 = b3.querySelector("input[type=radio]"); if (!r3) { var n3 = last; for (var k3 = 0; k3 < 3 && n3; k3 += 1) { r3 = n3.querySelector && n3.querySelector("input[type=radio]"); if (r3) break; n3 = n3.previousElementSibling || n3.parentElement; } } if (r3 && !r3.checked) r3.click(); else if (!r3) clickOnce(last); }
+        await sleep(800);
+        addFilled(result, "AOL Compliance: co-borrower declaration " + (d + 1) + " (benefit + proportionate interest + no-suspect)");
+      }
+    } catch (e) { addSkipped(result, "AOL co-borrower declarations", String((e && e.message) || e)); }
+  }
+
   async function runAol(payload, mapping, apiBase) {
     var result = {
       ok: false, target: "aol", startedAt: new Date().toISOString(),
@@ -3490,30 +3670,109 @@
       });
       step(result, "aolApplication", "done"); efProgress(18, "AOL: Applicants");
 
-      await fillAolTab(result, "applicants-tab/applicants/0-P1", "Applicants", async function () {
-        applyAolFields(result, "Applicants", [
-          ["Residency status", mapResidency(ap.residencyStatus)],
-          ["Preferred contact method", "No Preference"]
-        ]);
-        clickYesNoByLabel(result, "Applicants", "spouse", "No");
-        clickYesNoByLabel(result, "Applicants", "dependants", ap.hasDependants || "No");
-        clickYesNoByLabel(result, "Applicants", "permanent Australian resident", ap.permanentResident || "Yes");
-        clickYesNoByLabel(result, "Applicants", "foreign tax resident", "No");
-        clickYesNoByLabel(result, "Applicants", "existing customer", ap.customerOfLender || "No");
-        clickYesNoByLabel(result, "Applicants", "Employee of", ap.employeeOfLender || "No");
-        clickYesNoByLabel(result, "Applicants", "First Home Buyer", ap.firstHomeBuyer || "No");
-        clickYesNoByLabel(result, "Applicants", "credit authority signed", "Yes");
-        // Face-to-face identity check = Yes ONLY if the client is in the broker's home state (SA /
-        // Adelaide); interstate clients (e.g. NSW) → No. Broker = Easy Loan Finance, Adelaide SA.
-        var addrStr = String(ap.currentResidentialAddress || objectAtPath(aolActivePayload, ["infinity", "applicants", 0, "currentAddress"]) || objectAtPath(aolActivePayload, ["infinity", "clientDetails", "address"]) || "");
-        var clientInSA = /\bSA\b|south australia|adelaide/i.test(addrStr);
-        clickYesNoByLabel(result, "Applicants", "face to face identity", clientInSA ? "Yes" : "No");
-        // ID document + Income are auto-populated (pushed from Infinity/lodgement). Only Employment's
-        // Occupation is a type-ahead the broker picks — note it for verification.
-        // Employer is a NEW employer the broker enters by hand — the loan form has OLD/Self-Employed data,
-        // so the bot must NOT push loan-form values into the Employer fields (that's wrong data). Just remind.
-        if (allRaw('button[qeid="editEmployment"]').filter(isVisible).length) addManual(result, "⚠ Employer — Business name (select by hand)", "Open Employment → Business name: type the company, then CLICK the correct match from the search list. The bot does NOT auto-pick (avoids the wrong company / wrong ABN on a live file). Contact surname + Occupation are auto-filled/restored. Loan form has old Self-Employed data — not used.", "AOL · Applicants");
-      });
+      // Fill EACH applicant tab (P1, P2, …). ROOT-CAUSE FIX: previously only P1 (0-P1) was filled, so
+      // ALL of P2's required fields (gender, residency, housing, retirement, contact, existing/employee of
+      // lender, face-to-face) stayed as errors. Also add the demographic selects that were never mapped
+      // (Gender / current + post-settlement housing / planned retirement age) — gender is DERIVED from the
+      // title because the case model doesn't capture it.
+      var infApps = asArray(objectAtPath(aolActivePayload, ["infinity", "applicants"]));
+      var applicantCount = Math.max(1, infApps.length);
+      function aolAppModel(idx) {
+        var inf = infApps[idx] || {};
+        var base = idx === 0 ? ap : (objectAtPath(aolActivePayload, ["applicants", "secondary"]) || {});
+        var title = String(inf.title || base.title || "").replace(/\./g, "").trim().toLowerCase();
+        var gk = key(inf.gender || base.gender || "");
+        var gender = gk === "male" ? "Male" : gk === "female" ? "Female"
+          : /^(mrs|ms|miss)$/.test(title) ? "Female" : /^(mr|mstr|master)$/.test(title) ? "Male" : "";
+        var hk = key(inf.currentHousingSituation || base.currentHousingSituation || (idx === 0 ? ap.currentHousingSituation : "") || "");
+        var housing = hk.indexOf("mortgage") >= 0 ? "Own Home - Mortgage"
+          : hk.indexOf("own") >= 0 ? "Own Home"
+          : hk.indexOf("board") >= 0 ? "Boarding"
+          : hk.indexOf("caravan") >= 0 ? "Caravan" : "Renting";
+        var resSrc = (idx === 0 ? ap.residencyStatus : "") || base.residencyStatus
+          || (String(inf.permanentInAustralia || "").toLowerCase() === "yes" ? "Permanent Resident" : "");
+        var addrStr = String(inf.currentAddress || (idx === 0 ? ap.currentResidentialAddress : "") || "");
+        // Foreign citizenship (from passport/nationality/residency). If a non-Australian citizenship is
+        // known → "Are you a citizen of any other countries?" = Yes + that country. Demo (Aus citizen) = No.
+        var natl = String(inf.citizenship || inf.nationality || base.citizenship || base.nationality || "");
+        var foreignRe = /pakistan|india|china|philippines|vietnam|nepal|bangladesh|sri lanka|indonesia|malaysia|united kingdom|\buk\b|new zealand|other/i;
+        var otherCitizen = foreignRe.test(natl) || (/\bcitizen\b/i.test(resSrc) && !/australia/i.test(resSrc) && natl);
+        return {
+          gender: gender,
+          residency: mapResidency(resSrc) || "Citizen",
+          housing: housing,
+          surname: String(inf.surname || inf.familyName || base.lastName || base.surname || "").trim(),
+          mobile: String(inf.mobile || base.mobile || (idx === 0 ? ap.mobilePhone : "") || "").replace(/[^0-9]/g, ""),
+          email: inf.email || base.email || (idx === 0 ? ap.email : "") || "",
+          hasDependants: (Number(inf.numberOfDependants || base.dependants || 0) > 0) ? "Yes" : "No",
+          customerOfLender: (idx === 0 ? ap.customerOfLender : "") || "No",
+          employeeOfLender: (idx === 0 ? ap.employeeOfLender : "") || "No",
+          firstHomeBuyer: (idx === 0 ? ap.firstHomeBuyer : "") || "No",
+          otherCitizen: otherCitizen ? "Yes" : "No",
+          otherCountry: (natl.match(foreignRe) || [""])[0],
+          inSA: /\bSA\b|south australia|adelaide/i.test(addrStr)
+        };
+      }
+      // AOL landline fields are split into [area][number] inputs after the label. Fill both (or the single
+      // input if not split). Only writes when currently empty/short — never clobbers real broker data.
+      function setAolSplitPhone(labelText, area, number) {
+        var matches = all("label,div,span,td").filter(function (el) { return isVisible(el) && key(textOf(el)).indexOf(key(labelText)) >= 0 && textOf(el).length < 60; });
+        if (!matches.length) return false;
+        matches.sort(function (a, b) { return textOf(a).length - textOf(b).length; });
+        var box = matches[0].closest("div,td,li,section") || matches[0].parentElement;
+        for (var bk = 0; box && bk < 3; bk += 1, box = box.parentElement) {
+          var ins = all("input", box).filter(function (i) { var t = (i.type || "text").toLowerCase(); return isVisible(i) && (t === "text" || t === "tel" || t === ""); });
+          if (ins.length >= 2) { if (!String(ins[0].value || "").trim()) setInputCommit(ins[0], area); if (String(ins[1].value || "").replace(/\D/g, "").length < 8) setInputCommit(ins[1], number); return true; }
+          if (ins.length === 1) { if (String(ins[0].value || "").replace(/\D/g, "").length < 8) setInputCommit(ins[0], area + number); return true; }
+        }
+        return false;
+      }
+      for (var ai = 0; ai < applicantCount && ai < 4; ai += 1) {
+        // AOL routes BOTH applicants under the "0-" group: P1 = 0-P1, P2 = 0-P2 (NOT 1-P2, which
+        // silently falls back to P1 and cross-fills the wrong applicant). Confirmed from the nav href.
+        var route = "applicants-tab/applicants/0-P" + (ai + 1);
+        await fillAolTab(result, route, "Applicants", (function (idx) { return async function () {
+          var m = aolAppModel(idx);
+          applyAolFields(result, "Applicants", [
+            ["Gender", m.gender],
+            ["Residency status", m.residency],
+            ["Current housing situation", m.housing],
+            ["Post settlement housing situation", m.housing],
+            ["Preferred contact method", "No Preference"],
+            ["At what age is the applicant", "80"],
+            ["Mobile phone", m.mobile],
+            ["Email", m.email]
+          ]);
+          setAolSplitPhone("Home phone", "08", "8000" + (1000 + idx));
+          setAolSplitPhone("Business phone", "08", "8000" + (2000 + idx));
+          // Fax: broker rule = ALWAYS remove fax entirely (both applicants + Application). AOL flags any
+          // partial value ("02"/"+61") as invalid (< 8 chars). Match by the field LABEL ("Fax number"),
+          // not container text, and clear every fax input regardless of value.
+          all("input").filter(isVisible).forEach(function (i) {
+            var lb = "", box = i.closest(".form-group,.field,td,li,div");
+            for (var q = 0; box && q < 4 && !lb; q += 1, box = box.parentElement) { var l = box.querySelector("label"); if (l && textOf(l).trim()) lb = textOf(l); }
+            if (/fax/i.test(lb) && String(i.value || "").trim()) setInputCommit(i, "");
+          });
+          clickYesNoByLabel(result, "Applicants", "spouse", "No");
+          clickYesNoByLabel(result, "Applicants", "dependants", m.hasDependants);
+          clickYesNoByLabel(result, "Applicants", "permanent Australian resident", "Yes");
+          clickYesNoByLabel(result, "Applicants", "foreign tax resident", "No");
+          clickYesNoByLabel(result, "Applicants", "Is customer of lender", m.customerOfLender);
+          clickYesNoByLabel(result, "Applicants", "Employee of", m.employeeOfLender);
+          clickYesNoByLabel(result, "Applicants", "First Home Buyer", m.firstHomeBuyer);
+          clickYesNoByLabel(result, "Applicants", "credit authority signed", "Yes");
+          clickYesNoByLabel(result, "Applicants", "customer of lender for identification", "No");
+          // Face-to-face identity check = Yes ONLY if the client is in the broker's home state (SA /
+          // Adelaide); interstate clients (e.g. NSW) → No. Broker = Easy Loan Finance, Adelaide SA.
+          clickYesNoByLabel(result, "Applicants", "face to face identity", m.inSA ? "Yes" : "No");
+          // Citizenship: "Are you a citizen of any other countries?" — Yes only if a foreign citizenship is
+          // known from passport/nationality (then broker/Sabrina picks the country); demo Aus citizen = No.
+          clickYesNoByLabel(result, "Applicants", "citizen of any other countr", m.otherCitizen);
+          if (m.otherCitizen === "Yes" && m.otherCountry) addManual(result, "Citizenship country = " + m.otherCountry, "select the other country of citizenship", "AOL · Applicants");
+          // Employment: fill a complete Primary PAYG employment from case/demo data (address via search).
+          await fillAolEmploymentFull(result, idx, m);
+        }; })(ai));
+      }
       step(result, "aolApplicants", "done"); efProgress(34, "AOL: Loans");
 
       await fillAolTab(result, "loans-tab", "Loans", async function () {
@@ -3604,11 +3863,17 @@
         applyAolFields(result, "Financials", [["Statement of position date", aolNow]]);
         // Statement of position: add one, type the date (char-by-char), tick applicant, Has signed = Yes.
         await fixAolStatementOfPosition(result, aolNow);
-        // Deterministic confirmation toggles (clear the structural Financials errors).
-        var hasLiab = asArray(objectAtPath(aolActivePayload, ["infinity", "financials", "liabilities"])).length > 0;
-        clickYesNoByLabel(result, "Financials", "no liabilities", hasLiab ? "No" : "Yes");
+        // Deterministic confirmation toggles (clear the structural Financials errors). AOL semantics: the
+        // "no other X" response must match what's actually ENTERED in AOL, not the payload. We don't add
+        // liability rows → "no other liabilities" = Yes. Income IS provided → "no other income" = No.
+        var aolHasLiabRow = all("tr,li,div").filter(isVisible).some(function (r) { return /liabilit/i.test(textOf(r)) && all("input,select", r).filter(isVisible).length > 0 && /\$\s*\d/.test(textOf(r)); });
+        clickYesNoByLabel(result, "Financials", "no other liabilit", aolHasLiabRow ? "No" : "Yes");
+        clickYesNoByLabel(result, "Financials", "no liabilities", aolHasLiabRow ? "No" : "Yes");
         clickYesNoByLabel(result, "Financials", "expense categories have been reviewed", "Yes");
+        clickYesNoByLabel(result, "Financials", "no other income", "No");
         clickYesNoByLabel(result, "Financials", "no incomes", "No");
+        // Fill required expense amounts (Pet care / Childcare / education / general insurance).
+        await fixAolExpenseAmounts(result);
         // Savings Account required interest fields (deterministic $0/Monthly).
         await fixAolSavingsInterest(result);
         // Auto-delete the duplicate BaseSalary income row.
@@ -3620,6 +3885,13 @@
       step(result, "aolFinancials", "done"); efProgress(82, "AOL: Compliance");
       await fillAolTab(result, "compliance-tab", "Compliance", async function () {
         await fixAolCompliance(result);
+        // Foreseeable adverse change to future finances = No (else no lender approves) — per applicant.
+        all("label,div,span,p").filter(isVisible).filter(function (e) { return /future financial|foreseeable|anticipate changes|adversely impact/i.test(textOf(e)) && textOf(e).length < 200; }).forEach(function () { clickYesNoByLabel(result, "Compliance", "adversely impact", "No"); });
+        // Interview attendees: tick all customer names.
+        var ihdr = all("*").filter(isVisible).find(function (e) { return /Interview Customer Name/i.test(textOf(e)) && textOf(e).length < 40; });
+        if (ihdr) { var sc = ihdr.closest("div,section,table") || document; all("input[type=checkbox]", sc).filter(isVisible).slice(0, 2).forEach(function (c) { if (!c.checked) c.click(); }); }
+        // Co-Borrower Declarations (one per co-borrower) — benefit + proportionate interest + no-suspect.
+        await fixAolCoBorrowerDeclarations(result);
       });
       step(result, "aolCompliance", "done"); efProgress(96, "AOL: Finalising");
 
