@@ -3053,6 +3053,22 @@ app.post("/api/cases/:caseId/reverse-sync/apply", (request, response) => {
   } catch (error) { response.status(500).json({ error: String(error?.message || error) }); }
 });
 
+// Reverse sync — REVERT: clear the "Updated from Infinity/AOL" overlay so the case goes back to the original
+// loan-form version. The safety net for full-auto sync (broker can undo a bad auto-apply in one click).
+app.post("/api/cases/:caseId/reverse-sync/revert", (request, response) => {
+  const broker = requireBroker(request, response);
+  if (!broker) return;
+  try {
+    const caseId = request.params.caseId;
+    pushCaseHistory(caseId, { type: "capture", key: "caseUpdatedVersion", brokerUser: broker.name, data: { fields: {}, updatedAt: new Date().toISOString(), updatedBy: broker.name, reverted: true } });
+    const hist = getCapture(caseId, "syncHistory");
+    const list = Array.isArray(hist) ? hist : [];
+    list.push({ at: new Date().toISOString(), direction: "Reverted to original (undo sync)", appliedCount: 0, changes: [], by: broker.name, mode: "revert" });
+    pushCaseHistory(caseId, { type: "capture", key: "syncHistory", brokerUser: broker.name, data: list.slice(-200) });
+    response.json({ ok: true });
+  } catch (error) { response.status(500).json({ error: String(error?.message || error) }); }
+});
+
 app.post("/api/cases/:caseId/recommendation-notes", async (request, response) => {
   const broker = requireBroker(request, response);
   if (!broker) return;
