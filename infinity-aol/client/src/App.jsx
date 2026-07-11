@@ -4108,9 +4108,8 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
           style={{ position: "fixed", top: 46, left: 0, right: 0, bottom: 0, width: "100%", height: "calc(100vh - 46px)", border: 0, zIndex: 40, background: "#fff" }} />
       )}
       {isClientCallHost && ccTab === "team" && (
-        <div style={{ position: "fixed", top: 46, left: 0, right: 0, bottom: 0, overflow: "auto", zIndex: 40, background: "#f4f6f5", padding: 20 }}>
-          <TeamSettingsPanel appName="Client Call Intake" />
-        </div>
+        <iframe title="Team & Users" src="https://sabrina.easyloanfinance.com.au/team"
+          style={{ position: "fixed", top: 46, left: 0, right: 0, bottom: 0, width: "100%", height: "calc(100vh - 46px)", border: 0, zIndex: 40, background: "#fff" }} />
       )}
       <aside className="notes-sidebar">
         <SystemBrand appName={isLoanSubmissionsRoute ? "Loan Case Manager" : "Client Call Intake"} />
