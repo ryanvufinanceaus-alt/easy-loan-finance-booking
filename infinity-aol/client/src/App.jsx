@@ -763,7 +763,6 @@ function TeamSettingsPanel({ appName }) {
               ))}
             </div>
             <a className="settings-link" href="https://portal.easyloanfinance.com.au" target="_blank" rel="noreferrer">Open BrokerDesk Team & Users for full CRM roles</a>
-            <a className="settings-link" href="https://sabrina.easyloanfinance.com.au/prospects" target="_blank" rel="noreferrer">🧲 Prospects — Facebook Messenger leads not yet converted (ELF Accounts login)</a>
           </>
         ) : (
           <p className="panel-helper">Ask Ryan admin to change your access code, role, or CRM permissions.</p>
@@ -3454,6 +3453,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   const [notes, setNotes] = useState([]);
   const [intakes, setIntakes] = useState([]);
   const [search, setSearch] = useState("");
+  const [ccTab, setCcTab] = useState("call"); // client-call: Client Call | Client Prospects | Team & Users
   const [activePanel, setActivePanel] = useState(initialPanel);
   const [selectedId, setSelectedId] = useState("");
   const [selectedIntakeId, setSelectedIntakeId] = useState("");
@@ -4094,7 +4094,24 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
   const loanActionOptions = actionOptionsForCategory(normalizedCallForm.loanCategory);
 
   return (
-    <main className={`notes-shell ${appThemeClass()} ${isLoanSubmissionsRoute ? "submissions-shell" : ""}`}>
+    <main className={`notes-shell ${appThemeClass()} ${isLoanSubmissionsRoute ? "submissions-shell" : ""}`} style={isClientCallHost ? { paddingTop: 46 } : undefined}>
+      {isClientCallHost && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, height: 46, display: "flex", gap: 6, alignItems: "center", padding: "0 12px", background: "#0B6B4F", zIndex: 50 }}>
+          {[["call", "📞 Client Call"], ["prospects", "🧲 Client Prospects"], ["team", "👥 Team & Users"]].map(([key, label]) => (
+            <button key={key} type="button" onClick={() => setCcTab(key)}
+              style={{ border: 0, borderRadius: 8, padding: "7px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", background: ccTab === key ? "#fff" : "rgba(255,255,255,.15)", color: ccTab === key ? "#0B6B4F" : "#fff" }}>{label}</button>
+          ))}
+        </div>
+      )}
+      {isClientCallHost && ccTab === "prospects" && (
+        <iframe title="Client Prospects" src="https://sabrina.easyloanfinance.com.au/prospects"
+          style={{ position: "fixed", top: 46, left: 0, right: 0, bottom: 0, width: "100%", height: "calc(100vh - 46px)", border: 0, zIndex: 40, background: "#fff" }} />
+      )}
+      {isClientCallHost && ccTab === "team" && (
+        <div style={{ position: "fixed", top: 46, left: 0, right: 0, bottom: 0, overflow: "auto", zIndex: 40, background: "#f4f6f5", padding: 20 }}>
+          <TeamSettingsPanel appName="Client Call Intake" />
+        </div>
+      )}
       <aside className="notes-sidebar">
         <SystemBrand appName={isLoanSubmissionsRoute ? "Loan Case Manager" : "Client Call Intake"} />
         <TeamSettingsPanel appName={isLoanSubmissionsRoute ? "Loan Case Manager" : "Client Call Intake"} />
