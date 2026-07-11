@@ -763,6 +763,7 @@ function TeamSettingsPanel({ appName }) {
               ))}
             </div>
             <a className="settings-link" href="https://portal.easyloanfinance.com.au" target="_blank" rel="noreferrer">Open BrokerDesk Team & Users for full CRM roles</a>
+            <a className="settings-link" href="https://sabrina.easyloanfinance.com.au/prospects" target="_blank" rel="noreferrer">🧲 Prospects — Facebook Messenger leads not yet converted (ELF Accounts login)</a>
           </>
         ) : (
           <p className="panel-helper">Ask Ryan admin to change your access code, role, or CRM permissions.</p>
