@@ -84,6 +84,8 @@ function verifyBrokerToken(token) {
   } catch { return null; }
 }
 function brokerFromRequest(request) {
+  // 0) ELF Accounts SSO session (attached by elfAccountsSso middleware after verifying elf_sess with Sabrina).
+  if (request.__elfSession) return request.__elfSession;
   // 1) bearer token (Chrome extension stores it from /api/auth/login)
   const raw = String(request.get("x-easyflow-broker-token") || request.get("authorization") || "").replace(/^Bearer\s+/i, "");
   let session = verifyBrokerToken(raw);
@@ -95,6 +97,41 @@ function brokerFromRequest(request) {
     if (session) return session;
   }
   return null;
+}
+
+// ── ELF Accounts SSO (single sign-on) ──────────────────────────────────────────
+// One central login: when a teammate signs into ELF Accounts (Sabrina /team), the shared elf_sess cookie
+// (Domain=.easyloanfinance.com.au) also reaches this app. We verify it against Sabrina and treat them as a
+// logged-in broker/admin — so no second login. ADDITIVE: the app's own login is untouched; if Sabrina is
+// unreachable, this simply yields no session and the app's own auth still works.
+const ELF_ACCOUNTS_VERIFY = process.env.ELF_ACCOUNTS_VERIFY_URL || "https://sabrina.easyloanfinance.com.au/api/auth/verify";
+const _elfSsoCache = new Map(); // token -> { exp, val }
+async function verifyElfAccounts(tok) {
+  if (!tok) return null;
+  const c = _elfSsoCache.get(tok);
+  if (c && Date.now() < c.exp) return c.val;
+  try {
+    const r = await fetch(ELF_ACCOUNTS_VERIFY, { headers: { authorization: "Bearer " + tok } });
+    if (!r.ok) { _elfSsoCache.set(tok, { exp: Date.now() + 30000, val: null }); return null; }
+    const d = await r.json();
+    if (!d || !d.ok) { _elfSsoCache.set(tok, { exp: Date.now() + 30000, val: null }); return null; }
+    // ELF roles admin/broker/support → app roles admin/broker (support operates the tools as a broker).
+    const role = d.role === "admin" ? "admin" : "broker";
+    const val = { role, accessLevel: "broker", email: `${d.username}@elf-accounts`, name: d.username, brokerId: null, viaElfAccounts: true, elfRole: d.role, elfPerms: d.perms || [] };
+    _elfSsoCache.set(tok, { exp: Date.now() + 60000, val });
+    return val;
+  } catch { return null; }
+}
+function elfAccountsSso() {
+  return async (request, _response, next) => {
+    try {
+      if (!verifyBrokerToken(String(request.get("x-easyflow-broker-token") || request.get("authorization") || "").replace(/^Bearer\s+/i, ""))) {
+        const m = String(request.get("cookie") || "").match(/(?:^|; )elf_sess=([^;]+)/);
+        if (m) { const s = await verifyElfAccounts(decodeURIComponent(m[1])); if (s) request.__elfSession = s; }
+      }
+    } catch { /* SSO best-effort — never blocks the app's own auth */ }
+    next();
+  };
 }
 // Guard for endpoints that must be done by a vetted, logged-in broker. Returns the session or sends 401.
 function requireBroker(request, response) {
@@ -122,6 +159,7 @@ const storageState = {
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
+app.use(elfAccountsSso()); // ELF Accounts SSO — trust the shared elf_sess login (best-effort, additive)
 
 function findCase(caseId) {
   return [...localCases, ...cases].find((item) => item.id === caseId);

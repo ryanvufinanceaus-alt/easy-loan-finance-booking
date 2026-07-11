@@ -842,6 +842,13 @@ function InternalLoginPage() {
             {loading ? "Checking..." : "Login"}
           </button>
         </form>
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,.15)", textAlign: "center" }}>
+          <a href={`https://sabrina.easyloanfinance.com.au/team/login?return=${encodeURIComponent(window.location.origin + "/")}`}
+            style={{ display: "inline-block", padding: "10px 16px", borderRadius: 9, background: "#0B6B4F", color: "#fff", fontWeight: 700, textDecoration: "none", fontSize: 14 }}>
+            🔐 Sign in with ELF Accounts (single sign-on)
+          </a>
+          <div style={{ marginTop: 6, fontSize: 12, opacity: .6 }}>One login for all Easy Loan Finance tools.</div>
+        </div>
       </section>
     </main>
   );
