@@ -12430,9 +12430,9 @@ function rRevenue(){
   var tab=S.revTab||'recon';
   var btn=function(id,label){ return '<button class="btn-ghost" style="border-radius:0;padding:11px 18px;font-size:13px;border:none;'+(tab===id?'color:#D4A843;border-bottom:2px solid #D4A843;':'color:#6b7280;')+'" onclick="S.revTab=\''+id+'\';render()">'+label+'</button>'; };
   return '<div style="display:flex;border-bottom:1px solid #1e2430;margin-bottom:14px;flex-shrink:0;">'
-    + btn('recon','Reconciliation') + btn('loans','Loans &amp; Ref #') + btn('batches','Upload history')
+    + btn('recon','Reconciliation') + btn('received','Actual Received') + btn('loans','Loans &amp; Ref #') + btn('batches','Upload history')
     + '</div>'
-    + (tab==='loans'?rRevLoans():tab==='batches'?rRevBatches():rRevRecon());
+    + (tab==='loans'?rRevLoans():tab==='batches'?rRevBatches():tab==='received'?rRevReceived():rRevRecon());
 }
 
 // ---- Reconciliation engine (frontend) ----
@@ -12554,6 +12554,52 @@ function rRevRecon(){
   return h;
 }
 
+// ---- Actual Received (per broker): Expected (loan x rate) vs Actual received (Finsure statements) ----
+function rRevReceived(){
+  var isAdmin=S.user.role==='admin';
+  var loans=(S.loanBook||[]).filter(function(l){ return isAdmin?true:l.brokerId===S.user.id; });
+  var rows=S.commRows||[];
+  var byRef={},byName={};
+  rows.forEach(function(r){ var k=String(r.ref||'').trim(); if(k)(byRef[k]=byRef[k]||[]).push(r); var nk=_revNameKey(r.clientRaw); if(nk)(byName[nk]=byName[nk]||[]).push(r); });
+  var groups={},order=[];
+  loans.forEach(function(l){
+    var ref=String(l.finsureRef||'').trim(), nameKey=_revNameKey(l.clientName);
+    var lr=(ref&&byRef[ref])?byRef[ref]:(byName[nameKey]||[]);
+    var actUp=lr.filter(function(r){return /up/i.test(r.type);}).reduce(function(s,r){return s+_revNum(r.commission);},0);
+    var actTr=lr.filter(function(r){return /trail/i.test(r.type);}).reduce(function(s,r){return s+_revNum(r.commission);},0);
+    var expUp=_revNum(l.upfrontAmount)||_revNum(l.loanAmount)*(_revNum(l.upfrontRate)/100);
+    if(expUp<=0 && actUp<=0 && actTr<=0) return;
+    var bn=l.brokerName||l.broker||'(unassigned)';
+    if(!groups[bn]){ groups[bn]={rows:[],expUp:0,actUp:0,actTr:0}; order.push(bn); }
+    var g=groups[bn]; g.rows.push({l:l,expUp:expUp,actUp:actUp,actTr:actTr}); g.expUp+=expUp; g.actUp+=actUp; g.actTr+=actTr;
+  });
+  var h='<div style="overflow-y:auto;max-height:calc(100vh - 170px);padding-right:4px;">';
+  h+='<div style="font-size:12px;color:#8b949e;margin-bottom:12px;">Per broker &mdash; <b style="color:#c9d1d9;">Expected</b> (loan x rate, indicative estimate) vs <b style="color:#c9d1d9;">Actual received</b> (from the Finsure statements). Figures are the full commission (100%, ex-GST); each broker net = x 1.1 GST x broker share.</div>';
+  if(!order.length){ h+='<div class="card" style="padding:30px;text-align:center;color:#6b7280;">No settled loans yet. Add loans in Loan Book and upload a Finsure statement to see actual received.</div></div>'; return h; }
+  order.forEach(function(bn){
+    var g=groups[bn];
+    h+='<div style="font-weight:700;color:#D4A843;font-size:13px;margin:16px 0 6px;">'+esc(bn)+'</div>';
+    h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th style="text-align:right;">Loan</th><th style="text-align:right;">Expected upfront</th><th style="text-align:right;">Actual upfront</th><th style="text-align:right;">Trail received</th><th style="text-align:right;">Variance</th></tr></thead><tbody>';
+    g.rows.forEach(function(x){
+      var v=x.actUp-x.expUp; var vc=x.actUp<=0?'#6b7280':(v<-1?'#FB923C':'#34D399');
+      h+='<tr><td style="font-weight:600;color:#c9d1d9;">'+esc(x.l.clientName||'')+'</td><td>'+esc(x.l.lenderName||'')+'</td>'
+        +'<td style="text-align:right;">'+(x.l.loanAmount?'$'+_revNum(x.l.loanAmount).toLocaleString():'-')+'</td>'
+        +'<td style="text-align:right;color:#8b949e;">$'+x.expUp.toFixed(2)+'</td>'
+        +'<td style="text-align:right;color:#c9d1d9;">'+(x.actUp>0?'$'+x.actUp.toFixed(2):'<span style="color:#EF4444;">not yet</span>')+'</td>'
+        +'<td style="text-align:right;color:#c9d1d9;">'+(x.actTr>0?'$'+x.actTr.toFixed(2):'-')+'</td>'
+        +'<td style="text-align:right;color:'+vc+';">'+(x.actUp>0?((v>=0?'+':'')+'$'+v.toFixed(2)):'-')+'</td></tr>';
+    });
+    var gv=g.actUp-g.expUp;
+    h+='<tr style="border-top:2px solid #1e2430;font-weight:700;color:#c9d1d9;"><td colspan="3" style="text-align:right;">Subtotal</td>'
+      +'<td style="text-align:right;color:#8b949e;">$'+g.expUp.toFixed(2)+'</td>'
+      +'<td style="text-align:right;">$'+g.actUp.toFixed(2)+'</td>'
+      +'<td style="text-align:right;">$'+g.actTr.toFixed(2)+'</td>'
+      +'<td style="text-align:right;color:'+(gv<-1?'#FB923C':'#34D399')+';">'+((gv>=0?'+':'')+'$'+gv.toFixed(2))+'</td></tr>';
+    h+='</tbody></table>';
+  });
+  h+='</div>';
+  return h;
+}
 function _revEmailText(){
   var items=S._revMissingItems||[];
   var mk=_revReconcile().endMonth;
