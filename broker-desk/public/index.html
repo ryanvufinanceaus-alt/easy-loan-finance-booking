@@ -4752,7 +4752,7 @@ function _missingUpfronts(){
   const dayMs = 86400000;
   const out = [];
   scope.loans.forEach(l => {
-    if(l.status === 'Written Off') return;
+    if(l.status === 'Written Off' || l.status === 'Discharged' || l.status === 'Transferred') return; // FIX audit: khong chase upfront cho loan da dong/chuyen
     const upComms = scope.commissions.filter(c => c.loanId === l.id && c.type === 'Upfront');
     const received = upComms.find(c => c.status === 'Received');
     if(received) return; // got it \u2014 not missing
@@ -4809,11 +4809,10 @@ function _trailForMonth(year, month0){
     // Match by receivedDate starting with monthKey OR period containing month name
     const matched = scope.commissions.filter(c => {
       if(c.loanId !== l.id || c.type !== 'Trail') return false;
-      const rd = String(c.receivedDate || '');
-      if(rd.startsWith(monthKey)) return true;
+      // FIX audit: trail tra ARREARS -> uu tien 'period' (thang trail ĐÓ) hon receivedDate (thang NHAN, thuong lech +1). Chi fallback receivedDate khi khong co period.
       const period = String(c.period || '').toLowerCase();
-      if(period && (period.includes(monthShort.toLowerCase()) || period.includes(monthName.toLowerCase()))) return true;
-      return false;
+      if(period) return period.includes(monthShort.toLowerCase()) || period.includes(monthName.toLowerCase());
+      return String(c.receivedDate || '').startsWith(monthKey);
     });
     const received = matched
       .filter(c => c.status === 'Received')
@@ -11035,6 +11034,7 @@ function _trailMonthsSinceSettlement(settlementDate){
   // Start = first day of month after settlement
   let y = sd.getFullYear();
   let m = sd.getMonth() + 1; // 0-indexed; +1 = next month (still 0-indexed value)
+  if(m > 11){ m = 0; y++; } // FIX audit: wrap khi settle thang 12 (getMonth 11 -> m 12) TRUOC vong lap, tranh key YYYY-13 lech voi label
   const now = new Date();
   const endY = now.getFullYear();
   const endM = now.getMonth();
@@ -12453,14 +12453,19 @@ function _revReconcile(){
   var refsUsed={};
   var missingUpfront=[],missingTrail=[],variance=[],matched=0;
   var now=Date.now();
+  // FIX audit: dedup — gan statement row cho loan CHI 1 lan (ref truoc, ten sau, bo qua loan da dong) chong cong doi khi cung ten chua link ref.
+  var _rcUsed=new Set(), _rcLrOf={};
+  var _rcSkip=function(l){ var s=String(l.status||'').toLowerCase(); return (s==='closed'||s==='discharged'||s==='paid out'||s==='refinanced')||!_revMonthKey(l.settlementDate); };
+  loans.forEach(function(l){ if(_rcSkip(l))return; var rf=String(l.finsureRef||'').trim(); if(rf&&byRef[rf]){ var a=byRef[rf].filter(function(r){return !_rcUsed.has(r);}); a.forEach(function(r){_rcUsed.add(r);}); _rcLrOf[l.id]=a; } });
+  loans.forEach(function(l){ if(_rcSkip(l)||_rcLrOf[l.id])return; var nk=_revNameKey(l.clientName); var a=(byName[nk]||[]).filter(function(r){return !_rcUsed.has(r);}); a.forEach(function(r){_rcUsed.add(r);}); _rcLrOf[l.id]=a; });
   loans.forEach(function(l){
     var st=String(l.status||'').toLowerCase();
     if(st==='closed'||st==='discharged'||st==='paid out'||st==='refinanced') return;
     var settleMk=_revMonthKey(l.settlementDate); if(!settleMk) return;
     var ref=String(l.finsureRef||'').trim();
     var nameKey=_revNameKey(l.clientName);
-    // statement rows for this loan: by ref if linked, else by client name
-    var lr = (ref&&byRef[ref]) ? byRef[ref] : (byName[nameKey]||[]);
+    // statement rows for this loan: deduped assignment (ref-first) computed above in _rcLrOf
+    var lr = _rcLrOf[l.id] || [];
     if(ref) refsUsed[ref]=true;
     lr.forEach(function(r){ if(r.ref) refsUsed[String(r.ref).trim()]=true; });
     var stUp=lr.filter(function(r){return /up/i.test(r.type);});
@@ -12560,9 +12565,12 @@ function rRevReceived(){
   rows.forEach(function(r){ var k=String(r.ref||'').trim(); if(k)(byRef[k]=byRef[k]||[]).push(r); var nk=_revNameKey(r.clientRaw); if(nk)(byName[nk]=byName[nk]||[]).push(r); });
   var NET=0.88, GROSS=1.1; // net-to-broker = base x 80% split x 1.1 GST = base x 0.88 ; gross inc-GST = base x 1.1
   var groups={},order=[];
+  // FIX audit: gan statement row cho loan CHI 1 lan (ref truoc, ten sau) -> chong cong doi khi 2 loan cung ten chua link finsureRef.
+  var _used=new Set(), _lrOf={};
+  loans.forEach(function(l){ var rf=String(l.finsureRef||'').trim(); if(rf&&byRef[rf]){ var a=byRef[rf].filter(function(r){return !_used.has(r);}); a.forEach(function(r){_used.add(r);}); _lrOf[l.id]=a; } });
+  loans.forEach(function(l){ if(_lrOf[l.id])return; var nk=_revNameKey(l.clientName); var a=(byName[nk]||[]).filter(function(r){return !_used.has(r);}); a.forEach(function(r){_used.add(r);}); _lrOf[l.id]=a; });
   loans.forEach(function(l){
-    var ref=String(l.finsureRef||'').trim(), nameKey=_revNameKey(l.clientName);
-    var lr=(ref&&byRef[ref])?byRef[ref]:(byName[nameKey]||[]);
+    var lr=_lrOf[l.id]||[];
     var actUpBase=lr.filter(function(r){return /up/i.test(r.type);}).reduce(function(s,r){return s+_revNum(r.commission);},0);
     var actTrBase=lr.filter(function(r){return /trail/i.test(r.type);}).reduce(function(s,r){return s+_revNum(r.commission);},0);
     var expUpBase=_revNum(l.upfrontAmount)||_revNum(l.loanAmount)*(_revNum(l.upfrontRate)/100);
@@ -13019,8 +13027,8 @@ function _revBuildSyncPlan(){
     var loan=(ref&&loanByRef[ref])?loanByRef[ref]:loanByName[_revNameKey(r.clientRaw)];
     if(!loan){ unmatched++; return; }
     var type=/trail/i.test(r.type)?'Trail':'Upfront';
-    var gross=_revNum(r.commission), net=_revNum(r.net);
-    var amt=(net>0 && net<=gross*1.05) ? net : gross; // net after split if sane, else gross (never a stray balance/total)
+    var gross=_revNum(r.commission);
+    var amt=gross; // FIX audit: luu ex-GST BASE (= cot Commission cua statement) DONG NHAT voi saveComm_. Net-to-broker (x0.88) DERIVE luc hien (rRevReceived). Truoc luu net/gross -> lech basis voi entry thu cong, tong overview sai.
     var period=type==='Trail'?_revPeriodLabel(r.periodMonth):'';
     plan.push({loanId:loan.id,caseId:loan.caseId||'',brokerId:loan.brokerId||'',brokerName:loan.brokerName||'',clientName:loan.clientName||'',type:type,amount:amt,period:period,periodMonth:r.periodMonth||'',ref:ref,receivedDate:new Date().toISOString().slice(0,10),batchId:r.batchId||''});
   });
@@ -13043,7 +13051,7 @@ function rRevSyncModal(){
     +'<div style="flex:1;min-width:90px;background:#11161f;border:1px solid #6b728033;border-radius:8px;padding:9px 12px;"><div style="font-size:10px;color:#6b7280;font-weight:700;text-transform:uppercase;">Skip (invoiced)</div><div style="font-size:20px;font-weight:800;color:#c9d1d9;">'+sp.skip+'</div></div>'
     +(sp.unmatched?'<div style="flex:1;min-width:90px;background:#11161f;border:1px solid #60A5FA33;border-radius:8px;padding:9px 12px;"><div style="font-size:10px;color:#60A5FA;font-weight:700;text-transform:uppercase;">Unmatched</div><div style="font-size:20px;font-weight:800;color:#c9d1d9;">'+sp.unmatched+'</div></div>':'')+'</div>';
   if(sp.unmatched) body+='<div style="font-size:11px;color:#60A5FA;margin-bottom:10px;">'+sp.unmatched+' row(s) could not match a loan (no Ref# link / name mismatch) - link them in the Loans tab, then sync again.</div>';
-  body+='<div style="max-height:48vh;overflow:auto;border:1px solid #1e2430;border-radius:8px;"><table class="tbl"><thead><tr><th>Action</th><th>Client</th><th>Type</th><th>Period</th><th style="text-align:right;">Net $</th></tr></thead><tbody>';
+  body+='<div style="max-height:48vh;overflow:auto;border:1px solid #1e2430;border-radius:8px;"><table class="tbl"><thead><tr><th>Action</th><th>Client</th><th>Type</th><th>Period</th><th style="text-align:right;">Comm $ (ex-GST)</th></tr></thead><tbody>';
   sp.plan.slice(0,300).forEach(function(it){
     body+='<tr><td><span style="color:'+clsColor[it._cls]+';font-weight:600;font-size:11px;">'+clsLabel[it._cls]+'</span></td><td>'+esc(it.clientName)+'</td><td>'+esc(it.type)+'</td><td>'+esc(it.period||'-')+'</td><td style="text-align:right;">$'+_revNum(it.amount).toFixed(2)+'</td></tr>';
   });
