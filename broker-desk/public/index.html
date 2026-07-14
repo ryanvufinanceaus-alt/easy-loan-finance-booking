@@ -12539,12 +12539,12 @@ function rRevRecon(){
       +'<button class="btn-sec" style="font-size:12px;padding:7px 13px;" onclick="_revOpenEmail()">\u2709 Compose email</button>'
       +'<button class="btn-sec" style="font-size:12px;padding:7px 13px;" onclick="_revDownloadXlsx()">Excel</button>'
       +'</div></div>';
-    h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th>Ref #</th><th>Type</th><th>Period</th><th>Settled</th><th>Issue</th><th style="text-align:right;">Est. $ (full)</th></tr></thead><tbody>';
+    h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th>Ref #</th><th>Type</th><th>Period</th><th>Settled</th><th>Issue</th><th style="text-align:right;color:#8b949e;font-weight:500;">Gross (full)</th><th style="text-align:right;color:#34D399;">Net-to-broker</th></tr></thead><tbody>';
     items.forEach(function(it){
       h+='<tr><td style="font-weight:600;color:#c9d1d9;">'+esc(it.client||'')+'</td><td>'+esc(it.lender||'')+'</td><td style="font-family:monospace;font-size:11px;">'+esc(it.ref||'')+'</td>'
         +'<td>'+esc(it.type)+'</td><td>'+esc(it.period||'-')+'</td><td style="font-size:11px;color:#8b949e;">'+esc(String(it.settle||'').slice(0,10)||'-')+'</td>'
         +'<td><span style="background:'+it.color+'18;color:'+it.color+';border:1px solid '+it.color+'33;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600;">'+esc(it.issue)+'</span></td>'
-        +'<td style="text-align:right;color:#c9d1d9;">'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'-')+'</td></tr>';
+        +'<td style="text-align:right;color:#8b949e;">'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'-')+'</td><td style="text-align:right;font-weight:700;color:#34D399;background:#34D3990d;">'+(it.est>0?'~$'+(_revNum(it.est)*0.88).toFixed(2):'-')+'</td></tr>';
     });
     h+='</tbody></table>';
     h+='<div style="margin-top:12px;font-size:12px;color:#8b949e;">Amounts are the <b style="color:#c9d1d9;">full commission Finsure owes Easy Loan Finance (100%)</b> \u2014 broker share is applied later when invoicing a broker, not here. Email goes to <b style="color:#c9d1d9;">finance@loankit.com.au</b> via <b style="color:#c9d1d9;">Compose email</b>. <a href="#" onclick="_revCopyTable();return false;" style="color:#D4A843;">Copy table (TSV)</a></div>';
