@@ -1231,7 +1231,7 @@ function _playDoneSound(){
   }catch(e){}
 }
 // Backward compat (still used by old code paths)
-function _playNotifSound(){_playAssignSound();}
+
 
 // \u2500\u2500 Bell popover \u2500\u2500
 function updateBellBadge(){
@@ -1552,12 +1552,7 @@ function notifPush(type, title, detail){
   const pop = document.getElementById('bell-popover');
   if(pop && pop.style.display !== 'none') renderBellPopover();
 }
-function notifMarkRead(id){
-  const list = notifList();
-  const item = list.find(x => x.id === id);
-  if(item){ item.read = true; }
-  try { localStorage.setItem(_NOTIF_KEY, JSON.stringify(list)); } catch(e){}
-}
+
 function notifClear(id){
   const list = notifList().filter(x => x.id !== id);
   try { localStorage.setItem(_NOTIF_KEY, JSON.stringify(list)); } catch(e){}
@@ -2135,17 +2130,7 @@ function _computeCaseDeadlineStatus(c){
 }
 
 // Format ms \u2192 "5d 3h" / "2h 15m" / "OVERDUE 2d"
-function _fmtCountdown(ms){
-  const abs = Math.abs(ms);
-  const d = Math.floor(abs/86400000);
-  const h = Math.floor((abs%86400000)/3600000);
-  const m = Math.floor((abs%3600000)/60000);
-  let out = '';
-  if(d>0) out = d+'d '+h+'h';
-  else if(h>0) out = h+'h '+m+'m';
-  else out = m+'m';
-  return ms < 0 ? '\u26A0 '+out+' over' : out;
-}
+
 
 function rDash(){
   // Person filter \u2014 admin can pick any team member, others see their own
@@ -4756,9 +4741,11 @@ function _missingUpfronts(){
   const now = Date.now();
   const dayMs = 86400000;
   const out = [];
+  // PERF audit: index commission theo loanId 1 lan -> O(loan+comm) thay vi filter-per-loan O(loan*comm). Ket qua y het.
+  const _byLoan = {}; scope.commissions.forEach(c => { const k = c.loanId; if(k)(_byLoan[k] = _byLoan[k] || []).push(c); });
   scope.loans.forEach(l => {
     if(l.status === 'Written Off' || l.status === 'Discharged' || l.status === 'Transferred') return; // FIX audit: khong chase upfront cho loan da dong/chuyen
-    const upComms = scope.commissions.filter(c => c.loanId === l.id && c.type === 'Upfront');
+    const upComms = (_byLoan[l.id] || []).filter(c => c.type === 'Upfront');
     const received = upComms.find(c => c.status === 'Received');
     if(received) return; // got it \u2014 not missing
     const pending = upComms.find(c => c.status === 'Pending');
@@ -4809,11 +4796,12 @@ function _trailForMonth(year, month0){
     const firstKey = `${firstY}-${String(firstM).padStart(2,'0')}`;
     return monthKey >= firstKey;
   });
+  const _byLoan = {}; scope.commissions.forEach(c => { const k = c.loanId; if(k)(_byLoan[k] = _byLoan[k] || []).push(c); }); // PERF audit: index 1 lan -> O(loan+comm)
   const rows = activeLoans.map(l => {
     const expected = Number(l.trailMonthly) || 0;
-    // Match by receivedDate starting with monthKey OR period containing month name
-    const matched = scope.commissions.filter(c => {
-      if(c.loanId !== l.id || c.type !== 'Trail') return false;
+    // Match by period (arrears) then receivedDate
+    const matched = (_byLoan[l.id] || []).filter(c => {
+      if(c.type !== 'Trail') return false;
       // FIX audit: trail tra ARREARS -> uu tien 'period' (thang trail ĐÓ) hon receivedDate (thang NHAN, thuong lech +1). Chi fallback receivedDate khi khong co period.
       const period = String(c.period || '').toLowerCase();
       if(period) return period.includes(monthShort.toLowerCase()) || period.includes(monthName.toLowerCase());
@@ -5226,91 +5214,7 @@ function rCommOverview(missing, trail){
 }
 
 // \u2500\u2500 TAB 2: Missing Upfronts \u2014 actionable list \u2500\u2500
-function rCommMissingUpfronts(missing){
-  const filter = S.missingUpfrontFilter || 'all';
-  let filtered = missing;
-  if(filter === 'overdue30') filtered = missing.filter(m => m.daysSince != null && m.daysSince > 30);
-  else if(filter === 'overdue60') filtered = missing.filter(m => m.daysSince != null && m.daysSince > 60);
-  else if(filter === 'overdue90') filtered = missing.filter(m => m.daysSince != null && m.daysSince > 90);
-  else if(filter === 'pending') filtered = missing.filter(m => m.pending);
 
-  const totalExpected = filtered.reduce((s, m) => s + m.expected, 0);
-  const counts = {
-    all: missing.length,
-    overdue30: missing.filter(m => m.daysSince != null && m.daysSince > 30).length,
-    overdue60: missing.filter(m => m.daysSince != null && m.daysSince > 60).length,
-    overdue90: missing.filter(m => m.daysSince != null && m.daysSince > 90).length,
-    pending: missing.filter(m => m.pending).length,
-  };
-
-  return `<div class="card" style="padding:14px 18px;margin-bottom:12px;background:linear-gradient(135deg,rgba(220,38,38,.05),transparent);border-color:#DC262633;">
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <div style="width:38px;height:38px;border-radius:10px;background:rgba(220,38,38,.15);border:1px solid #DC262666;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        ${_iconSvg('alert', 18, '#DC2626')}
-      </div>
-      <div style="flex:1;min-width:200px;">
-        <div style="font-size:13px;font-weight:700;color:#DC2626;letter-spacing:.3px;">Missing Upfront Commissions</div>
-        <div style="font-size:11px;color:#8b949e;margin-top:2px;line-height:1.5;">Settled loans where Easy Loan Finance has not yet received the upfront commission. Chase these with the lender or accounts team.</div>
-      </div>
-      <div style="text-align:right;">
-        <div style="font-size:22px;font-weight:800;color:#DC2626;letter-spacing:-.3px;font-family:'Outfit',sans-serif;">${fmtCur(totalExpected)}</div>
-        <div style="font-size:10px;color:#8b949e;text-transform:uppercase;letter-spacing:.7px;">${filtered.length} missing</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="filter-row" style="margin-bottom:12px;">
-    <span style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-right:4px;">Filter:</span>
-    <button class="chip${filter==='all'?' on':''}" onclick="S.missingUpfrontFilter='all';render()">All (${counts.all})</button>
-    <button class="chip${filter==='overdue30'?' on':''}" style="${filter==='overdue30'?'background:#FB923C18;color:#FB923C;border-color:#FB923C44':''}" onclick="S.missingUpfrontFilter='overdue30';render()">\u23F1 &gt; 30 days (${counts.overdue30})</button>
-    <button class="chip${filter==='overdue60'?' on':''}" style="${filter==='overdue60'?'background:#ef444418;color:#ef4444;border-color:#ef444444':''}" onclick="S.missingUpfrontFilter='overdue60';render()">\u26A0 &gt; 60 days (${counts.overdue60})</button>
-    <button class="chip${filter==='overdue90'?' on':''}" style="${filter==='overdue90'?'background:#DC262618;color:#DC2626;border-color:#DC262644':''}" onclick="S.missingUpfrontFilter='overdue90';render()">\uD83D\uDEA8 &gt; 90 days (${counts.overdue90})</button>
-    <button class="chip${filter==='pending'?' on':''}" style="${filter==='pending'?'background:#FBBF2418;color:#FBBF24;border-color:#FBBF2444':''}" onclick="S.missingUpfrontFilter='pending';render()">\uD83D\uDCCB Pending entry (${counts.pending})</button>
-  </div>
-
-  <div class="card" style="overflow:hidden;overflow-x:auto;">
-    <table class="tbl">
-      <thead><tr>
-        <th>Loan ID</th><th>Client</th><th>Lender</th><th>Loan Amount</th><th>Settled</th><th>Days Since</th><th>Expected Upfront</th><th>Status</th><th>Actions</th>
-      </tr></thead>
-      <tbody>${filtered.map(m => {
-        const sevColor = m.daysSince == null ? '#6b7280' :
-                          m.daysSince > 90 ? '#DC2626' :
-                          m.daysSince > 60 ? '#ef4444' :
-                          m.daysSince > 30 ? '#FB923C' : '#FBBF24';
-        const statusLabel = m.pending ? 'Pending entry' : 'Not recorded';
-        const statusColor = m.pending ? '#FBBF24' : '#6b7280';
-        const canEdit = m.pending && (S.user.role==='admin' || m.pending.brokerId===S.user.id);
-        // Row-click: edit if there's a pending entry, otherwise open the record form
-        const rowClick = canEdit ? `openEditComm('${esc(m.pending.id)}')` : `quickAddMissingUpfront('${esc(m.loan.id)}')`;
-        return `<tr style="cursor:pointer;" onclick="${rowClick}" title="${canEdit?'Tap to edit \u2014 amount / GST / status / received date':'Tap to record this upfront'}">
-          <td style="font-size:11px;color:#D4A843;font-weight:700;white-space:nowrap;">${esc(m.loan.id)}</td>
-          <td style="font-weight:600;color:#c9d1d9;white-space:nowrap;">${esc(m.loan.clientName)}</td>
-          <td style="font-size:12px;white-space:nowrap;">${esc(m.loan.lenderName || '\u2013')}</td>
-          <td style="font-weight:700;white-space:nowrap;">${fmtCur(m.loan.loanAmount)}</td>
-          <td style="font-size:12px;color:#6b7280;white-space:nowrap;">${esc(m.loan.settlementDate || '\u2013')}</td>
-          <td style="white-space:nowrap;font-family:'JetBrains Mono',Consolas,monospace;color:${sevColor};font-weight:700;">${m.daysSince == null ? '\u2013' : m.daysSince + 'd'}</td>
-          <td style="font-weight:800;color:#FB923C;white-space:nowrap;">${fmtCur(m.expected)}</td>
-          <td><span style="background:${statusColor}18;color:${statusColor};border:1px solid ${statusColor}30;border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;">${esc(statusLabel)}</span></td>
-          <td onclick="event.stopPropagation()"><div style="display:flex;gap:5px;align-items:center;">
-            ${m.pending
-              ? `<button class="btn-sm" style="background:rgba(52,211,153,.15);color:#34D399;border:1px solid #34D39944;font-size:11px;" onclick="event.stopPropagation();markUpfrontReceived('${esc(m.pending.id)}','${esc(m.loan.id)}')" title="Mark this Pending upfront as Received">\u2713 Mark Received</button>`
-              : `<button class="btn-sm" style="background:#161b26;color:#D4A843;border:1px solid #D4A84344;font-size:11px;" onclick="event.stopPropagation();quickAddMissingUpfront('${esc(m.loan.id)}')" title="Record this upfront commission">+ Record</button>`}
-            ${m.loan.caseId ? `<button class="btn-ghost" style="padding:3px 7px;font-size:11px;" onclick="event.stopPropagation();openCase('${esc(m.loan.caseId)}')" title="Open case">\uD83D\uDCC1</button>` : ''}
-          </div></td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table>
-    ${!filtered.length ? `<div style="text-align:center;padding:36px 22px;color:#34D399;font-size:13px;">
-      <div style="font-size:28px;margin-bottom:6px;">\u2713</div>
-      <div style="font-weight:600;">All upfronts accounted for under this filter</div>
-    </div>` : ''}
-  </div>
-
-  <div style="margin-top:11px;font-size:11px;color:#4a5568;line-height:1.6;">
-    \uD83D\uDCA1 <strong>How this works:</strong> Scans all loans in the Loan Book and flags any whose Upfront commission is not yet marked Received. Click <strong>+ Record</strong> to log the commission once it arrives, or <strong>\u2713 Mark Received</strong> to update a Pending entry.
-  </div>`;
-}
 
 async function markUpfrontReceived(commId, loanId){
   const today = new Date().toISOString().split('T')[0];
@@ -6182,59 +6086,7 @@ async function saveTrailReceipt_(){
   }
 }
 
-async function markTrailReceivedDialog_(commId, expectedAmount, loanLabel){
-  const today = new Date().toISOString().split('T')[0];
 
-  // Step 1 \u2014 date
-  const dateInput = prompt(
-    `Mark Trail Received \u00B7 ${loanLabel}\n\n` +
-    `Actual receipt date (YYYY-MM-DD):\n` +
-    `Leave default for today.\n\n` +
-    `\uD83D\uDCCC On the FIRST receipt for a loan, this date's day-of-month\n` +
-    `   becomes the locked anchor for all future expected dates.\n` +
-    `   Later receipts won't shift the schedule.`,
-    today
-  );
-  if(dateInput === null) return;
-  const actualDate = String(dateInput||'').trim() || today;
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(actualDate)){
-    toast('Invalid date format \u2014 use YYYY-MM-DD', 1);
-    return;
-  }
-
-  // Step 2 \u2014 amount
-  const amtInput = prompt(
-    `Actual amount received?\n\n` +
-    `Default expected: $${Number(expectedAmount||0).toFixed(2)}\n` +
-    `Enter the different amount if lender paid a different figure.`,
-    String(Number(expectedAmount||0).toFixed(2))
-  );
-  if(amtInput === null) return;
-  const actualAmount = Number(String(amtInput||'').replace(/[$,\s]/g, '')) || Number(expectedAmount) || 0;
-  if(actualAmount <= 0){
-    toast('Amount must be greater than zero', 1);
-    return;
-  }
-
-  showLoad();
-  const r = await gs_('markTrailReceived', S.tok, commId, actualDate, actualAmount);
-  hideLoad();
-
-  if(r && r.ok){
-    // Refresh commissions to pick up the updated row + any re-anchored future rows
-    const cr = await gs_('getCommissions', S.tok);
-    if(cr && cr.ok) S.commissions = cr.data || [];
-    const reanchored = (r.data && r.data.reanchored) || 0;
-    const newDay = (r.data && r.data.newAnchorDay) || 0;
-    const wasFirst = r.data && r.data.wasFirst;
-    let msg = `\u2713 Received ${fmtCur(actualAmount)} on ${actualDate}`;
-    if(wasFirst && reanchored > 0){
-      msg += ` \u00B7 First receipt \u2014 locked future ${reanchored} month${reanchored===1?'':'s'} to day ${newDay}`;
-    }
-    toast(msg);
-    render();
-  } else toast((r && r.msg) || 'Failed to mark received', 1);
-}
 
 function quickAddTrailFor(loanId, monthName){
   openModal('addComm');
@@ -11002,17 +10854,7 @@ function rNewInvoice(){
   </div>`;
 }
 
-function updateBrokerShare(v){
-  const pct=Math.max(0,Math.min(100,parseFloat(v)||0));
-  S.invoiceDraft.brokerSharePct=pct;
-  const dec=pct/100;
-  S.invoiceDraft.items.forEach(it=>{
-    if(it.grossAmount!=null){
-      it.amount=Math.round(Number(it.grossAmount)*dec*100)/100;
-    }
-  });
-  renderModal();
-}
+
 
 // Build a display label combining both borrowers if the case is joint.
 function _caseClientLabel(c){
@@ -11452,13 +11294,8 @@ async function _invEmailCopyRich(){
   try{ if(navigator.clipboard&&window.ClipboardItem){ await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([f.text],{type:'text/plain'})})]); toast('Email copied \u2014 paste into Outlook'); } else { _revClip(f.text); toast('Copied as text'); } }
   catch(e){ _revClip(f.text); toast('Copied as text'); }
 }
-function _invEmailOutlook(){
-  var to=(document.getElementById('inv-em-to')||{}).value||'';
-  var subj=(document.getElementById('inv-em-subj')||{}).value||'';
-  var f=_invEmailFill(); if(!f)return;
-  window.location.href='mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(f.text);
-}
-function _invEmailSavePdf(){ S.viewingInvoiceId=S.invEmailId; printInvoice(); }
+
+
 async function _invEmailMarkSent(){
   var id=S.invEmailId;
   var r=await gs_('updateInvoice',S.tok,id,{status:'Sent'});
@@ -12204,14 +12041,8 @@ async function testEmailSettings_(){
 // \u2551  COMPANY INFO + EMAIL SETTINGS (admin)          \u2551
 // \u255A\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255D
 // Legacy entry point \u2014 now redirects to the Settings view
-function openCompanyInfo(){
-  setView('settings');
-  S.settingsTab='company';
-  ensureSettingsLoaded().then(()=>render());
-}
-function refreshLogoPreview(){
-  renderModal();
-}
+
+
 
 // \u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557
 // \u2551  ACTIVITY LOG (admin only)                      \u2551
@@ -12676,16 +12507,8 @@ function _revEmailText(){
   return lines;
 }
 function _loanPct(loan){ var p=loan&&loan.brokerSharePct; p=(p==null||p==='')?100:Number(p); return (isFinite(p)&&p>=0&&p<=100)?p:100; }
-async function _revSetSharePct(loanId, val){
-  var p=Math.max(0,Math.min(100,parseFloat(val)||0));
-  var loan=(S.loanBook||[]).find(function(l){return l.id===loanId;});
-  if(loan) loan.brokerSharePct=p; // optimistic
-  render();
-  var r=await gs_('updateLoanRevenue',S.tok,loanId,{brokerSharePct:p});
-  if(!(r&&r.ok)){ toast((r&&r.msg)||'Could not save broker %',1); }
-  else { _invalidateCache(); }
-}
-function _revCopyEmail(){ _revOpenEmail(); } // back-compat
+
+ // back-compat
 function _revRefDisp(it){ var r=String(it.ref||'').trim(); return (r && r!=='(link ref)' && r!=='-') ? r : ''; }
 function _revEmailSubject(){
   var co=S.companyInfo||{}; var mk=_revReconcile().endMonth;
@@ -12755,11 +12578,7 @@ async function _revCopyRich(){
     } else { _revClip(plain); toast('Copied as text (browser lacks rich copy)'); }
   }catch(e){ _revClip(plain); toast('Copied as text'); }
 }
-function _revOpenOutlook(){
-  var subj=document.getElementById('rev-em-subj'); subj=subj?subj.value:_revEmailSubject();
-  var body=_revEmailText();
-  window.location.href='mailto:finance@loankit.com.au?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(body);
-}
+
 function _revCopyTable(){
   var items=S._revMissingItems||[];
   var t='Client\tLender\tRef #\tType\tPeriod\tSettled\tIssue\tEst. amount\n'+items.map(function(it){return (it.client||'')+'\t'+(it.lender||'')+'\t'+(_revRefDisp(it)||'')+'\t'+(it.type||'')+'\t'+(it.period||'')+'\t'+String(it.settle||'').slice(0,10)+'\t'+it.issue+'	'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'');}).join('\n');
