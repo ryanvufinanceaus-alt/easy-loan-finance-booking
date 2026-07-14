@@ -12554,47 +12554,54 @@ function rRevRecon(){
   return h;
 }
 
-// ---- Actual Received (per broker): Expected (loan x rate) vs Actual received (Finsure statements) ----
+// ---- Actual Received (per broker): Expected vs Actual, gross (Finsure) -> net-to-broker ----
 function rRevReceived(){
   var isAdmin=S.user.role==='admin';
   var loans=(S.loanBook||[]).filter(function(l){ return isAdmin?true:l.brokerId===S.user.id; });
   var rows=S.commRows||[];
   var byRef={},byName={};
   rows.forEach(function(r){ var k=String(r.ref||'').trim(); if(k)(byRef[k]=byRef[k]||[]).push(r); var nk=_revNameKey(r.clientRaw); if(nk)(byName[nk]=byName[nk]||[]).push(r); });
+  var NET=0.88, GROSS=1.1; // net-to-broker = base x 80% split x 1.1 GST = base x 0.88 ; gross inc-GST = base x 1.1
   var groups={},order=[];
   loans.forEach(function(l){
     var ref=String(l.finsureRef||'').trim(), nameKey=_revNameKey(l.clientName);
     var lr=(ref&&byRef[ref])?byRef[ref]:(byName[nameKey]||[]);
-    var actUp=lr.filter(function(r){return /up/i.test(r.type);}).reduce(function(s,r){return s+_revNum(r.commission);},0);
-    var actTr=lr.filter(function(r){return /trail/i.test(r.type);}).reduce(function(s,r){return s+_revNum(r.commission);},0);
-    var expUp=_revNum(l.upfrontAmount)||_revNum(l.loanAmount)*(_revNum(l.upfrontRate)/100);
-    if(expUp<=0 && actUp<=0 && actTr<=0) return;
+    var actUpBase=lr.filter(function(r){return /up/i.test(r.type);}).reduce(function(s,r){return s+_revNum(r.commission);},0);
+    var actTrBase=lr.filter(function(r){return /trail/i.test(r.type);}).reduce(function(s,r){return s+_revNum(r.commission);},0);
+    var expUpBase=_revNum(l.upfrontAmount)||_revNum(l.loanAmount)*(_revNum(l.upfrontRate)/100);
+    if(expUpBase<=0 && actUpBase<=0 && actTrBase<=0) return;
     var bn=l.brokerName||l.broker||'(unassigned)';
-    if(!groups[bn]){ groups[bn]={rows:[],expUp:0,actUp:0,actTr:0}; order.push(bn); }
-    var g=groups[bn]; g.rows.push({l:l,expUp:expUp,actUp:actUp,actTr:actTr}); g.expUp+=expUp; g.actUp+=actUp; g.actTr+=actTr;
+    if(!groups[bn]){ groups[bn]={rows:[],expNet:0,actNet:0,actGross:0,trNet:0}; order.push(bn); }
+    var g=groups[bn];
+    var row={l:l, expNet:expUpBase*NET, actNet:actUpBase*NET, actGross:actUpBase*GROSS, trNet:actTrBase*NET, got:actUpBase>0};
+    g.rows.push(row); g.expNet+=row.expNet; g.actNet+=row.actNet; g.actGross+=row.actGross; g.trNet+=row.trNet;
   });
+  var money=function(n){ return '$'+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); };
   var h='<div style="overflow-y:auto;max-height:calc(100vh - 170px);padding-right:4px;">';
-  h+='<div style="font-size:12px;color:#8b949e;margin-bottom:12px;">Per broker &mdash; <b style="color:#c9d1d9;">Expected</b> (loan x rate, indicative estimate) vs <b style="color:#c9d1d9;">Actual received</b> (from the Finsure statements). Figures are the full commission (100%, ex-GST); each broker net = x 1.1 GST x broker share.</div>';
+  h+='<div style="font-size:12px;color:#8b949e;margin-bottom:12px;">Per broker &mdash; <b style="color:#c9d1d9;">Expected</b> (loan &times; rate) vs <b style="color:#c9d1d9;">received</b> from Finsure. <b style="color:#c9d1d9;">Gross inc-GST</b> = reconcile against the Finsure statement; <b style="color:#c9d1d9;">Net-to-broker</b> = &times; 80% split after 10% GST = what the broker is paid.</div>';
   if(!order.length){ h+='<div class="card" style="padding:30px;text-align:center;color:#6b7280;">No settled loans yet. Add loans in Loan Book and upload a Finsure statement to see actual received.</div></div>'; return h; }
   order.forEach(function(bn){
     var g=groups[bn];
     h+='<div style="font-weight:700;color:#D4A843;font-size:13px;margin:16px 0 6px;">'+esc(bn)+'</div>';
-    h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th style="text-align:right;">Loan</th><th style="text-align:right;">Expected upfront</th><th style="text-align:right;">Actual upfront</th><th style="text-align:right;">Trail received</th><th style="text-align:right;">Variance</th></tr></thead><tbody>';
+    h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th style="text-align:right;">Loan</th><th style="text-align:right;">Expected net</th><th style="text-align:right;">Gross inc-GST</th><th style="text-align:right;">Net-to-broker</th><th style="text-align:right;">Trail net</th><th style="text-align:center;">Status</th></tr></thead><tbody>';
     g.rows.forEach(function(x){
-      var v=x.actUp-x.expUp; var vc=x.actUp<=0?'#6b7280':(v<-1?'#FB923C':'#34D399');
+      var badge = x.got
+        ? '<span style="background:#34D39918;color:#34D399;border:1px solid #34D39933;padding:2px 8px;border-radius:5px;font-size:11px;">Received</span>'
+        : '<span style="background:#EF444418;color:#EF4444;border:1px solid #EF444433;padding:2px 8px;border-radius:5px;font-size:11px;">To chase</span>';
       h+='<tr><td style="font-weight:600;color:#c9d1d9;">'+esc(x.l.clientName||'')+'</td><td>'+esc(x.l.lenderName||'')+'</td>'
-        +'<td style="text-align:right;">'+(x.l.loanAmount?'$'+_revNum(x.l.loanAmount).toLocaleString():'-')+'</td>'
-        +'<td style="text-align:right;color:#8b949e;">$'+x.expUp.toFixed(2)+'</td>'
-        +'<td style="text-align:right;color:#c9d1d9;">'+(x.actUp>0?'$'+x.actUp.toFixed(2):'<span style="color:#EF4444;">not yet</span>')+'</td>'
-        +'<td style="text-align:right;color:#c9d1d9;">'+(x.actTr>0?'$'+x.actTr.toFixed(2):'-')+'</td>'
-        +'<td style="text-align:right;color:'+vc+';">'+(x.actUp>0?((v>=0?'+':'')+'$'+v.toFixed(2)):'-')+'</td></tr>';
+        +'<td style="text-align:right;">'+(x.l.loanAmount?money(x.l.loanAmount):'-')+'</td>'
+        +'<td style="text-align:right;color:#8b949e;">'+money(x.expNet)+'</td>'
+        +'<td style="text-align:right;color:'+(x.got?'#c9d1d9':'#6b7280')+';">'+(x.got?money(x.actGross):'&mdash;')+'</td>'
+        +'<td style="text-align:right;font-weight:600;color:'+(x.got?'#c9d1d9':'#EF4444')+';">'+money(x.got?x.actNet:x.expNet)+'</td>'
+        +'<td style="text-align:right;color:#c9d1d9;">'+(x.trNet>0?money(x.trNet):'-')+'</td>'
+        +'<td style="text-align:center;">'+badge+'</td></tr>';
     });
-    var gv=g.actUp-g.expUp;
     h+='<tr style="border-top:2px solid #1e2430;font-weight:700;color:#c9d1d9;"><td colspan="3" style="text-align:right;">Subtotal</td>'
-      +'<td style="text-align:right;color:#8b949e;">$'+g.expUp.toFixed(2)+'</td>'
-      +'<td style="text-align:right;">$'+g.actUp.toFixed(2)+'</td>'
-      +'<td style="text-align:right;">$'+g.actTr.toFixed(2)+'</td>'
-      +'<td style="text-align:right;color:'+(gv<-1?'#FB923C':'#34D399')+';">'+((gv>=0?'+':'')+'$'+gv.toFixed(2))+'</td></tr>';
+      +'<td style="text-align:right;color:#8b949e;">'+money(g.expNet)+'</td>'
+      +'<td style="text-align:right;">'+money(g.actGross)+'</td>'
+      +'<td style="text-align:right;">'+money(g.actNet)+'</td>'
+      +'<td style="text-align:right;">'+money(g.trNet)+'</td>'
+      +'<td></td></tr>';
     h+='</tbody></table>';
   });
   h+='</div>';
