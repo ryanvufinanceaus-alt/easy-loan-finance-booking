@@ -4853,7 +4853,7 @@ function rCommissions(){
   return `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1e2430;margin-bottom:14px;flex-shrink:0;flex-wrap:wrap;gap:8px;">
     <div style="display:flex;align-items:center;flex-wrap:wrap;">
       ${tabBtn('overview', '\uD83D\uDCCA Overview', null)}
-      ${tabBtn('missing_upfront', '\u26A0 To Chase', missingOverdue || missing.length)}
+      <button class="btn-ghost" style="border-radius:0;padding:11px 18px;font-size:13px;border:none;color:#6b7280;" onclick="S.revTab='recon';setView('revenue')" title="Outstanding / to-chase is reconciled against Finsure statements in Tracking">To Chase &rarr;</button>
       ${tabBtn('monthly_trail', '\uD83D\uDCC5 Monthly Trail', trailMissing)}
       ${tabBtn('all', '\uD83D\uDCCB All Commissions', null)}
     </div>
@@ -4863,7 +4863,7 @@ function rCommissions(){
     </div>
   </div>
   ${tab === 'overview' ? rCommOverview(missing, trail) :
-    tab === 'missing_upfront' ? rCommMissingUpfronts(missing) :
+    
     tab === 'monthly_trail' ? rCommMonthlyTrail() :
     rCommAll()}`;
 }
@@ -5003,7 +5003,7 @@ function _buildCommissionReminders(){
       ${dueSoon.slice(0,5).map(c => row(c, {})).join('')}
       ${dueSoon.length > 5 ? `<div style="font-size:10.5px;color:#6b7280;text-align:center;margin-top:6px;">+ ${dueSoon.length-5} more in this window</div>` : ''}
     </div>` : ''}
-    ${pendingUpfront.length ? `<div class="ovr-card" style="border-color:#818CF844;background:linear-gradient(135deg,rgba(129,140,248,.05),transparent);cursor:pointer;" onclick="S.commTab='missing_upfront';render()">
+    ${pendingUpfront.length ? `<div class="ovr-card" style="border-color:#818CF844;background:linear-gradient(135deg,rgba(129,140,248,.05),transparent);cursor:pointer;" onclick="S.revTab='recon';setView('revenue')">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <div class="ovr-card-lbl" style="color:#818CF8;">\uD83D\uDCB5 Pending upfront</div>
         <div style="font-size:13px;font-weight:800;color:#818CF8;">${fmtCur(upfrontTotal)}</div>
@@ -5164,7 +5164,7 @@ function rCommOverview(missing, trail){
   <!-- \u2550\u2550\u2550 Action items: things broker should chase \u2550\u2550\u2550 -->
   ${missing.length || trailMissingCount > 0 ? `<div class="ovr-section-title" style="color:#DC2626;">Action required</div>
   <div class="ovr-grid">
-    ${missing.length ? `<div class="ovr-card ovr-actionable" onclick="S.commTab='missing_upfront';render()" style="cursor:pointer;">
+    ${missing.length ? `<div class="ovr-card ovr-actionable" onclick="S.revTab='recon';setView('revenue')" style="cursor:pointer;">
       <div class="ovr-card-lbl" style="color:#DC2626;">\u26A0 Missing Upfronts</div>
       <div class="ovr-card-val" style="color:${missingOverdue.length ? '#DC2626' : '#FB923C'};">${missing.length}</div>
       <div class="ovr-card-sub">${fmtCur(missingTotal)} expected${missingOverdue.length ? ` \u00B7 <strong style="color:#DC2626;">${missingOverdue.length} over 30d</strong>` : ''}</div>
