@@ -1941,6 +1941,11 @@ async function sendBulkEmails_(){
 // computation isn't repeated multiple times across KPIs, timeline, and lists
 // during a single render pass.
 let _renderCache = { deadlines: new Map(), checklist: new Map() };
+// FIX audit: ngay LOCAL (broker-local, vd Adelaide) YYYY-MM-DD — KHONG toISOString() (UTC lui 1 ngay vao sang AU -> overdue flag lech).
+function _bdDateStr(d){ d=d||new Date(); const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${day}`; }
+function _bdToday(){ return _bdDateStr(new Date()); }
+// FIX audit: hang so tien tap trung 1 cho (chong drift). NET-to-broker = 80% split x 1.10 GST = 0.88 ; GROSS inc-GST = 1.10.
+const BD_NET_TO_BROKER=0.88, BD_GROSS_INC_GST=1.10;
 function _resetRenderCache(){
   _renderCache.deadlines.clear();
   _renderCache.checklist.clear();
@@ -4875,8 +4880,8 @@ function rCommissions(){
 // Returns '' when nothing is pending (keeps the overview clean).
 function _buildCommissionReminders(){
   const now = new Date();
-  const todayIso = now.toISOString().slice(0,10);
-  const in14 = new Date(now.getTime() + 14*86400000).toISOString().slice(0,10);
+  const todayIso = _bdToday();
+  const in14 = _bdDateStr(new Date(now.getTime() + 14*86400000));
   const isAdmin = S.user && S.user.role === 'admin';
   const scope = _commScope();
 
@@ -5516,7 +5521,7 @@ function _deriveTrailExpectedDate(c){
 // figure \u2014 broker needs it prominent to chase lenders.
 function _buildOutstandingTrailCard(){
   const now = new Date();
-  const todayIso = now.toISOString().slice(0,10);
+  const todayIso = _bdToday();
 
   const overdue = (S.commissions||[]).filter(c => {
     if(c.type !== 'Trail') return false;
@@ -5617,7 +5622,7 @@ function _buildUpcomingTrailStrip(){
   // Importantly: SKIP Pending entries whose expectedDate is already in the past \u2014
   // those are accounted for in the Outstanding card. This makes the two cards
   // mutually exclusive (no double-counting).
-  const todayIso = now.toISOString().slice(0,10);
+  const todayIso = _bdToday();
   const trailComms = (S.commissions||[]).filter(c => c.type === 'Trail');
   const dayCounts = {};
   buckets.forEach(b => { dayCounts[b.key] = {}; });
@@ -12546,7 +12551,7 @@ function rRevRecon(){
       h+='<tr><td style="font-weight:600;color:#c9d1d9;">'+esc(it.client||'')+'</td><td>'+esc(it.lender||'')+'</td><td style="font-family:monospace;font-size:11px;">'+esc(it.ref||'')+'</td>'
         +'<td>'+esc(it.type)+'</td><td>'+esc(it.period||'-')+'</td><td style="font-size:11px;color:#8b949e;">'+esc(String(it.settle||'').slice(0,10)||'-')+'</td>'
         +'<td><span style="background:'+it.color+'18;color:'+it.color+';border:1px solid '+it.color+'33;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600;">'+esc(it.issue)+'</span></td>'
-        +'<td style="text-align:right;color:#8b949e;">'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'-')+'</td><td style="text-align:right;font-weight:700;color:#34D399;background:#34D3990d;">'+(it.est>0?'~$'+(_revNum(it.est)*0.88).toFixed(2):'-')+'</td></tr>';
+        +'<td style="text-align:right;color:#8b949e;">'+(it.est>0?'~$'+_revNum(it.est).toFixed(2):'-')+'</td><td style="text-align:right;font-weight:700;color:#34D399;background:#34D3990d;">'+(it.est>0?'~$'+(_revNum(it.est)*BD_NET_TO_BROKER).toFixed(2):'-')+'</td></tr>';
     });
     h+='</tbody></table>';
     h+='<div style="margin-top:12px;font-size:12px;color:#8b949e;">Amounts are the <b style="color:#c9d1d9;">full commission Finsure owes Easy Loan Finance (100%)</b> \u2014 broker share is applied later when invoicing a broker, not here. Email goes to <b style="color:#c9d1d9;">finance@loankit.com.au</b> via <b style="color:#c9d1d9;">Compose email</b>. <a href="#" onclick="_revCopyTable();return false;" style="color:#D4A843;">Copy table (TSV)</a></div>';
@@ -12563,7 +12568,7 @@ function rRevReceived(){
   var rows=S.commRows||[];
   var byRef={},byName={};
   rows.forEach(function(r){ var k=String(r.ref||'').trim(); if(k)(byRef[k]=byRef[k]||[]).push(r); var nk=_revNameKey(r.clientRaw); if(nk)(byName[nk]=byName[nk]||[]).push(r); });
-  var NET=0.88, GROSS=1.1; // net-to-broker = base x 80% split x 1.1 GST = base x 0.88 ; gross inc-GST = base x 1.1
+  var NET=BD_NET_TO_BROKER, GROSS=BD_GROSS_INC_GST; // net-to-broker = base x 80% split x 1.1 GST = base x 0.88 ; gross inc-GST = base x 1.1
   var groups={},order=[];
   // FIX audit: gan statement row cho loan CHI 1 lan (ref truoc, ten sau) -> chong cong doi khi 2 loan cung ten chua link finsureRef.
   var _used=new Set(), _lrOf={};
@@ -12627,7 +12632,7 @@ function rRevTrail(){
   var isAdmin=S.user.role==='admin';
   var loans=(S.loanBook||[]).filter(function(l){ return isAdmin?true:l.brokerId===S.user.id; });
   var rows=(S.commRows||[]).filter(function(r){ return /trail/i.test(r.type||''); });
-  var NET=0.88;
+  var NET=BD_NET_TO_BROKER;
   var money=function(n){ return '$'+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); };
   var active=function(l){ return !/(closed|discharged|paid out|refinanced|written off)/.test(String(l.status||'').toLowerCase()); };
   var moNet=function(l){ return (_revNum(l.trailMonthly)||_revNum(l.loanAmount)*(_revNum(l.trailRate)/100)/12)*NET; };
