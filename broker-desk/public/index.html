@@ -12577,30 +12577,40 @@ function rRevReceived(){
     g.rows.push(row); g.expNet+=row.expNet; g.actNet+=row.actNet; g.actGross+=row.actGross; g.trNet+=row.trNet;
   });
   var money=function(n){ return '$'+Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); };
+  // colour hierarchy: MUTED = expected/gross (reference) ; HIGHLIGHT green = net-to-broker (the money the broker gets)
+  var NETBG='background:#34D3990d;'; // subtle green band on the two NET columns
   var h='<div style="overflow-y:auto;max-height:calc(100vh - 170px);padding-right:4px;">';
-  h+='<div style="font-size:12px;color:#8b949e;margin-bottom:12px;">Per broker &mdash; <b style="color:#c9d1d9;">Expected</b> (loan &times; rate) vs <b style="color:#c9d1d9;">received</b> from Finsure. <b style="color:#c9d1d9;">Gross inc-GST</b> = reconcile against the Finsure statement; <b style="color:#c9d1d9;">Net-to-broker</b> = &times; 80% split after 10% GST = what the broker is paid.</div>';
+  h+='<div style="font-size:12px;color:#8b949e;margin-bottom:12px;line-height:1.6;">Per broker. <span style="color:#6b7280;">Expected</span> &amp; <span style="color:#8b949e;">Gross inc-GST</span> are muted references &mdash; <span style="color:#8b949e;">Gross</span> is what you reconcile against the Finsure statement. <b style="color:#34D399;">Net-to-broker</b> &amp; <b style="color:#34D399;">Trail net</b> (highlighted green) are the actual money the broker is paid = base &times; 80% split after 10% GST.</div>';
   if(!order.length){ h+='<div class="card" style="padding:30px;text-align:center;color:#6b7280;">No settled loans yet. Add loans in Loan Book and upload a Finsure statement to see actual received.</div></div>'; return h; }
   order.forEach(function(bn){
     var g=groups[bn];
     h+='<div style="font-weight:700;color:#D4A843;font-size:13px;margin:16px 0 6px;">'+esc(bn)+'</div>';
-    h+='<table class="tbl"><thead><tr><th>Client</th><th>Lender</th><th style="text-align:right;">Loan</th><th style="text-align:right;">Expected net</th><th style="text-align:right;">Gross inc-GST</th><th style="text-align:right;">Net-to-broker</th><th style="text-align:right;">Trail net</th><th style="text-align:center;">Status</th></tr></thead><tbody>';
+    h+='<table class="tbl"><thead><tr>'
+      +'<th>Client</th><th>Lender</th><th style="text-align:right;">Loan</th>'
+      +'<th style="text-align:right;color:#6b7280;font-weight:500;">Expected net</th>'
+      +'<th style="text-align:right;color:#8b949e;font-weight:500;">Gross inc-GST</th>'
+      +'<th style="text-align:right;color:#34D399;'+NETBG+'border-bottom:2px solid #34D39955;">Net-to-broker</th>'
+      +'<th style="text-align:right;color:#34D399;'+NETBG+'border-bottom:2px solid #34D39955;">Trail net</th>'
+      +'<th style="text-align:center;">Status</th></tr></thead><tbody>';
     g.rows.forEach(function(x){
       var badge = x.got
         ? '<span style="background:#34D39918;color:#34D399;border:1px solid #34D39933;padding:2px 8px;border-radius:5px;font-size:11px;">Received</span>'
         : '<span style="background:#EF444418;color:#EF4444;border:1px solid #EF444433;padding:2px 8px;border-radius:5px;font-size:11px;">To chase</span>';
-      h+='<tr><td style="font-weight:600;color:#c9d1d9;">'+esc(x.l.clientName||'')+'</td><td>'+esc(x.l.lenderName||'')+'</td>'
-        +'<td style="text-align:right;">'+(x.l.loanAmount?money(x.l.loanAmount):'-')+'</td>'
-        +'<td style="text-align:right;color:#8b949e;">'+money(x.expNet)+'</td>'
-        +'<td style="text-align:right;color:'+(x.got?'#c9d1d9':'#6b7280')+';">'+(x.got?money(x.actGross):'&mdash;')+'</td>'
-        +'<td style="text-align:right;font-weight:600;color:'+(x.got?'#c9d1d9':'#EF4444')+';">'+money(x.got?x.actNet:x.expNet)+'</td>'
-        +'<td style="text-align:right;color:#c9d1d9;">'+(x.trNet>0?money(x.trNet):'-')+'</td>'
+      var netColor = x.got ? '#34D399' : '#EF4444';
+      h+='<tr><td style="font-weight:600;color:#c9d1d9;">'+esc(x.l.clientName||'')+'</td><td style="color:#8b949e;">'+esc(x.l.lenderName||'')+'</td>'
+        +'<td style="text-align:right;color:#8b949e;">'+(x.l.loanAmount?money(x.l.loanAmount):'-')+'</td>'
+        +'<td style="text-align:right;color:#6b7280;">'+money(x.expNet)+'</td>'
+        +'<td style="text-align:right;color:#8b949e;font-size:11.5px;">'+(x.got?money(x.actGross):'&mdash;')+'</td>'
+        +'<td style="text-align:right;font-weight:700;font-size:13.5px;color:'+netColor+';'+NETBG+'">'+money(x.got?x.actNet:x.expNet)+'</td>'
+        +'<td style="text-align:right;font-weight:700;color:'+(x.trNet>0?'#34D399':'#4b5563')+';'+NETBG+'">'+(x.trNet>0?money(x.trNet):'&mdash;')+'</td>'
         +'<td style="text-align:center;">'+badge+'</td></tr>';
     });
-    h+='<tr style="border-top:2px solid #1e2430;font-weight:700;color:#c9d1d9;"><td colspan="3" style="text-align:right;">Subtotal</td>'
-      +'<td style="text-align:right;color:#8b949e;">'+money(g.expNet)+'</td>'
-      +'<td style="text-align:right;">'+money(g.actGross)+'</td>'
-      +'<td style="text-align:right;">'+money(g.actNet)+'</td>'
-      +'<td style="text-align:right;">'+money(g.trNet)+'</td>'
+    h+='<tr style="border-top:2px solid #1e2430;font-weight:700;">'
+      +'<td colspan="3" style="text-align:right;color:#8b949e;">Subtotal</td>'
+      +'<td style="text-align:right;color:#6b7280;">'+money(g.expNet)+'</td>'
+      +'<td style="text-align:right;color:#8b949e;">'+money(g.actGross)+'</td>'
+      +'<td style="text-align:right;color:#34D399;font-size:14px;'+NETBG+'">'+money(g.actNet)+'</td>'
+      +'<td style="text-align:right;color:#34D399;'+NETBG+'">'+money(g.trNet)+'</td>'
       +'<td></td></tr>';
     h+='</tbody></table>';
   });
