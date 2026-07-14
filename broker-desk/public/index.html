@@ -2134,9 +2134,10 @@ function _computeCaseDeadlineStatus(c){
 
 function rDash(){
   // Person filter \u2014 admin can pick any team member, others see their own
-  if(!S.dashFilter) S.dashFilter = 'all';
   const role = S.user.role;
   const myId = S.user.id;
+  // FIX SECURITY (audit): removed premature `S.dashFilter='all'` that shadowed the per-role default below,
+  // making a broker's dashboard default to 'all' (every broker's clients/$). Now broker defaults to own id.
   // Default filter:
   //   admin \u2192 'all' (sees everyone)
   //   broker \u2192 own cases by default, but can switch to view team mates working on their cases
@@ -3099,7 +3100,7 @@ function rPipeline(){
   const hideCompleted=S.pipelineHideCompleted!==false; // default true
   const completedIds=['settled','not_proceeding'];
   const visibleStages=hideCompleted?STAGES.filter(s=>!completedIds.includes(s.id)):STAGES;
-  const activeCases = S.cases.filter(c => !c.archived);
+  const activeCases = S.cases.filter(c => !c.archived && _caseIsMine(c));
   const stageCounts = {};
   STAGES.forEach(s => { stageCounts[s.id] = activeCases.filter(c => c.stage === s.id).length; });
   const settledCount=stageCounts.settled||0;
@@ -3126,7 +3127,7 @@ function rPipeline(){
   // Board view \u2014 all stages render normally with drag-drop. Use Compact view for an
   // all-at-once overview on PC; Board is for active triage where horizontal scroll is OK.
   return toolbar + `<div id="pb">${visibleStages.map(stage=>{
-    const sc=S.cases.filter(c=>c.stage===stage.id && !c.archived);
+    const sc=S.cases.filter(c=>c.stage===stage.id && !c.archived && _caseIsMine(c));
     const tv=sc.reduce((s,c)=>s+Number(c.loanAmount||0),0);
     return`<div class="pc" data-stage="${esc(stage.id)}" ondragover="event.preventDefault();this.classList.add('stage-drop-target');" ondragleave="this.classList.remove('stage-drop-target');" ondrop="handlePipelineDrop(event,'${esc(stage.id)}')">
       <div class="pc-hd" style="border-top:3px solid ${stage.color};">
@@ -3150,7 +3151,7 @@ function rPipelineCompact_(visibleStages){
   // Default: expand stages that have cases AND haven't been explicitly collapsed
   return `<div style="max-width:1100px;margin:0 auto;">
     ${visibleStages.map(stage => {
-      const sc = S.cases.filter(c => c.stage === stage.id && !c.archived);
+      const sc = S.cases.filter(c => c.stage === stage.id && !c.archived && _caseIsMine(c));
       const tv = sc.reduce((s,c) => s + Number(c.loanAmount||0), 0);
       const isOpen = expanded[stage.id] !== false && sc.length > 0;  // default open if has cases
       return `<div class="pc-grp${isOpen?' open':''}" style="--sc:${stage.color};">
@@ -3335,7 +3336,7 @@ function pCardCompact_(c, stage){
 // \u255A\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255D
 function rCases(){
   const q=(S.search||'').toLowerCase(),f=S.caseFilter;
-  const fl=S.cases.filter(c=>{
+  const fl=S.cases.filter(c=>{ if(!_caseIsMine(c)) return false;
     const ms=!q||(c.clientName||'').toLowerCase().indexOf(q)>=0||(c.id||'').toLowerCase().indexOf(q)>=0||(c.email||'').toLowerCase().indexOf(q)>=0;
     const mf=f==='all'||c.stage===f||(f==='active'&&['settled','not_proceeding'].indexOf(c.stage)<0);
     return ms&&mf;
@@ -3372,7 +3373,7 @@ function casesTableHtml(fl){
 }
 function rerenderCasesTable(){
   const q=(S.search||'').toLowerCase(),f=S.caseFilter;
-  const fl=S.cases.filter(c=>{
+  const fl=S.cases.filter(c=>{ if(!_caseIsMine(c)) return false;
     const ms=!q||(c.clientName||'').toLowerCase().indexOf(q)>=0||(c.id||'').toLowerCase().indexOf(q)>=0||(c.email||'').toLowerCase().indexOf(q)>=0;
     const mf=f==='all'||c.stage===f||(f==='active'&&['settled','not_proceeding'].indexOf(c.stage)<0);
     return ms&&mf;
@@ -3390,7 +3391,7 @@ function rReminders(){
   const role=S.user.role;
   // All post-settlement reminder tasks (auto-created when a case settles)
   let reminders=S.tasks.filter(t=>String(t.kind)==='post_settlement_followup');
-  if(role==='support') reminders=reminders.filter(t=>t.assignedTo===S.user.id);
+  if(role==='support') reminders=reminders.filter(t=>t.assignedTo===S.user.id); else if(role!=='admin') reminders=reminders.filter(_taskIsMine);
   // Filter
   const filter=S.reminderFilter||'pending';
   const now=Date.now();
@@ -3484,7 +3485,7 @@ async function reassignReminder_(tid){
 function rTasks(){
   const role=S.user.role;
   let tasks=S.tasks.slice();
-  if(role==='support') tasks=tasks.filter(t=>t.assignedTo===S.user.id);
+  if(role==='support') tasks=tasks.filter(t=>t.assignedTo===S.user.id); else if(role!=='admin') tasks=tasks.filter(_taskIsMine);
   if(S.taskFilter==='mine') tasks=tasks.filter(t=>t.assignedTo===S.user.id);
   else if(S.taskFilter==='response_24h') tasks=tasks.filter(t=>t.kind==='response_24h');
   else if(S.taskFilter==='email') tasks=tasks.filter(t=>isTrue(t.isEmailTask));
@@ -3810,7 +3811,7 @@ function rWorkflow(){
   </div>
   ${STAGES.map((st,i)=>{
     const isOpen=S.wfOpen[st.id];
-    const stageCases=S.cases.filter(c=>c.stage===st.id && !c.archived);
+    const stageCases=S.cases.filter(c=>c.stage===st.id && !c.archived && _caseIsMine(c));
     const items = STAGE_CHECKLISTS[st.id] || [];
     const mandatoryCount = items.filter(it=>it.mandatory).length;
     return`<div class="wf-stage" style="border-color:${isOpen?st.color+'44':'#1e2430'};">
@@ -3933,7 +3934,7 @@ function rEmailMatrix(){
   const search=(S.matrixSearch||'').toLowerCase();
 
   // Filter cases
-  let cases=S.cases.filter(c=>!c.archived);
+  let cases=S.cases.filter(c=>!c.archived && _caseIsMine(c));
   if(!showCompleted)cases=cases.filter(c=>c.stage!=='settled' && c.stage!=='not_proceeding');
   if(filterStage)cases=cases.filter(c=>c.stage===filterStage);
   if(search)cases=cases.filter(c=>
@@ -4151,7 +4152,7 @@ function rEmailSend(){
       <div style="font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.8px;flex-shrink:0;">Case:</div>
       <select class="fi" style="flex:1 1 320px;max-width:480px;" onchange="selectPreviewCase(this.value);S.emailEditMode=false;S.emailDraftSubject=null;S.emailDraftBody=null;S.emailSelectedRecipients=null;S.emailManualRecipients=[];S.emailAttachments=[];render()">
         <option value="">\u2014 Pick a case \u2014</option>
-        ${S.cases.filter(c=>!c.archived).map(c=>`<option value="${esc(c.id)}"${S.emailPreviewCase===c.id?' selected':''}>${esc(c.id)} \u00B7 ${esc(c.clientName)}${c.clientName2?' & '+esc(c.clientName2.split(' ')[0]):''} \u2014 ${esc(gs(c.stage).label)}${c.email?' \u2709':' (no email)'}</option>`).join('')}
+        ${S.cases.filter(c=>!c.archived && _caseIsMine(c)).map(c=>`<option value="${esc(c.id)}"${S.emailPreviewCase===c.id?' selected':''}>${esc(c.id)} \u00B7 ${esc(c.clientName)}${c.clientName2?' & '+esc(c.clientName2.split(' ')[0]):''} \u2014 ${esc(gs(c.stage).label)}${c.email?' \u2709':' (no email)'}</option>`).join('')}
       </select>
       ${lastSent?`<span class="sent-badge">\u2713 Last sent ${esc(String(lastSent.sentAt||'').split('T')[0])} by ${esc(lastSent.sentByName)}</span>`:previewCase&&sel?`<span class="pending-badge">\u2709 Not sent yet for this stage</span>`:''}
     </div>
@@ -4508,7 +4509,7 @@ async function loadSentEmails_(){
   render();
 }
 function rEmailSentLog(){
-  const log=(S.sentEmails||[]).slice().sort((a,b)=>String(b.sentAt||'').localeCompare(String(a.sentAt||'')));
+  const log=(S.sentEmails||[]).filter(function(e){ if(S.user.role==='admin')return true; if(e.caseId){var c=S.cases.find(function(x){return x.id===e.caseId;}); if(c)return _caseIsMine(c);} return e.sentBy===S.user.id; }).slice().sort((a,b)=>String(b.sentAt||'').localeCompare(String(a.sentAt||'')));
   const filter=S.sentFilter||'';
   const filterStage=S.sentFilterStage||'';
   let filtered=log;
@@ -4670,7 +4671,7 @@ function _lsGet(k){ try{return localStorage.getItem(k);}catch(e){return null;} }
 function _lsSet(k,v){ try{localStorage.setItem(k,v);}catch(e){} }
 
 function rLoanBook(){
-  const d=S.loanBook;
+  const d=_commScope().loans;
   const q=(S.lbSearch||'').toLowerCase();
   const fl=q?d.filter(l=>(l.clientName||'').toLowerCase().indexOf(q)>=0||(l.lenderName||'').toLowerCase().indexOf(q)>=0||(l.id||'').toLowerCase().indexOf(q)>=0):d;
   const total=fl.reduce((s,l)=>s+Number(l.loanAmount||0),0);
@@ -4733,6 +4734,11 @@ function _commScope(){
     commissions: isAdmin ? S.commissions : S.commissions.filter(c => c.brokerId === S.user.id),
   };
 }
+// SECURITY (audit 2026-07-14): broker-scope for CASES/TASKS (parallel of _commScope for loans/commissions).
+// Admin (Ryan) sees ALL; broker sees own (assignedTo|createdBy, or task on own case).
+// NOTE: defence-in-depth ONLY — true isolation MUST be backend loadAll scoping (Apps Script); else all data still sits in the browser.
+function _caseIsMine(c){ return S.user.role==='admin' || (c && (c.assignedTo===S.user.id || c.createdBy===S.user.id)); }
+function _taskIsMine(t){ if(S.user.role==='admin') return true; if(!t) return false; if(t.assignedTo===S.user.id||t.createdBy===S.user.id) return true; if(t.caseId){ const c=S.cases.find(x=>x.id===t.caseId); if(c&&(c.assignedTo===S.user.id||c.createdBy===S.user.id)) return true; } return false; }
 
 // Compute "missing upfronts": loans whose Upfront commission is missing or still Pending.
 // Returns array sorted most-overdue first.
@@ -10478,7 +10484,7 @@ function rInvoicesBas(){
 function rInvoicesList(){
   const isAdmin=S.user.role==='admin';
   const _invDate=i=>String(i.createdAt||i.dueDate||'').slice(0,10);
-  const all=S.invoices.slice().sort((a,b)=>(_invDate(b)).localeCompare(_invDate(a))); // newest first
+  const all=S.invoices.filter(function(i){return S.user.role==='admin'||String(i.brokerId||'').split('|')[0]===S.user.id;}).slice().sort((a,b)=>(_invDate(b)).localeCompare(_invDate(a))); // newest first
   // status filter
   const sf=S.invStatusFilter||'all';
   const filtered=sf==='all'?all:all.filter(i=>String(i.status||'')===sf);
@@ -10683,7 +10689,7 @@ function rNewInvoice(){
   const members=S.user.role==='admin'?S.users.filter(u=>u.role!=='support'):[{id:S.user.id,name:S.user.name}];
   const brokerId=(d.brokerId||'').split('|')[0]||S.user.id;
 
-  const settledCases=S.cases.filter(c=>c.stage==='settled');
+  const settledCases=S.cases.filter(c=>c.stage==='settled' && _caseIsMine(c));
   const myLoans=S.loanBook.filter(l=>l.brokerId===brokerId && l.status==='Active');
   const receivedComms=S.commissions.filter(c=>
     c.brokerId===brokerId && c.status==='Received' && c.type===d.type
@@ -12359,14 +12365,14 @@ function rRevRecon(){
     +kpi('Missing upfront',rec.missingUpfront.length,'#EF4444')
     +kpi('Missing trail',rec.missingTrail.length,'#EF4444')
     +kpi('Variance',rec.variance.length,'#FB923C')
-    +kpi('Unknown payment',rec.unknown.length,'#60A5FA')+'</div>';
+    +kpi('Unknown payment',S.user.role==='admin'?rec.unknown.length:0,'#60A5FA')+'</div>';
   // Missing items \u2014 these are the FULL commission Finsure owes ELF (always 100%).
   // Broker share % is NOT applied here; it only applies when invoicing a broker.
   var items=[];
   rec.missingUpfront.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',type:'Upfront',period:'-',settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Missing upfront',est:(x.est||0),color:'#EF4444'}); });
   rec.missingTrail.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref||'(link ref)',type:'Trail',period:_revMonthLabel(x.month),settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Missing trail',est:(x.est||0),color:'#EF4444'}); });
   rec.variance.forEach(function(x){ items.push({client:x.loan.clientName,lender:x.loan.lenderName,ref:x.ref,type:'Trail',period:_revMonthLabel(x.month),settle:x.loan.settlementDate||'',loanAmt:x.loan.loanAmount||'',issue:'Trail down '+x.pct+'%',est:0,color:'#FB923C'}); });
-  rec.unknown.forEach(function(r){ items.push({client:r.clientRaw||'(unknown)',lender:r.lenderRaw||'',ref:r.ref,type:/trail/i.test(r.type)?'Trail':'Upfront',period:_revMonthLabel(r.periodMonth)||'-',settle:'',loanAmt:'',issue:'Unknown payment - not in loan book',est:0,color:'#60A5FA'}); });
+  if(S.user.role==='admin') rec.unknown.forEach(function(r){ items.push({client:r.clientRaw||'(unknown)',lender:r.lenderRaw||'',ref:r.ref,type:/trail/i.test(r.type)?'Trail':'Upfront',period:_revMonthLabel(r.periodMonth)||'-',settle:'',loanAmt:'',issue:'Unknown payment - not in loan book',est:0,color:'#60A5FA'}); });
   var totalEst=items.reduce(function(s,it){return s+(_revNum(it.est)||0);},0);
   if(items.length===0){
     h+='<div class="card" style="padding:30px;text-align:center;color:#34D399;">All matched. Nothing missing within the expected window (up to '+_revMonthLabel(rec.endMonth)+').</div>';
