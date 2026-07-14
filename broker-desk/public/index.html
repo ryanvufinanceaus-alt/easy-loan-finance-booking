@@ -1613,8 +1613,8 @@ const NAV=[
   {id:'emails',    label:'Emails',        role:'all',     section:'Communication', ico:'<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>'},
   // \u2500\u2500 INCOME \u2500\u2500 (logical flow: settle \u2192 loan book \u2192 commissions \u2192 invoice)
   {id:'loanbook',  label:'Loan Book',     role:'notsupp', section:'Income', ico:'<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>'},
-  {id:'revenue',   label:'Tracking',       role:'notsupp', ico:'<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-5"/>'},
   {id:'commissions',label:'Commissions',  role:'notsupp', ico:'<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'},
+  {id:'revenue',   label:'Tracking',       role:'notsupp', ico:'<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-5"/>'},
   {id:'invoices',  label:'Invoices',      role:'notsupp', ico:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/>'},
   // \u2500\u2500 TOOLS \u2500\u2500
   // Documents (YTD Calculator + Recommendation Notes) moved to EasyFlow AI (extension + web). Entry removed.
@@ -4653,8 +4653,8 @@ function copyTpl(){
 function _incomeBanner(active){
   var steps=[
     {id:'loanbook',n:'1',label:'Loan Book',desc:'Your settled loans \u2014 the master list everything is tracked against.'},
-    {id:'revenue',n:'2',label:'Tracking',desc:'Import Finsure statements, see paid vs missing, and Sync received money into Commissions.'},
-    {id:'commissions',n:'3',label:'Commissions',desc:'The permanent ledger of every commission (Received / Pending) with Ref# + period.'},
+    {id:'commissions',n:'2',label:'Commissions',desc:'Your commission ledger - earned, received and outstanding (to chase), per case.'},
+    {id:'revenue',n:'3',label:'Tracking',desc:'Import Finsure statements and reconcile (paid vs missing) - updates the Commissions ledger.'},
     {id:'invoices',n:'4',label:'Invoices',desc:'Bill received commissions \u2014 one invoice per case. Billing Tracker = received vs invoiced.'}
   ];
   if(_lsGet('bd_hide_income_map')==='1'){
@@ -4853,7 +4853,7 @@ function rCommissions(){
   return `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #1e2430;margin-bottom:14px;flex-shrink:0;flex-wrap:wrap;gap:8px;">
     <div style="display:flex;align-items:center;flex-wrap:wrap;">
       ${tabBtn('overview', '\uD83D\uDCCA Overview', null)}
-      ${tabBtn('missing_upfront', '\u26A0 Missing Upfronts', missingOverdue || missing.length)}
+      ${tabBtn('missing_upfront', '\u26A0 To Chase', missingOverdue || missing.length)}
       ${tabBtn('monthly_trail', '\uD83D\uDCC5 Monthly Trail', trailMissing)}
       ${tabBtn('all', '\uD83D\uDCCB All Commissions', null)}
     </div>
