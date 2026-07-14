@@ -844,7 +844,7 @@ async function _loadLoginLogo(){
     const r=await gs_('getPublicLogo');
     if(r&&r.ok&&r.logoUrl){
       const el=document.getElementById('login-logo-badge');
-      if(el){ el.style.background='#fff'; el.innerHTML='<img src="'+r.logoUrl+'" alt="logo" style="max-width:62px;max-height:62px;object-fit:contain;">'; }
+      if(el){ el.style.background='#fff'; el.innerHTML='<img src="'+esc(r.logoUrl)+'" alt="logo" style="max-width:62px;max-height:62px;object-fit:contain;">'; }
     }
   }catch(e){}
 }
@@ -1440,6 +1440,8 @@ const _STAGE_MAP = (function(){
 })();
 const gs = id => _STAGE_MAP.get(id) || STAGES[0];
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+// escJs: escape cho JS-STRING context bên trong on*="fn('...')" — mọi ký tự phi [0-9A-Za-z] -> \uXXXX (sống sót qua HTML-decode; chống XSS chiếm token). Text/HTML-attr context vẫn dùng esc().
+const escJs=s=>{s=String(s==null?'':s);let o='';for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);o+=((c>=48&&c<=57)||(c>=65&&c<=90)||(c>=97&&c<=122))?s[i]:'\\u'+c.toString(16).padStart(4,'0');}return o;};
 // Defensive phone formatter \u2014 restores leading 0 if data ever came back without it.
 // Safe net even if backend already pads correctly.
 function fmtPhone(p){
@@ -4210,7 +4212,7 @@ function rEmailSend(){
             const checked=(S.emailSelectedRecipients||new Set()).has(r.email);
             const tag=r.source==='primary'?'<span style="font-size:9px;color:#D4A843;background:#D4A84320;padding:1px 6px;border-radius:7px;font-weight:700;">PRIMARY</span>':r.source==='joint'?'<span style="font-size:9px;color:#A78BFA;background:#A78BFA20;padding:1px 6px;border-radius:7px;font-weight:700;">JOINT</span>':'<span style="font-size:9px;color:#6b7280;background:#6b728020;padding:1px 6px;border-radius:7px;font-weight:700;">MANUAL</span>';
             return`<label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;color:#c9d1d9;padding:5px 8px;border-radius:6px;background:${checked?'rgba(212,168,67,.08)':'transparent'};">
-              <input type="checkbox" ${checked?'checked':''} onchange="toggleRecipient('${esc(r.email)}')" style="cursor:pointer;">
+              <input type="checkbox" ${checked?'checked':''} onchange="toggleRecipient('${escJs(r.email)}')" style="cursor:pointer;">
               <span style="flex:1;min-width:0;">${r.name?`<strong>${esc(r.name)}</strong> `:''}<span style="color:#6b7280;">&lt;${esc(r.email)}&gt;</span></span>
               ${tag}
               ${r.source==='manual'?`<button class="btn-ghost" style="color:#ef4444;font-size:10px;padding:0 4px;" onclick="event.preventDefault();removeManualRecipient('${esc(r.email)}')">\u00D7</button>`:''}
@@ -8231,8 +8233,8 @@ function rTeam(){
           <div style="flex:1;text-align:center;"><div style="font-size:20px;font-weight:800;color:${S.tasks.filter(t=>t.assignedTo===u.id&&!isTrue(t.done)).length>0?'#FBBF24':'#c9d1d9'}">${S.tasks.filter(t=>t.assignedTo===u.id&&!isTrue(t.done)).length}</div><div style="font-size:9px;color:#4a5568;text-transform:uppercase;letter-spacing:.8px;">Tasks</div></div>
         </div>
         <div style="display:flex;gap:6px;">
-          <button class="btn-sec" style="flex:1;justify-content:center;font-size:11px;" onclick="promptResetPw('${esc(u.id)}','${esc(u.name)}')">\uD83D\uDD11 Reset PW</button>
-          ${!isSelf&&!isMain?`<button class="btn-danger" onclick="deleteUser_('${esc(u.id)}','${esc(u.name)}')">\uD83D\uDDD1 Delete</button>`:''}
+          <button class="btn-sec" style="flex:1;justify-content:center;font-size:11px;" onclick="promptResetPw('${escJs(u.id)}','${escJs(u.name)}')">\uD83D\uDD11 Reset PW</button>
+          ${!isSelf&&!isMain?`<button class="btn-danger" onclick="deleteUser_('${escJs(u.id)}','${escJs(u.name)}')">\uD83D\uDDD1 Delete</button>`:''}
         </div>
       </div>`;}).join('')}
   </div>`;
@@ -8251,7 +8253,7 @@ function rLenders(){
       <button class="btn-gold" onclick="addLender_()">+ Add Lender</button>
     </div>
     <div style="font-size:11px;color:#4a5568;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">${S.lenders.length} lender${S.lenders.length!==1?'s':''} in directory</div>
-    <div>${S.lenders.map(l=>`<span class="lender-chip">${esc(l)}${isAdmin?`<button onclick="delLender_('${esc(l).replace(/'/g,"\\'")}')" title="Remove"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`:''}</span>`).join('')||'<div style="color:#4a5568;font-size:13px;">No lenders added yet</div>'}</div>
+    <div>${S.lenders.map(l=>`<span class="lender-chip">${esc(l)}${isAdmin?`<button onclick="delLender_('${escJs(l)}')" title="Remove"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`:''}</span>`).join('')||'<div style="color:#4a5568;font-size:13px;">No lenders added yet</div>'}</div>
   </div>`;
 }
 async function addLender_(){
@@ -8412,8 +8414,8 @@ function rOv(c,em,docs){
   const dangerZone = (!c.archived && !pendDel) ? `<div style="margin-top:18px;padding-top:14px;border-top:1px dashed #1e2430;">
     <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:7px;">Danger zone</div>
     ${isAdmin
-      ? `<button class="btn-sec" style="font-size:11px;color:#DC2626;border-color:#DC262644;" onclick="adminDirectDelete_('${esc(c.id)}','${esc(c.clientName||'')}')">\uD83D\uDDD1 Delete this case permanently\u2026</button>`
-      : `<button class="btn-sec" style="font-size:11px;color:#DC2626;border-color:#DC262644;" onclick="requestDelete_('${esc(c.id)}','${esc(c.clientName||'')}')">\uD83D\uDDD1 Request delete\u2026</button>`}
+      ? `<button class="btn-sec" style="font-size:11px;color:#DC2626;border-color:#DC262644;" onclick="adminDirectDelete_('${escJs(c.id)}','${escJs(c.clientName||'')}')">\uD83D\uDDD1 Delete this case permanently\u2026</button>`
+      : `<button class="btn-sec" style="font-size:11px;color:#DC2626;border-color:#DC262644;" onclick="requestDelete_('${escJs(c.id)}','${escJs(c.clientName||'')}')">\uD83D\uDDD1 Request delete\u2026</button>`}
     <div style="font-size:10.5px;color:#4a5568;margin-top:5px;line-height:1.5;">${isAdmin ? 'Hard delete cascades tasks, notes, emails. Financial records keep but unlink.' : 'Sends a request to admin (Ryan) for approval.'}</div>
   </div>` : '';
 
@@ -9192,16 +9194,11 @@ async function processClawback_(){
   const r=await gs_('addCommission',S.tok,d);
   if(!r||!r.ok){hideLoad();toast((r&&r.msg)||'Failed to create clawback entry',1);return;}
   S.commissions.push(r.data);
-  const r2=await gs_('updateCommission',S.tok,orig.id,{status:'Clawback'});
   hideLoad();
-  if(r2&&r2.ok){
-    S.commissions=S.commissions.map(c=>c.id===orig.id?{...c,status:'Clawback'}:c);
-    toast('\u2713 Clawback processed: '+r.data.id);
-    closeModal();render();
-  } else {
-    toast('Clawback entry created but failed to update original status',1);
-    closeModal();render();
-  }
+  // FIX (audit 2026-07-14): KHONG mark original la 'Clawback'. Giu original 'Received' + chi dua vao dong am (r.data) de offset.
+  // Truoc lam CA HAI (doi status + dong am) => Net Received double-count (clawback $2k -> Net -$2k thay vi $0); loan clawback con hien lai "Missing Upfront". Dong am da du.
+  toast('\u2713 Clawback processed: '+r.data.id);
+  closeModal();render();
 }
 
 // \u2500\u2500 Edit Loan Book entry \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
