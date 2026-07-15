@@ -2247,6 +2247,33 @@ app.delete("/api/cases/:caseId/local-data", (request, response) => {
   response.json({ ok: true, caseId, ...result });
 });
 
+// FULL case delete — removes the imported case record from localCases too (the /local-data route only cleared
+// prepared/history, leaving the case in the list). Added 2026-07-15 so a mistaken/test case can be truly removed.
+// Confirm-gated (body {confirm:"DELETE <caseId>"}) like /local-data; broker-authenticated.
+app.delete("/api/cases/:caseId", (request, response) => {
+  const broker = requireBroker(request, response);
+  if (!broker) return;
+  const caseId = request.params.caseId;
+  const expected = `DELETE ${caseId}`;
+  if (request.body?.confirm !== expected) {
+    return response.status(400).json({ error: `Type ${expected} to confirm case deletion.` });
+  }
+  const before = localCases.length;
+  localCases = localCases.filter((item) => item.id !== caseId);
+  const caseRemoved = before - localCases.length;
+  writeStoredJson("local_cases", localCasesPath, localCases);
+  const result = deleteLocalCaseData(caseId);
+  audit({
+    type: "delete-case",
+    timestamp: new Date().toISOString(),
+    brokerUser: request.body?.brokerUser || broker.user || broker.email || "unknown",
+    caseId,
+    caseRemoved,
+    ...result
+  });
+  response.json({ ok: true, caseId, caseRemoved, ...result });
+});
+
 app.post("/api/cases/:caseId/prepare-infinity-aol", (request, response) => {
   const caseData = findCase(request.params.caseId);
   if (!caseData) return response.status(404).json({ error: "Case not found" });
