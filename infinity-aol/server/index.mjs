@@ -178,6 +178,20 @@ function payloadIncomes(caseId) {
 }
 
 function summarizeCase(caseData) {
+  // NAME THE FIELD. This used to throw a bare "Cannot read properties of undefined (reading
+  // 'loanAmount')" whenever caseData.loan was absent - a 500 that said WHAT operation failed but not
+  // WHICH parent was missing, so the caller could not tell a malformed payload from a broken server.
+  // That single unnamed TypeError cost a full session: the import was assumed to be hitting the wrong
+  // backend, and eight copies of this repo were searched across the disk before the response body was
+  // read at all.
+  for (const parent of ["loan"]) {
+    const v = caseData ? caseData[parent] : undefined;
+    if (!v || typeof v !== "object") {
+      const err = new Error(`case is missing the "${parent}" object (summarizeCase reads ${parent}.loanAmount) - received ${JSON.stringify(v)}`);
+      err.field = parent;
+      throw err;
+    }
+  }
   return {
     id: caseData.id,
     status: caseData.status,
@@ -2130,6 +2144,11 @@ app.post("/api/cases/import", (request, response) => {
   };
   localCases = localCases.filter((item) => item.id !== id);
   localCases.push(caseData);
+  // PERSIST. localCases is READ from disk at startup (readStoredJson("local_cases", localCasesPath))
+  // but this handler never wrote back, so every imported case lived in RAM until the next restart and
+  // then vanished - caseById would find nothing, and any pipeline whose first step is get-case failed
+  // by architecture rather than by payload. Same name, same path, same writer as the other call sites;
+  // deliberately not a second store.
   writeStoredJson("local_cases", localCasesPath, localCases);
   response.json({ ok: true, id, case: summarizeCase(caseData) });
 });

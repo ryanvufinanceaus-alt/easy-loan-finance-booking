@@ -115,7 +115,10 @@ export function buildAolTemplate(caseData, infinity) {
     applicants: {
       applicantType: "Person",
       applicantRole: "Primary applicant",
-      title: primary.title || "Ms",
+      // "" not "Ms". This is the Gender=Female that appeared on two applicants recorded as Mr - an
+      // honorific carries sex, so guessing one asserts a fact about a real person that nobody supplied.
+      // A blank is a question the broker can answer; a wrong "Ms" is one nobody knows to look at.
+      title: primary.title || "",
       firstName: primary.firstName || "",
       middleName: primary.middleName || "",
       familyName: primary.lastName || "",
@@ -177,8 +180,11 @@ export function buildAolTemplate(caseData, infinity) {
       estimatedValue: money(caseData.property?.estimatedValue || caseData.property?.purchasePrice),
       transferOfLandAmount: money(caseData.property?.purchasePrice || caseData.property?.estimatedValue),
       basisOfEstimate: "Applicant Estimate",
-      titleType: "Freehold",
-      title: caseData.property?.titleType || "Torrens",
+      // Both were asserted for a property nobody had looked at - "Freehold" hardcoded outright, and
+      // "Torrens" as a fallback that happens to be right in SA and wrong in the states that are not.
+      // A plausible guess about a security's title is the most expensive kind: it reads as verified.
+      titleType: caseData.property?.titleType || "",
+      title: caseData.property?.title || "",
       contactForAccess: primaryName
     },
     financials: {
