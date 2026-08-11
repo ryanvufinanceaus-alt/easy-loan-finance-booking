@@ -34,6 +34,9 @@ function compactApplicant(applicant) {
     dependants: applicant.dependants ?? 0,
     email: applicant.email || "",
     mobile: applicant.mobile || "",
+    // PHẢI map thật, không chỉ khai trong READ_APPLICANT_KEYS. Khai mà không map = tắt chuông rồi để
+    // field rơi im lặng như cũ — đúng thứ guard sinh ra để chặn. AOL đòi "Current Address Since".
+    addressSince: applicant.addressSince || "",
     id: applicant.id || {},
     address: applicant.address || {},
     employment: applicant.employment || {},
@@ -57,11 +60,17 @@ function compactApplicant(applicant) {
 const READ_KEYS = new Set(["id", "brokerUser", "applicants", "expenses", "assets", "liabilities",
   "property", "loan", "brokerNotes", "documentChecklist", "documentIntake", "selectedTemplate",
   "expenseSource", "assetSource"]);
+// clientProfile: khai BỎ QUA có chủ đích. Nó là khối hồ sơ tổng do Broker Desk đính kèm; Infynity/AOL
+// đọc từng trường riêng (applicants/loan/property) chứ không đọc khối này. Khai ra đây để lần sau
+// không ai phải đoán "quên map hay cố ý bỏ" — đó chính là câu hỏi guard sinh ra để loại bỏ.
 const IGNORED_KEYS = new Set(["clientName", "isTest", "email", "phone", "dependants", "status",
-  "importedAt", "source", "notes", "createdAt", "updatedAt"]);
+  "importedAt", "source", "notes", "createdAt", "updatedAt", "clientProfile"]);
 const READ_APPLICANT_KEYS = new Set(["role", "firstName", "middleName", "lastName", "surname", "title",
   "gender", "dateOfBirth", "maritalStatus", "currentResidentialStatus", "currentHousingSituation",
-  "residencyStatus", "dependants", "email", "mobile", "id", "address", "employment", "income"]);
+  // addressSince: AOL đòi "Current Address Since" cho mỗi applicant. Guard bắt được nó ngay lần deploy
+  // đầu — trước đó nó rơi ÂM THẦM ở đây, nên dù case có gửi thì form vẫn trống và không ai biết vì sao.
+  // Đúng việc guard sinh ra để làm: gọi tên thứ đang bị nuốt.
+  "residencyStatus", "dependants", "email", "mobile", "id", "address", "addressSince", "employment", "income"]);
 
 function assertFullyMapped(caseData) {
   const unknown = [];
