@@ -8,6 +8,15 @@ function fullName(applicant) {
 
 function formatAddress(address) {
   if (!address) return "";
+  // 🔑 NHẬN CẢ CHUỖI, KHÔNG CHỈ OBJECT (2026-08-17). Hàm này vốn chỉ đọc address.line1/suburb/state/
+  // postcode/fullAddress. Case thật gửi địa chỉ dạng CHUỖI ("15 Maple Street, Norwood SA 5067") thì mọi
+  // trường thành undefined ⇒ trả "" ⇒ ĐỊA CHỈ BIẾN MẤT KHÔNG MỘT LỜI. Đo được trên ELF-IMP-B0192D:
+  // aol.applicants.currentResidentialAddress = "" trong khi case có địa chỉ thật ngay đó.
+  // Hậu quả dây chuyền: trống ⇒ enrichTestCase tưởng case không có ⇒ nhét "12 Sample Street, Adelaide
+  // SA 5000" vào hồ sơ ngân hàng — sai mà TRÔNG HỢP LÝ nên không ai soi; và Sabrina phải dựng lớp vá bù
+  // đọc lại case gốc (caseFacts.mjs::voLaiDataMat), tức hai đường dữ liệu cho cùng một sự thật.
+  // Chuỗi thì coi như fullAddress rồi để chính logic TAIL bên dưới tách suburb/state/postcode.
+  if (typeof address === "string") address = { fullAddress: address };
   const TAIL = /,?\s*([A-Za-z' -]+?)\s+(NSW|VIC|QLD|SA|WA|TAS|ACT|NT)\s+(\d{4})(?:,\s*Australia)?\s*$/i;
   let line1 = address.line1 || "";
   let suburb = address.suburb || "", state = address.state || "", postcode = address.postcode || "";
@@ -133,9 +142,19 @@ export function buildAolTemplate(caseData, infinity) {
       customerOfLender: "No",
       mobilePhone: primary.mobile || "",
       email: primary.email || "",
-      currentResidentialAddress: formatAddress(primary.address),
+      // 🔑 ĐỌC ĐÚNG TÊN KHOÁ CASE GỬI (2026-08-17). Hai dòng này TRƯỚC ĐÂY đọc nhầm chỗ:
+      //   · địa chỉ đọc `primary.address` — nhưng case thật gửi `currentResidentialAddress`
+      //   · addressSince đọc `caseData.clientProfile.addressSince` — nhưng nó nằm TRÊN APPLICANT,
+      //     và `clientProfile` lại là khoá đã khai BỎ QUA ở mapper, nên gần như luôn undefined.
+      // Hậu quả đo được: payload.aol.applicants tới nơi với địa chỉ RỖNG dù case có
+      // "15 Maple Street, Norwood SA 5067" → enrichTestCase tưởng case không có → nhét
+      // "12 Sample Street, Adelaide SA 5000" vào hồ sơ ngân hàng. Sai mà TRÔNG HỢP LÝ nên không ai soi.
+      // Và AOL hỏi "previous address" + "3 years address history" chỉ vì không được cho biết
+      // họ đã ở đó từ 2016. Nhận cả hai tên, ưu tiên tên case thật dùng.
+      currentResidentialAddress: formatAddress(primary.currentResidentialAddress || primary.address),
       currentHousingSituation: housingSituation(primary, caseData),
-      addressSince: caseData.clientProfile?.addressSince || "",
+      addressSince: primary.addressSince || caseData.clientProfile?.addressSince || "",
+      driverLicence: primary.driverLicence || {},
       employmentName: primary.employment?.employerName || "",
       employmentStatus: primary.employment?.status || "",
       occupation: primary.employment?.occupation || "",
