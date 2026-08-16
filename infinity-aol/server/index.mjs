@@ -184,21 +184,30 @@ function summarizeCase(caseData) {
   // That single unnamed TypeError cost a full session: the import was assumed to be hitting the wrong
   // backend, and eight copies of this repo were searched across the disk before the response body was
   // read at all.
-  for (const parent of ["loan"]) {
-    const v = caseData ? caseData[parent] : undefined;
-    if (!v || typeof v !== "object") {
-      const err = new Error(`case is missing the "${parent}" object (summarizeCase reads ${parent}.loanAmount) - received ${JSON.stringify(v)}`);
-      err.field = parent;
-      throw err;
-    }
-  }
+  // 🔑 A SUMMARY IS A READ. IT MUST DEGRADE, NOT THROW (2026-08-16).
+  // Naming the field (above) was the right first step, but throwing at all is the wrong shape here:
+  // GET /api/cases maps EVERY case through this function, so ONE record without a loan object returned
+  // 500 for the WHOLE list. Measured today: the endpoint was dead, which is what Sabrina's case board
+  // and the morning briefing read - the broker loses the entire pipeline view because one imported
+  // record is incomplete. It also turned two unrelated offline tests red.
+  // Gaps are surfaced, never invented: a missing loanAmount stays null, NOT 0 - 0 is a number a reader
+  // would trust and act on - and `incomplete` names exactly what is absent, so the gap is visible in
+  // the payload instead of being swallowed. Same house rule as the mapper above: never drop silently.
+  const c = caseData || {};
+  const missing = [];
+  if (!Array.isArray(c.applicants) || !c.applicants.length) missing.push("applicants");
+  if (!c.loan || typeof c.loan !== "object" || c.loan.loanAmount === undefined || c.loan.loanAmount === null) missing.push("loan.loanAmount");
+  if (!c.property || typeof c.property !== "object" || !c.property.address) missing.push("property.address");
   return {
-    id: caseData.id,
-    status: caseData.status,
-    brokerUser: caseData.brokerUser,
-    applicantNames: caseData.applicants.map((applicant) => `${applicant.firstName} ${applicant.lastName}`).join(" & "),
-    loanAmount: caseData.loan.loanAmount,
-    propertyAddress: caseData.property.address || "Missing property address"
+    id: c.id,
+    status: c.status,
+    brokerUser: c.brokerUser,
+    applicantNames: (Array.isArray(c.applicants) ? c.applicants : [])
+      .map((a) => `${(a && a.firstName) || ""} ${(a && a.lastName) || ""}`.trim())
+      .filter(Boolean).join(" & ") || "Missing applicant names",
+    loanAmount: c.loan && typeof c.loan === "object" && c.loan.loanAmount !== undefined ? c.loan.loanAmount : null,
+    propertyAddress: (c.property && c.property.address) || "Missing property address",
+    ...(missing.length ? { incomplete: missing } : {})
   };
 }
 
