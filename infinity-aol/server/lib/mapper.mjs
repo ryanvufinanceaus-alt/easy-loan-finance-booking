@@ -38,7 +38,16 @@ function compactApplicant(applicant) {
     // field rơi im lặng như cũ — đúng thứ guard sinh ra để chặn. AOL đòi "Current Address Since".
     addressSince: applicant.addressSince || "",
     id: applicant.id || {},
-    address: applicant.address || {},
+    // 2026-08-16 — MAP THẬT, không khai suông (đúng câu ghi ngay trên: khai mà không map = tắt chuông).
+    // Guard chặn prepare-infinity-aol bằng 500 vì case gửi `currentResidentialAddress` và `driverLicence`
+    // mà mapper không đọc. Guard làm ĐÚNG: hai khoá đó chính là địa chỉ ở và bằng lái của khách — thứ
+    // Infynity Client Details bắt buộc có (4 ô địa chỉ + 4 trường licence), và là thứ phía Sabrina đang
+    // chờ để bù vào form. Bỏ qua chúng thì form trống mà không ai biết vì sao.
+    // `address` giữ nguyên làm nguồn chính; currentResidentialAddress là TÊN case thật đang dùng nên
+    // nhận cả hai, ưu tiên cái có dữ liệu.
+    address: applicant.address || applicant.currentResidentialAddress || {},
+    currentResidentialAddress: applicant.currentResidentialAddress || applicant.address || {},
+    driverLicence: applicant.driverLicence || {},
     employment: applicant.employment || {},
     income: applicant.income || {}
   };
@@ -59,18 +68,28 @@ function compactApplicant(applicant) {
 // on neither list throws, naming the key - a new field can then only ever arrive loudly.
 const READ_KEYS = new Set(["id", "brokerUser", "applicants", "expenses", "assets", "liabilities",
   "property", "loan", "brokerNotes", "documentChecklist", "documentIntake", "selectedTemplate",
-  "expenseSource", "assetSource"]);
+  "expenseSource", "assetSource",
+  // 2026-08-16: map thật ở buildInfinityPayload bên dưới (solicitor → khối AOL; recommendation → lender thắng).
+  "solicitor", "recommendation"]);
 // clientProfile: khai BỎ QUA có chủ đích. Nó là khối hồ sơ tổng do Broker Desk đính kèm; Infynity/AOL
 // đọc từng trường riêng (applicants/loan/property) chứ không đọc khối này. Khai ra đây để lần sau
 // không ai phải đoán "quên map hay cố ý bỏ" — đó chính là câu hỏi guard sinh ra để loại bỏ.
+// clientCall: khai BỎ QUA có chủ đích (2026-08-16). Đây là ghi chú cuộc gọi ở front-of-funnel
+// (client-call app) — dùng để dựng hồ sơ ban đầu, Infynity/AOL không có ô nào cho nó.
+// serviceability: cũng BỎ QUA có chủ đích. Đây là ƯỚC LƯỢNG của Sabrina, mà theo C19 thì file SERV CALC
+// của lender mới là thẩm quyền. Đẩy con số ước lượng sang portal là mời người đọc tin nhầm nó.
 const IGNORED_KEYS = new Set(["clientName", "isTest", "email", "phone", "dependants", "status",
-  "importedAt", "source", "notes", "createdAt", "updatedAt", "clientProfile"]);
+  "importedAt", "source", "notes", "createdAt", "updatedAt", "clientProfile",
+  "clientCall", "serviceability"]);
 const READ_APPLICANT_KEYS = new Set(["role", "firstName", "middleName", "lastName", "surname", "title",
   "gender", "dateOfBirth", "maritalStatus", "currentResidentialStatus", "currentHousingSituation",
   // addressSince: AOL đòi "Current Address Since" cho mỗi applicant. Guard bắt được nó ngay lần deploy
   // đầu — trước đó nó rơi ÂM THẦM ở đây, nên dù case có gửi thì form vẫn trống và không ai biết vì sao.
   // Đúng việc guard sinh ra để làm: gọi tên thứ đang bị nuốt.
-  "residencyStatus", "dependants", "email", "mobile", "id", "address", "addressSince", "employment", "income"]);
+  "residencyStatus", "dependants", "email", "mobile", "id", "address", "addressSince", "employment", "income",
+  // 2026-08-16: hai khoá này case THẬT vẫn gửi (tên do loan form/import đặt) và đều được map ở
+  // compactApplicant — địa chỉ ở + bằng lái, thứ Infynity Client Details bắt buộc có.
+  "currentResidentialAddress", "driverLicence"]);
 
 function assertFullyMapped(caseData) {
   const unknown = [];
@@ -136,6 +155,14 @@ export function buildInfinityPayload(caseData) {
       primary,
       secondary
     },
+    // 2026-08-16 — MAP THẬT hai khoá cấp case mà guard đang chặn:
+    // · solicitor: AOL Application tab có khối solicitor/conveyancer, handler bên Sabrina đọc thẳng
+    //   payload.solicitor. Bỏ nó thì khối đó trống và sweep phải đi hỏi broker thứ case đã có sẵn.
+    // · recommendation: đây là nguồn lender thắng. Bỏ nó ĐÃ TỪNG gây lỗi thật — caseById.recommendation
+    //   về rỗng ⇒ validLenders=0 ⇒ addThreeScenarios bỏ qua ⇒ SoCA không finalise ⇒ không có nút Nextgen
+    //   ⇒ AOL không mở được. Đó là lý do bên Sabrina phải đọc lender từ nhiều nguồn.
+    solicitor: caseData.solicitor || {},
+    recommendation: caseData.recommendation || {},
     expenses: {
       ...expenses,
       totalMonthly
