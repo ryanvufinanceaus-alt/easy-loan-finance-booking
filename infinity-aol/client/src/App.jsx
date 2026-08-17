@@ -1138,6 +1138,26 @@ const residentialLoanActionOptions = [
 const occupancyOptions = ["Owner occupied", "Investment"];
 const borrowerTypeOptions = ["Individual", "Company", "Trust", "SMSF", "Sole trader", "Partnership"];
 const securityTypeOptions = ["Residential property", "Commercial property", "Business asset", "Vehicle/equipment", "No security yet"];
+
+// Ô ghi chú cao theo nội dung: gõ tới đâu ô dài tới đó, khỏi phải cuộn trong một khung bé để đọc lại
+// những gì mình vừa viết. Cao tới trần (CSS max-height) thì mới cho cuộn, để một note dài không đẩy
+// phần còn lại của form ra khỏi màn hình. Đo lại khi value đổi (kể cả khi load note từ server) và khi
+// cửa sổ đổi bề rộng, vì xuống dòng khác đi thì số dòng cũng khác.
+function AutoGrowTextarea({ value, className = "", ...rest }) {
+  const ref = useRef(null);
+  const fit = React.useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+  React.useLayoutEffect(fit, [fit, value]);
+  useEffect(() => {
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [fit]);
+  return <textarea ref={ref} value={value} className={`auto-grow${className ? ` ${className}` : ""}`} {...rest} />;
+}
 const commercialActionOptions = [
   "Purchase",
   "Refinance",
@@ -4478,7 +4498,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
               <label>Email<input value={form.email} onChange={(event) => updateField("email", event.target.value)} /></label>
               <label>Language<select value={form.preferredLanguage} onChange={(event) => updateField("preferredLanguage", event.target.value)}><option>Vietnamese / English</option><option>English</option><option>Vietnamese</option></select></label>
               <label>Source<input value={form.sourceChannel} onChange={(event) => updateField("sourceChannel", event.target.value)} placeholder="Referral, Facebook, website" /></label>
-              <label className="wide-field">Quick call note<textarea value={form.quickNotes} onChange={(event) => updateField("quickNotes", event.target.value)} placeholder="What client said on the call" /></label>
+              <label className="wide-field call-note-field">Quick call note<AutoGrowTextarea value={form.quickNotes} onChange={(event) => updateField("quickNotes", event.target.value)} placeholder="What client said on the call" /></label>
             </div>
           </section>
 
@@ -4499,7 +4519,7 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
               )}
               {callPath.showPropertyLocation && <label>Property suburb/state<input value={form.propertyLocation} onChange={(event) => updateField("propertyLocation", event.target.value)} /></label>}
               {callPath.showTimeline && <label>Timeline<input value={form.timeline} onChange={(event) => updateField("timeline", event.target.value)} placeholder="ASAP, 3 months, pre-approval" /></label>}
-              {callPath.showUseOfFunds && <label className="wide-field">Use of funds / client objective<textarea value={form.loanUseDescription} onChange={(event) => updateField("loanUseDescription", event.target.value)} placeholder="Short plain-English reason for the loan" /></label>}
+              {callPath.showUseOfFunds && <label className="wide-field objective-field">Use of funds / client objective<AutoGrowTextarea value={form.loanUseDescription} onChange={(event) => updateField("loanUseDescription", event.target.value)} placeholder="Short plain-English reason for the loan" /></label>}
             </div>
 
             {normalizedCallForm.loanCategory === "Commercial Property Loan" && (
@@ -4563,9 +4583,9 @@ function CallNotesPage({ onOpenAutofill, initialPanel = "call" }) {
           <section className="panel note-panel note-text-panel">
             <div className="panel-title"><FileJson size={18} /><h2>Broker Notes</h2></div>
             <div className="note-text-grid">
-              <label>Broker assessment<textarea value={form.brokerAssessment} onChange={(event) => updateField("brokerAssessment", event.target.value)} placeholder="Serviceability, red flags, likely lender path" /></label>
-              <label>Next action<textarea value={form.nextAction} onChange={(event) => updateField("nextAction", event.target.value)} placeholder="Send intake link, collect payslips, book appointment" /></label>
-              <label>Internal note<textarea value={form.existingDebtsSummary} onChange={(event) => updateField("existingDebtsSummary", event.target.value)} placeholder="Debts, risk, document requests" /></label>
+              <label>Broker assessment<AutoGrowTextarea value={form.brokerAssessment} onChange={(event) => updateField("brokerAssessment", event.target.value)} placeholder="Serviceability, red flags, likely lender path" /></label>
+              <label>Next action<AutoGrowTextarea value={form.nextAction} onChange={(event) => updateField("nextAction", event.target.value)} placeholder="Send intake link, collect payslips, book appointment" /></label>
+              <label>Internal note<AutoGrowTextarea value={form.existingDebtsSummary} onChange={(event) => updateField("existingDebtsSummary", event.target.value)} placeholder="Debts, risk, document requests" /></label>
             </div>
           </section>
 
