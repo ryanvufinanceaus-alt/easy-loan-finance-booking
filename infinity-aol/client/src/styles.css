@@ -3126,3 +3126,25 @@ select {
   border-color: #2f9e6e; box-shadow: 0 0 0 3px rgba(47, 158, 110, .15); outline: none;
 }
 .theme-call .panel { border-radius: 12px; box-shadow: 0 1px 3px rgba(16, 32, 25, .05); }
+
+/* === Ô ghi chú tự cao theo nội dung (2026-08-17) === */
+/* Trước đây quick call note bị khoá ở ~96px nên một note dài phải cuộn trong khung bé mới đọc lại được.
+   Chiều cao thật do JS đặt (AutoGrowTextarea) theo scrollHeight; ở đây chỉ đặt sàn, trần và tắt tay kéo
+   (kéo tay vô nghĩa khi ô tự vừa nội dung). Đặt CUỐI FILE để thắng các rule min-height cũ. */
+/* Lặp class là CỐ Ý: `.theme-call .panel textarea` (0,2,1) đè mất `textarea.auto-grow` (0,1,1) và ghim
+   min-height về 42px — đo được trên trình duyệt, không phải đoán. Nhân đôi class cho ngang specificity
+   rồi thắng nhờ đứng sau. */
+textarea.auto-grow.auto-grow {
+  min-height: 150px;
+  max-height: 65vh;
+  overflow-y: auto;
+  resize: none;
+  line-height: 1.5;
+}
+.note-form-grid .call-note-field textarea.auto-grow.auto-grow {
+  min-height: 200px;
+}
+/* Ô mục đích vay thường chỉ 1-2 câu → sàn thấp hơn, khỏi để một khoảng trống to. Vẫn tự cao khi viết dài. */
+.note-form-grid .objective-field textarea.auto-grow.auto-grow {
+  min-height: 90px;
+}
