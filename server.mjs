@@ -2286,6 +2286,19 @@ createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", requestOrigin(req));
     const hostname = requestHostname(req);
+
+    // Every host this server answers for is an internal or client-only tool: the Broker Desk CRM,
+    // the booking widget, the loan form. None of it belongs in a search index, and until now
+    // /robots.txt fell through to the SPA shell so crawlers received no directive at all.
+    // Keep both signals on every response — the header covers JSON and API paths that a
+    // robots.txt Disallow cannot describe, and a noindex header outranks a missing meta tag.
+    res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive, noimageindex");
+    if (url.pathname === "/robots.txt") {
+      res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" });
+      res.end("User-agent: *\nDisallow: /\n");
+      return;
+    }
+
     processBookingReminders(requestOrigin(req)).catch((error) => console.warn(error.message));
     if (LOAN_FORM_HOST_RE.test(hostname)) {
       if (req.method === "GET" && /^\/(?:loan-form|client-info|apply|start|home-loan|refinance|commercial-loan|business-loan|car-loan|personal-loan)?\/?$/.test(url.pathname)) {
